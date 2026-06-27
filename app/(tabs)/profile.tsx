@@ -478,6 +478,7 @@ export default function Profile() {
     const [marksMode, setMarksMode] = useState<MarksMode>('combined');
     const router = useRouter();
     const { clearInstitution } = useInstitution();
+    const { profile, fetchProfile } = useStudent();
     const [attendanceVisible, setAttendanceVisible] = useState(false);
     const [activeTrendPoint, setActiveTrendPoint] = useState<number | null>(null);
 
@@ -485,6 +486,7 @@ export default function Profile() {
 
     useFocusEffect(
         React.useCallback(() => {
+            fetchProfile();
             setAttendanceVisible(false);
             fadeAnim.setValue(0);
             setTimeout(() => setAttendanceVisible(true), 500);
@@ -498,15 +500,13 @@ export default function Profile() {
     }, [attendanceVisible]);
 
     const student = {
-        name: 'Prajwal Jagdish Kotian',
-        rollNo: '09',
-        standard: 'Class 10',
-        div: 'Division A',
-        admissionYear: '2022',
-        dob: '2001-05-31',
-        email: 'kotianprajwal@gmail.com',
-        uid: 'STU-SCH-MHS01-0042',
-        totalStudents: 62,
+        name: profile?.name ?? '',
+        rollNo: profile?.rollNo ?? '',
+        standard: profile?.standard ?? '',
+        div: profile?.division ?? '',
+        dob: profile?.dob ?? '',
+        email: profile?.email ?? '',
+        uid: profile?.studentId ?? '',
     };
 
     const subjectChartData = SUBJECT_PERFORMANCE.map(s => ({
@@ -573,7 +573,7 @@ export default function Profile() {
                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Overall Rank</Text>
                             </View>
                             <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: getRankColor(overallRank) }}>#{overallRank}</Text>
-                            <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>out of {student.totalStudents} students</Text>
+                            <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Overall rank</Text>
                         </Card>
 
                         <Card theme={theme} style={{ flex: 1 }}>
