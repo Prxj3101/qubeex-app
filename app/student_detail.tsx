@@ -2,7 +2,6 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import * as Clipboard from 'expo-clipboard';
-import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -13,8 +12,6 @@ import {
     Check,
     ChevronDown,
     Droplets,
-    Eye,
-    EyeOff,
     FileText,
     Hash,
     Heart,
@@ -672,7 +669,7 @@ function GuardianCard({
                 fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted,
                 textTransform: 'uppercase', letterSpacing: 0.5,
             }}>
-                Guardian {index + 1}
+                {guardian.relation || `Entry ${index + 1}`}
             </Text>
             <BoxField
                 label="Name" theme={theme} value={guardian.name} isEditing={isEditing}
@@ -695,7 +692,7 @@ export default function StudentDetail() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
     const router = useRouter();
-    const { photo, setPhoto } = useStudent();
+    const { photo, setPhoto, profile, fetchProfile, saveProfile, uploadPhoto, isSaving } = useStudent();
 
     const pickPhoto = async () => {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -709,34 +706,90 @@ export default function StudentDetail() {
             aspect: [1, 1],
             quality: 0.8,
         });
-        if (!result.canceled && result.assets?.[0]?.uri) {
-            try {
-                const ext = result.assets[0].uri.split('.').pop() || 'jpg';
-                const dest = `${FileSystem.documentDirectory}student-photo.${ext}`;
-                await FileSystem.copyAsync({ from: result.assets[0].uri, to: dest });
-                setPhoto(dest);
-            } catch {
-                setPhoto(result.assets[0].uri);
-            }
+        if (!result.canceled && result.assets?.[0]) {
+            const asset = result.assets[0];
+            // Show preview immediately
+            setPhoto(asset.uri);
+            // Upload to server
+            const mimeType = asset.mimeType ?? 'image/jpeg';
+            try { await uploadPhoto(asset.uri, mimeType); } catch { /* preview stays */ }
         }
     };
 
     // ── State ──
+    const profileData = {
+        name: profile?.name ?? '',
+        gender: profile?.gender ?? '',
+        rollNo: profile?.rollNo ?? '',
+        standard: profile?.standard ?? '',
+        batch: '',
+        div: profile?.division ?? '',
+        sem: '',
+        dob: profile?.dob ?? '',
+        email: profile?.email ?? '',
+        bloodGroup: profile?.bloodGroup ?? '',
+        aadhar: profile?.aadharNo ?? '',
+        pan: profile?.panNo ?? '',
+        houseColor: profile?.houseColor ?? '',
+        address: profile?.address ?? '',
+        city: profile?.city ?? '',
+        state: profile?.state ?? '',
+        pincode: profile?.pincode ?? '',
+        country: profile?.country ?? '',
+        contactNo: profile?.phone ?? '',
+        emergencyContact: profile?.emergencyContact ?? '',
+        guardians: profile?.guardians ?? [],
+        nationality: profile?.nationality ?? '',
+        religion: profile?.religion ?? '',
+        category: profile?.category ?? '',
+        admissionYear: profile?.admissionYear ?? '',
+        uid: profile?.studentId ?? '',
+    };
     const [data, setData] = useState(INITIAL_STUDENT);
     const [draft, setDraft] = useState(INITIAL_STUDENT);
+
+    useEffect(() => {
+        fetchProfile();
+    }, []);
+
+    useEffect(() => {
+        if (profile) {
+            setData(profileData);
+            setDraft(profileData);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [profile]);
 
     // Which section is editing
     const [editingSection, setEditingSection] = useState<string | null>(null);
     const [uidCopied, setUidCopied] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-    const [showPwdTooltip, setShowPwdTooltip] = useState(false);
+
 
     const startEdit = (section: string) => {
         setDraft({ ...data });
         setEditingSection(section);
     };
-    const saveEdit = () => {
-        setData({ ...draft });
+    const saveEdit = async () => {
+        await saveProfile({
+            name: draft.name,
+            gender: draft.gender,
+            dob: draft.dob,
+            phone: draft.contactNo,
+            religion: draft.religion,
+            category: draft.category,
+            nationality: draft.nationality,
+            admissionYear: draft.admissionYear,
+            bloodGroup: draft.bloodGroup,
+            aadharNo: draft.aadhar,
+            panNo: draft.pan,
+            emergencyContact: draft.emergencyContact,
+            address: draft.address,
+            city: draft.city,
+            state: draft.state,
+            pincode: draft.pincode,
+            country: draft.country,
+            guardians: draft.guardians,
+        });
         setEditingSection(null);
     };
     const cancelEdit = () => {
@@ -975,49 +1028,6 @@ export default function StudentDetail() {
                                 <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Read only</Text>
                             </View>
                         </View>
-                        {/* Current Password (read only) */}
-                        <View style={{ marginTop: 10 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Current Password</Text>
-                                <View style={{ marginTop: -3 }}>
-                                    <TouchableOpacity
-                                        onPress={() => {
-                                            setShowPwdTooltip(v => !v);
-                                            setTimeout(() => setShowPwdTooltip(false), 4000);
-                                        }}
-                                    >
-                                        <Info size={13} color={theme.muted} />
-                                    </TouchableOpacity>
-                                    {showPwdTooltip && (
-                                        <View style={{
-                                            position: 'absolute', bottom: 16, left: -8, zIndex: 10,
-                                            width: 190, paddingHorizontal: 10, paddingVertical: 7,
-                                            borderRadius: 8, backgroundColor: '#1F2937',
-                                        }}>
-                                            <Text style={{ fontSize: 10, color: 'white', fontFamily: 'Poppins_400Regular', lineHeight: 14 }}>
-                                                Your password can be changed from the app settings.
-                                            </Text>
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-                            <View style={{
-                                flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                                paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8,
-                                borderWidth: 1, borderColor: theme.cardBorder,
-                                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
-                            }}>
-                                <Text style={{ fontSize: 13, fontFamily: 'RobotoMono_600SemiBold', color: '#DA7756', flex: 1 }}>
-                                    {showPassword ? 'password123' : '••••••••••'}
-                                </Text>
-                                <TouchableOpacity onPress={() => setShowPassword(v => !v)}>
-                                    {showPassword
-                                        ? <EyeOff size={14} color={theme.muted} />
-                                        : <Eye size={14} color={theme.muted} />
-                                    }
-                                </TouchableOpacity>
-                            </View>
-                        </View>
                         {/* Lock notice */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, padding: 10, backgroundColor: theme.blueLight, borderRadius: 10 }}>
                             <Text style={{ fontSize: 14 }}>🔒</Text>
@@ -1088,16 +1098,48 @@ export default function StudentDetail() {
                             onSave={saveEdit} onCancel={cancelEdit}
                         />
                         <View style={{ gap: 10 }}>
+                            {(isEditing('parents') ? draft.guardians : data.guardians).length === 0 && !isEditing('parents') && (
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.muted, textAlign: 'center', paddingVertical: 8 }}>
+                                    No parents or guardians added yet
+                                </Text>
+                            )}
                             {(isEditing('parents') ? draft.guardians : data.guardians).map((g, i) => (
-                                <GuardianCard
-                                    key={i}
-                                    guardian={g}
-                                    index={i}
-                                    theme={theme}
-                                    isEditing={isEditing('parents')}
-                                    onChange={(field, value) => updateGuardian(i, field, value)}
-                                />
+                                <View key={i}>
+                                    <GuardianCard
+                                        guardian={g}
+                                        index={i}
+                                        theme={theme}
+                                        isEditing={isEditing('parents')}
+                                        onChange={(field, value) => updateGuardian(i, field, value)}
+                                    />
+                                    {isEditing('parents') && (
+                                        <TouchableOpacity
+                                            onPress={() => setDraft(d => ({ ...d, guardians: d.guardians.filter((_, gi) => gi !== i) }))}
+                                            style={{ alignSelf: 'flex-end', marginTop: 4 }}
+                                        >
+                                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>Remove</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             ))}
+                            {isEditing('parents') && (
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <TouchableOpacity
+                                        onPress={() => setDraft(d => ({ ...d, guardians: [...d.guardians, { name: '', number: '', relation: 'Father' }] }))}
+                                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.green }}
+                                    >
+                                        <Text style={{ fontSize: 15, color: theme.green, lineHeight: 17 }}>+</Text>
+                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.green }}>Add Parent</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setDraft(d => ({ ...d, guardians: [...d.guardians, { name: '', number: '', relation: 'Guardian' }] }))}
+                                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.blue }}
+                                    >
+                                        <Text style={{ fontSize: 15, color: theme.blue, lineHeight: 17 }}>+</Text>
+                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.blue }}>Add Guardian</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </View>
                     </Card>
 

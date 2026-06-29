@@ -3,6 +3,7 @@ import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { FLAGS } from '@/data/flags';
+import api from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -95,19 +96,12 @@ function getAttendanceWindowMonths(date: Date) {
 // ─── Subject Performance Data ─────────────────────────────────────────────────
 type MarksMode = 'offline' | 'online' | 'combined';
 
-const SUBJECT_PERFORMANCE = [
-    { name: 'English', code: 'ENG', color: '#DA7756', offline: 78, online: 82 },
-    { name: 'Hindi', code: 'HIN', color: '#EC4899', offline: 70, online: 75 },
-    { name: 'Marathi', code: 'MAR', color: '#0891B2', offline: 65, online: 70 },
-    { name: 'Algebra', code: 'ALG', color: '#7C3AED', offline: 80, online: 85 },
-    { name: 'Geometry', code: 'GEO', color: '#059669', offline: 72, online: 78 },
-    { name: 'Science 1', code: 'SC1', color: '#0EA5E9', offline: 68, online: 74 },
-    { name: 'Science 2', code: 'SC2', color: '#6366F1', offline: 75, online: 80 },
-    { name: 'History', code: 'HIS', color: '#D97706', offline: 60, online: 66 },
-    { name: 'Geography', code: 'GEOG', color: '#16A34A', offline: 73, online: 77 },
-];
+const SUBJECT_COLORS = ['#DA7756','#EC4899','#0891B2','#7C3AED','#059669','#0EA5E9','#6366F1','#D97706','#16A34A','#E11D48','#7C3AED','#0284C7'];
 
-const OVERALL_RANK: Record<MarksMode, number> = { offline: 6, online: 3, combined: 4 };
+interface MarksheetSubject {
+    id: string; name: string; code: string; color: string | null;
+    total: { scored: number; max: number }; pct: number | null; grade: string;
+}
 
 // ─── Inline Wheel Picker ──────────────────────────────────────────────────────
 const WHEEL_ITEM_H = 22;
@@ -242,11 +236,20 @@ function SubjectPerformanceChart({
     const totalBarsWidth = data.length * barColWidth + (data.length - 1) * gap;
     const yTicks = [100, 75, 50, 25, 0];
 
+    if (data.length === 0) {
+        return (
+            <View style={{ height: 140, alignItems: 'center', justifyContent: 'center', opacity: 0.4 }}>
+                <BarChart2 size={32} color={theme.subText} />
+                <Text style={{ fontSize: 13, fontFamily: 'Poppins_500Medium', color: theme.subText, marginTop: 8 }}>No results published yet</Text>
+            </View>
+        );
+    }
+
     return (
         <View style={{ marginTop: 4 }}>
             <View style={{ flexDirection: 'row' }}>
                 {/* Y axis */}
-                <View style={{ width: 20, height: maxBarHeight, marginTop: topPad, justifyContent: 'space-between' }}>
+                <View style={{ width: 22, height: maxBarHeight, marginTop: topPad, justifyContent: 'space-between' }}>
                     {yTicks.map(t => (
                         <Text key={t} style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.subText, textAlign: 'right' }}>
                             {t}
@@ -277,19 +280,19 @@ function SubjectPerformanceChart({
                                             colors={[d.color, d.color + '73']}
                                             start={{ x: 0, y: 0 }}
                                             end={{ x: 0, y: 1 }}
-                                            style={{ width: '70%', height: barHeight, borderRadius: 4 }}
+                                            style={{ width: '60%', height: barHeight, borderRadius: 4 }}
                                         />
                                     </View>
                                 );
                             })}
                         </View>
 
-                        {/* X axis labels */}
+                        {/* X axis labels — full subject name, wrapping in 2 lines */}
                         <View style={{ width: totalBarsWidth, flexDirection: 'row', gap, marginTop: 6 }}>
                             {data.map((d, i) => (
                                 <View key={i} style={{ width: barColWidth, alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_600SemiBold', color: theme.subText }} numberOfLines={1}>
-                                        {d.code}
+                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_600SemiBold', color: theme.subText, textAlign: 'center' }} numberOfLines={2}>
+                                        {d.name}
                                     </Text>
                                 </View>
                             ))}
@@ -353,7 +356,7 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
                     end={{ x: 1, y: 0 }}
                 >
                     <View>
-                        <Text style={idStyles.instituteName}>Bhavans College</Text>
+                        <Text style={idStyles.instituteName}>{student.institutionName || 'School'}</Text>
                         <Text style={idStyles.instituteTag}>Student ID Card</Text>
                     </View>
                     <TouchableOpacity
@@ -471,6 +474,21 @@ const idStyles = StyleSheet.create({
     copyBtnText: { fontSize: 10, fontFamily: 'Poppins_600SemiBold' },
 });
 
+// ─── Attendance types ─────────────────────────────────────────────────────────
+interface AttendanceMonth {
+    month: string; key: number; year: number;
+    present: number; absent: number; leave: number; total: number;
+    pct: number | null;
+}
+interface AttendanceData {
+    academicYear: string; startYear: number;
+    overall: { present: number; absent: number; leave: number; total: number; pct: number | null };
+    monthly: AttendanceMonth[];
+    daily: Record<string, string>;
+    holidays: { date: string; name: string }[];
+    student: { name: string; rollNo: string };
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function Profile() {
     const { isDark } = useTheme();
@@ -481,12 +499,20 @@ export default function Profile() {
     const { profile, fetchProfile } = useStudent();
     const [attendanceVisible, setAttendanceVisible] = useState(false);
     const [activeTrendPoint, setActiveTrendPoint] = useState<number | null>(null);
+    const [attendanceApiData, setAttendanceApiData] = useState<AttendanceData | null>(null);
+    const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; classSize: number | null } | null>(null);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useFocusEffect(
         React.useCallback(() => {
             fetchProfile();
+            api.get('/student/attendance')
+                .then(r => setAttendanceApiData(r.data.data))
+                .catch(() => {});
+            api.get('/student/marksheet')
+                .then(r => setMarksheetData(r.data.data))
+                .catch(() => {});
             setAttendanceVisible(false);
             fadeAnim.setValue(0);
             setTimeout(() => setAttendanceVisible(true), 500);
@@ -507,39 +533,37 @@ export default function Profile() {
         dob: profile?.dob ?? '',
         email: profile?.email ?? '',
         uid: profile?.studentId ?? '',
+        institutionName: profile?.institutionName ?? '',
+        admissionYear: profile?.admissionYear ?? '',
     };
 
-    const subjectChartData = SUBJECT_PERFORMANCE.map(s => ({
-        code: s.code,
-        name: s.name,
-        color: s.color,
-        pct: marksMode === 'offline' ? s.offline : marksMode === 'online' ? s.online : Math.round((s.offline + s.online) / 2),
-    }));
-    const overallScore = Math.round(subjectChartData.reduce((a, b) => a + b.pct, 0) / subjectChartData.length);
-    const overallRank = OVERALL_RANK[marksMode];
+    const subjectChartData = (marksheetData?.subjects ?? []).map((s, i) => {
+        const offline = s.pct ?? 0;
+        const online = 0; // online marks not yet implemented
+        const pct = marksMode === 'offline' ? offline : marksMode === 'online' ? online : Math.round((offline + online) / 2);
+        return { code: s.code, name: s.name, color: s.color ?? SUBJECT_COLORS[i % SUBJECT_COLORS.length], pct };
+    });
+    const overallScore = subjectChartData.length > 0
+        ? Math.round(subjectChartData.reduce((a, b) => a + b.pct, 0) / subjectChartData.length)
+        : 0;
+    const overallRank: number | null = marksheetData?.classRank ?? null;
 
-    // Full school-year attendance trend, June through May.
-    const attendanceTrend = [
-        { month: 'Jun', value: 62 },
-        { month: 'Jul', value: 70 },
-        { month: 'Aug', value: 88 },
-        { month: 'Sep', value: 95 },
-        { month: 'Oct', value: 82 },
-        { month: 'Nov', value: 80 },
-        { month: 'Dec', value: 65 },
-        { month: 'Jan', value: 72 },
-        { month: 'Feb', value: 82 },
-        { month: 'Mar', value: 90 },
-        { month: 'Apr', value: 76 },
-        { month: 'May', value: 84 },
-    ];
+    // Full school-year attendance trend derived from real API data.
+    // Future months (no records yet) show 0 so the graph maintains its shape.
+    const attendanceTrend = React.useMemo(() => {
+        const MONTHS = ['Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+        return MONTHS.map(m => {
+            const found = attendanceApiData?.monthly.find(x => x.month === m);
+            return { month: m, value: found?.pct ?? 0 };
+        });
+    }, [attendanceApiData]);
 
-    // Rolling 4-month attendance window (same logic/data as the web app) —
-    // replaces the old subject-wise theory/practical bars, since school
-    // attendance isn't tracked per-subject.
+    const overallAttendancePct = attendanceApiData?.overall.pct ?? null;
+
+    // Rolling 4-month window bars — current window of months, real pct values.
     const attendanceData = getAttendanceWindowMonths(new Date()).map(month => {
-        const found = attendanceTrend.find(t => t.month === month);
-        const value = found ? found.value : 0;
+        const found = attendanceApiData?.monthly.find(x => x.month === month);
+        const value = found?.pct ?? 0;
         return { label: month, value, max: 100, color: getAttendanceBarColor(value, theme) };
     });
 
@@ -549,7 +573,8 @@ export default function Profile() {
         { icon: '📜', title: 'Hackathon Winner', desc: 'Smart India Hackathon 2024', date: 'Dec 2024' },
     ];
 
-    const getRankColor = (rank: number) => {
+    const getRankColor = (rank: number | null) => {
+        if (rank === null) return theme.subText;
         if (rank === 1) return theme.amber;
         if (rank <= 3) return theme.purple;
         if (rank <= 10) return theme.blue;
@@ -572,7 +597,7 @@ export default function Profile() {
                                 <Trophy size={14} color={theme.amber} />
                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Overall Rank</Text>
                             </View>
-                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: getRankColor(overallRank) }}>#{overallRank}</Text>
+                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: getRankColor(overallRank) }}>{overallRank === null ? '—' : `#${overallRank}`}</Text>
                             <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Overall rank</Text>
                         </Card>
 
@@ -651,7 +676,9 @@ export default function Profile() {
                         {/* Overall attendance */}
                         <View style={{ marginTop: 12, padding: 10, backgroundColor: theme.greenLight, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.green }}>Overall Attendance</Text>
-                            <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>82%</Text>
+                            <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>
+                                {overallAttendancePct !== null ? `${overallAttendancePct}%` : '—'}
+                            </Text>
                         </View>
 
                         {/* Trend Graph */}

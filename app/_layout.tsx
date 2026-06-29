@@ -24,12 +24,14 @@ function AuthGate() {
             const loggedIn = !!token;
             const mustChangePassword = mustChange === 'true';
 
+            const AUTHENTICATED_SCREENS = new Set(['(tabs)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card']);
             const inTabs = segments[0] === '(tabs)';
             const inSetup = segments[0] === 'setup-required';
+            const inAuthenticatedScreen = AUTHENTICATED_SCREENS.has(segments[0]);
 
-            if (!loggedIn && (inTabs || inSetup)) { router.replace('/login'); }
+            if (!loggedIn && (inAuthenticatedScreen || inSetup)) { router.replace('/login'); }
             else if (loggedIn && mustChangePassword && !inSetup) { router.replace('/setup-required'); }
-            else if (loggedIn && !mustChangePassword && !inTabs) { router.replace('/(tabs)'); }
+            else if (loggedIn && !mustChangePassword && !inAuthenticatedScreen) { router.replace('/(tabs)'); }
 
             setReady(true);
         })();
