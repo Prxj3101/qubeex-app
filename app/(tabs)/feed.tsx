@@ -1,9 +1,14 @@
+import { AttachmentPreview } from '@/components/AttachmentPreview';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { useInstitution } from '@/context/InstitutionContext';
+import { useFeedBadge } from '@/context/FeedBadgeContext';
+import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
+import api from '@/lib/api';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
+    ActivityIndicator,
     Dimensions,
     Modal,
     Pressable,
@@ -19,149 +24,101 @@ const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
     purple: '#7C3AED', purpleLight: '#EDE9FE',
+    generalBadgeBg: '#EDE9FE', generalBadgeText: '#6D28D9',
+    classBadgeBg: '#CCFBF1', classBadgeText: '#0F766E',
 };
 const DARK = {
     bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
+    generalBadgeBg: '#2D1F50', generalBadgeText: '#A78BFA',
+    classBadgeBg: '#134E4A', classBadgeText: '#5EEAD4',
 };
 
-type EventType = 'holiday' | 'test' | 'exam' | 'submission';
-interface CalEvent { date: number; type: EventType; label: string; }
+// ── Types ─────────────────────────────────────────────────────────────────────
+type EventType = 'holiday' | 'event' | 'sports' | 'trip' | 'meeting' | 'test' | 'termtest' | 'exam' | 'submission';
 
-const { width } = Dimensions.get('window');
-const CELL_SIZE = Math.floor((width - 92) / 7);
-const SCHOOL_EVENTS: CalEvent[] = [
-    { date: 1, type: 'holiday', label: 'Maharashtra Day' },
-    { date: 5, type: 'test', label: 'Mathematics 1 Unit Test' },
-    { date: 10, type: 'submission', label: 'History Assignment Due' },
-    { date: 14, type: 'holiday', label: 'Budget Holiday' },
-    { date: 18, type: 'test', label: 'Science 1 Quiz' },
-    { date: 22, type: 'exam', label: 'Half Yearly Exam — English' },
-    { date: 23, type: 'exam', label: 'Half Yearly Exam — Maths 1' },
-    { date: 25, type: 'submission', label: 'Geography Project Due' },
-    { date: 28, type: 'exam', label: 'Half Yearly Exam — Science 1' },
-];
-
-const COLLEGE_EVENTS: CalEvent[] = [
-    { date: 1, type: 'holiday', label: 'Maharashtra Day' },
-    { date: 5, type: 'test', label: 'DS Unit Test 1' },
-    { date: 5, type: 'test', label: 'OS Unit Test 1' },
-    { date: 10, type: 'submission', label: 'ML Assignment Due' },
-    { date: 14, type: 'holiday', label: 'Budget Holiday' },
-    { date: 18, type: 'test', label: 'DBMS Quiz' },
-    { date: 22, type: 'exam', label: 'Mid Semester Exam — DS' },
-    { date: 23, type: 'exam', label: 'Mid Semester Exam — OS' },
-    { date: 25, type: 'submission', label: 'Major Project Report Due' },
-    { date: 28, type: 'exam', label: 'Mid Semester Exam — CN' },
-];
-
-const EVENT_CFG = {
-    holiday: { dot: '#EF4444', bg: '#FEE2E2', text: '#991B1B', darkBg: '#2B0D0D', darkText: '#F87171', label: 'Holiday', emoji: '🏖️' },
-    test: { dot: '#3B82F6', bg: '#DBEAFE', text: '#1D4ED8', darkBg: '#0D1F3C', darkText: '#60A5FA', label: 'Test', emoji: '📝' },
-    exam: { dot: '#F59E0B', bg: '#FEF3C7', text: '#92400E', darkBg: '#2D2010', darkText: '#FCD34D', label: 'Main Exam', emoji: '🎓' },
-    submission: { dot: '#8B5CF6', bg: '#EDE9FE', text: '#5B21B6', darkBg: '#2D1F50', darkText: '#A78BFA', label: 'Submission', emoji: '📤' },
-} as const;
-
-type PostType = 'announcement' | 'notice' | 'material' | 'result';
-interface FeedPost {
-    id: number; type: PostType; author: string; role: string;
-    subject?: string; title: string; body: string; time: string;
-    attachments?: { name: string; kind: 'pdf' | 'link' }[];
+interface CalEvent {
+    id: string;
+    date: number;
+    fullDate: string;
+    type: EventType;
+    label: string;
+    isClassEvent: boolean;
+    createdBy: { id: string; name: string } | null;
 }
 
-const COLLEGE_FEED_POSTS: FeedPost[] = [
-    {
-        id: 1, type: 'announcement', author: 'Dr. Ashwini Save', role: 'Faculty', subject: 'SMA',
-        title: 'Unit 3 syllabus revised',
-        body: 'Chapter 7 has been removed from Unit 3. Focus only on chapters 5 & 6 for the upcoming test. Updated notes will be uploaded by tomorrow evening.',
-        time: '2h ago'
-    },
-    {
-        id: 2, type: 'material', author: 'Prof. Sunita Naik', role: 'Faculty', subject: 'Deep Learning',
-        title: 'CNN Notes — Unit 4',
-        body: 'Uploaded complete notes for Convolutional Neural Networks. Please go through before the next lecture on Friday.',
-        time: '5h ago', attachments: [{ name: 'CNN_Unit4_Notes.pdf', kind: 'pdf' }]
-    },
-    {
-        id: 3, type: 'notice', author: 'HOD Office', role: 'Admin',
-        title: 'Campus closed on 14th May',
-        body: 'The institute will remain closed on 14th May due to a state-declared holiday. All pending submissions are extended by 2 days automatically.',
-        time: '1d ago'
-    },
-    {
-        id: 4, type: 'result', author: 'Prof. Bhavika Thakur', role: 'Faculty', subject: 'DC',
-        title: 'Unit Test 1 Results Published',
-        body: 'Results for Distributed Computing Unit Test 1 are now live. Check your marks in the Tests section. Batch average: 31/40.',
-        time: '2d ago'
-    },
-    {
-        id: 5, type: 'announcement', author: 'Prof. Akshata Raut', role: 'Faculty', subject: 'PM',
-        title: 'Guest Lecture on Agile — 20th May',
-        body: 'Industry expert from TCS speaking on Agile methodologies. Attendance is compulsory. Venue: Seminar Hall B, 11 AM.',
-        time: '3d ago'
-    },
-    {
-        id: 6, type: 'material', author: 'Prof. Bhavika Thakur', role: 'Faculty', subject: 'DC',
-        title: 'MapReduce Reference Sheet',
-        body: 'Quick reference sheet for MapReduce paradigm. Useful for Unit Test 2 and the semester exam.',
-        time: '4d ago', attachments: [{ name: 'MapReduce_Ref.pdf', kind: 'pdf' }, { name: 'Practice Problems', kind: 'link' }]
-    },
-];
+type PostType = 'announcement' | 'notice' | 'material' | 'result';
+type FeedSource = 'general' | 'class';
 
-const SCHOOL_FEED_POSTS: FeedPost[] = [
-    {
-        id: 1, type: 'announcement', author: 'Mrs. Priya Sharma', role: 'Faculty', subject: 'M1',
-        title: 'Chapter 5 syllabus revised',
-        body: 'Algebra chapter 5 topics have been updated. Students are requested to focus on quadratic equations only. Notes will be shared by tomorrow.',
-        time: '2h ago'
-    },
-    {
-        id: 2, type: 'material', author: 'Mr. Rahul Verma', role: 'Faculty', subject: 'S1',
-        title: 'Physics Notes — Chapter 3',
-        body: 'Complete notes for Laws of Motion uploaded. Please revise before the unit test on Friday.',
-        time: '5h ago', attachments: [{ name: 'Physics_Ch3_Notes.pdf', kind: 'pdf' }]
-    },
-    {
-        id: 3, type: 'notice', author: 'Principal Office', role: 'Admin',
-        title: 'School closed on 14th May',
-        body: 'School will remain closed on 14th May due to a state-declared holiday. All pending submissions are extended by 2 days automatically.',
-        time: '1d ago'
-    },
-    {
-        id: 4, type: 'result', author: 'Mrs. Sunita Rao', role: 'Faculty', subject: 'Eng',
-        title: 'Unit Test 1 Results Published',
-        body: 'Results for English Unit Test 1 are now live. Check your marks in the Tests section. Class average: 28/40.',
-        time: '2d ago'
-    },
-    {
-        id: 5, type: 'announcement', author: 'Mr. Anil Kumar', role: 'Faculty', subject: 'His',
-        title: 'History Project Submission — 20th May',
-        body: 'All students must submit their history projects by 20th May. Late submissions will not be accepted. Format: A4 size, handwritten.',
-        time: '3d ago'
-    },
-    {
-        id: 6, type: 'material', author: 'Mrs. Deepa Nair', role: 'Faculty', subject: 'Geo',
-        title: 'Map Work Reference Sheet',
-        body: 'Reference sheet for map work uploaded. Useful for unit test and half yearly exam preparation.',
-        time: '4d ago', attachments: [{ name: 'MapWork_Ref.pdf', kind: 'pdf' }, { name: 'Practice Questions', kind: 'link' }]
-    },
-];
+interface FeedPost {
+    id: string;
+    type: PostType;
+    source: FeedSource;
+    author: { id: string; name: string; role: string };
+    subject?: string | null;
+    title: string;
+    body: string;
+    createdAt: string;
+    attachmentUrl?: string | null;
+    attachmentType?: string | null;
+    attachmentName?: string | null;
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const EVENT_CFG: Record<EventType, { dot: string; bg: string; darkBg: string; text: string; darkText: string; label: string; emoji: string }> = {
+    holiday:    { dot: '#EF4444', bg: '#FEE2E2', darkBg: '#2B0D0D', text: '#991B1B', darkText: '#F87171', label: 'Holiday',       emoji: '🏖️' },
+    event:      { dot: '#3B82F6', bg: '#DBEAFE', darkBg: '#0D1F3C', text: '#1D4ED8', darkText: '#60A5FA', label: 'Event',         emoji: '📅' },
+    sports:     { dot: '#DB2777', bg: '#FCE7F3', darkBg: '#2B0D1A', text: '#9D174D', darkText: '#F9A8D4', label: 'Sports',        emoji: '🏆' },
+    trip:       { dot: '#92400E', bg: '#FEF3C7', darkBg: '#2D2010', text: '#78350F', darkText: '#FCD34D', label: 'Trip',          emoji: '🚌' },
+    meeting:    { dot: '#F97316', bg: '#FFEDD5', darkBg: '#2D1800', text: '#C2410C', darkText: '#FB923C', label: 'Meeting',       emoji: '🤝' },
+    test:       { dot: '#8B5CF6', bg: '#EDE9FE', darkBg: '#2D1F50', text: '#5B21B6', darkText: '#A78BFA', label: 'Test',          emoji: '📝' },
+    termtest:   { dot: '#10B981', bg: '#D1FAE5', darkBg: '#0D2B20', text: '#065F46', darkText: '#34D399', label: 'Term Test',     emoji: '📋' },
+    exam:       { dot: '#F59E0B', bg: '#FEF3C7', darkBg: '#2D2010', text: '#92400E', darkText: '#FCD34D', label: 'Semester Exam', emoji: '🎓' },
+    submission: { dot: '#0891B2', bg: '#CFFAFE', darkBg: '#0D2B30', text: '#155E75', darkText: '#67E8F9', label: 'Submission',    emoji: '📤' },
+};
 
 const POST_META = {
     announcement: { emoji: '📢', label: 'Announcement', color: '#D97706', darkColor: '#FCD34D', bg: '#FEF3C7', darkBg: '#2D2010' },
-    notice: { emoji: '📌', label: 'Notice', color: '#DC2626', darkColor: '#F87171', bg: '#FEE2E2', darkBg: '#2B0D0D' },
-    material: { emoji: '📄', label: 'Material', color: '#2563EB', darkColor: '#60A5FA', bg: '#DBEAFE', darkBg: '#0D1F3C' },
-    result: { emoji: '✅', label: 'Result', color: '#059669', darkColor: '#34D399', bg: '#D1FAE5', darkBg: '#0D2B20' },
+    notice:       { emoji: '📌', label: 'Notice',       color: '#DC2626', darkColor: '#F87171', bg: '#FEE2E2', darkBg: '#2B0D0D' },
+    material:     { emoji: '📄', label: 'Material',     color: '#2563EB', darkColor: '#60A5FA', bg: '#DBEAFE', darkBg: '#0D1F3C' },
+    result:       { emoji: '✅', label: 'Result',        color: '#059669', darkColor: '#34D399', bg: '#D1FAE5', darkBg: '#0D2B20' },
 } as const;
 
+const AVATAR_COLORS = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#DC2626', '#0891B2'];
+
+const { width } = Dimensions.get('window');
+const CELL_SIZE = Math.floor((width - 92) / 7);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate(); }
 function getFirstDay(y: number, m: number) { return new Date(y, m, 1).getDay(); }
 
-function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: boolean; events: CalEvent[] }) {
+function formatRelative(iso: string) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+}
+function formatDateTime(iso: string) {
+    const d = new Date(iso);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${h12}:${m} ${ampm}`;
+}
+
+// ── Mini Calendar ─────────────────────────────────────────────────────────────
+function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean }) {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth());
+    const [events, setEvents] = useState<CalEvent[]>([]);
     const [selectedDate, setSelectedDate] = useState<number | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
 
@@ -174,8 +131,16 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
     const MONTHS_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+    const fetchEvents = useCallback(async () => {
+        try {
+            const res = await api.get('/student/feed/events', { params: { year, month } });
+            setEvents(res.data.data);
+        } catch { /* silent */ }
+    }, [year, month]);
+
+    useEffect(() => { fetchEvents(); }, [fetchEvents]);
+
     const eventsOn = (d: number) => events.filter(e => e.date === d);
-    const typesOn = (d: number) => [...new Set(eventsOn(d).map(e => e.type))];
 
     const cells: (number | null)[] = [
         ...Array(startOffset).fill(null),
@@ -186,7 +151,6 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
     const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); setSelectedDate(null); };
     const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); setSelectedDate(null); };
 
-
     return (
         <>
             <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: -5, marginTop: -3 }}>
@@ -195,15 +159,11 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
 
             <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                 <View style={styles.calHeader}>
-                    <TouchableOpacity onPress={prevMonth}
-                        style={[styles.navBtn, { borderColor: theme.cardBorder }]}
-                        activeOpacity={0.7}>
+                    <TouchableOpacity onPress={prevMonth} style={[styles.navBtn, { borderColor: theme.cardBorder }]} activeOpacity={0.7}>
                         <ChevronLeft size={18} color={theme.purple} />
                     </TouchableOpacity>
                     <Text style={[styles.monthTitle, { color: theme.text }]}>{MONTHS[month]} {year}</Text>
-                    <TouchableOpacity onPress={nextMonth}
-                        style={[styles.navBtn, { borderColor: theme.cardBorder }]}
-                        activeOpacity={0.7}>
+                    <TouchableOpacity onPress={nextMonth} style={[styles.navBtn, { borderColor: theme.cardBorder }]} activeOpacity={0.7}>
                         <ChevronRight size={18} color={theme.purple} />
                     </TouchableOpacity>
                 </View>
@@ -219,32 +179,27 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
                         if (!d) return <View key={i} style={styles.gridCell} />;
                         const isToday = isCurrentMonth && d === today;
                         const isSelected = d === selectedDate;
-                        const types = typesOn(d);
+                        const evs = eventsOn(d);
                         const isWeekend = (i % 7) >= 5;
                         return (
-                            // Date number + dots wala part change karo:
-                            <TouchableOpacity
-                                key={i}
+                            <TouchableOpacity key={i}
                                 style={[
                                     styles.gridCell,
                                     isSelected && { backgroundColor: theme.purpleLight, borderRadius: 99 },
                                     isToday && !isSelected && { borderWidth: 1.5, borderColor: theme.purple, borderRadius: 99 },
                                 ]}
-                                onPress={() => {
-                                    setSelectedDate(d);
-                                    if (eventsOn(d).length > 0) { setModalVisible(true); }
-                                }}
-                                activeOpacity={0.75}
-                            >
+                                onPress={() => { setSelectedDate(d); if (evs.length > 0) setModalVisible(true); }}
+                                activeOpacity={0.75}>
                                 <Text style={[styles.dateNum, {
                                     color: isSelected ? theme.purple : isToday ? theme.purple : isWeekend ? '#EF4444' : theme.text,
                                     fontFamily: isToday ? 'Poppins_700Bold' : 'Poppins_400Regular',
                                 }]}>{d}</Text>
-                                {eventsOn(d).length > 0 && (
+                                {evs.length > 0 && (
                                     <View style={styles.dotRow}>
-                                        {eventsOn(d).slice(0, 3).map((ev, di) => (
-                                            <View key={di} style={[styles.eventDot, { backgroundColor: EVENT_CFG[ev.type].dot }]} />
-                                        ))}
+                                        {evs.slice(0, 3).map((ev, di) => {
+                                            const cfg = EVENT_CFG[ev.type] ?? EVENT_CFG.event;
+                                            return <View key={di} style={[styles.eventDot, { backgroundColor: cfg.dot }]} />;
+                                        })}
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -252,8 +207,9 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
                     })}
                 </View>
 
+                {/* Legend — only unique types present this month */}
                 <View style={[styles.legendRow, { borderTopColor: theme.cardBorder }]}>
-                    {(Object.keys(EVENT_CFG) as EventType[]).map(type => (
+                    {(Object.keys(EVENT_CFG) as EventType[]).filter(t => events.some(e => e.type === t)).map(type => (
                         <View key={type} style={styles.legendItem}>
                             <View style={[styles.legendDot, { backgroundColor: EVENT_CFG[type].dot }]} />
                             <Text style={[styles.legendText, { color: theme.muted }]}>{EVENT_CFG[type].label}</Text>
@@ -263,19 +219,29 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
 
                 <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
                     <Pressable style={styles.overlay} onPress={() => setModalVisible(false)}>
-                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1A1030' : 'white' }]} onPress={() => { }}>
+                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1A1030' : 'white' }]} onPress={() => {}}>
                             <Text style={[styles.modalDateTitle, { color: theme.text }]}>
                                 📅 {selectedDate} {MONTHS_S[month]}, {year}
                             </Text>
                             <View style={{ gap: 10 }}>
                                 {selectedDate && eventsOn(selectedDate).map((ev, i) => {
-                                    const c = EVENT_CFG[ev.type];
+                                    const c = EVENT_CFG[ev.type] ?? EVENT_CFG.event;
                                     return (
                                         <View key={i} style={[styles.modalEventRow, { backgroundColor: isDark ? c.darkBg : c.bg, borderLeftColor: c.dot }]}>
                                             <Text style={{ fontSize: 22 }}>{c.emoji}</Text>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={[styles.modalEventType, { color: isDark ? c.darkText : c.text }]}>{c.label}</Text>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                    <Text style={[styles.modalEventType, { color: isDark ? c.darkText : c.text }]}>{c.label}</Text>
+                                                    {ev.isClassEvent && (
+                                                        <View style={{ backgroundColor: isDark ? '#134E4A' : '#CCFBF1', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 }}>
+                                                            <Text style={{ fontSize: 9, fontFamily: 'Poppins_600SemiBold', color: isDark ? '#5EEAD4' : '#0F766E' }}>Class</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
                                                 <Text style={[styles.modalEventLabel, { color: isDark ? c.darkText : c.text }]}>{ev.label}</Text>
+                                                {ev.createdBy && (
+                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted, marginTop: 2 }}>by {ev.createdBy.name}</Text>
+                                                )}
                                             </View>
                                         </View>
                                     );
@@ -283,8 +249,7 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
                             </View>
                             <TouchableOpacity
                                 style={[styles.modalCloseBtn, { backgroundColor: isDark ? '#2D1F50' : '#EDE9FE' }]}
-                                onPress={() => setModalVisible(false)}
-                            >
+                                onPress={() => setModalVisible(false)}>
                                 <Text style={{ color: theme.purple, fontFamily: 'Poppins_600SemiBold', fontSize: 13 }}>Close</Text>
                             </TouchableOpacity>
                         </Pressable>
@@ -295,44 +260,60 @@ function MiniCalendar({ theme, isDark, events }: { theme: typeof LIGHT; isDark: 
     );
 }
 
-function FeedCard({ post, theme, isDark }: { post: FeedPost; theme: typeof LIGHT; isDark: boolean }) {
+// ── Feed Card ─────────────────────────────────────────────────────────────────
+function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme: typeof LIGHT; isDark: boolean; divisionName: string }) {
     const [expanded, setExpanded] = useState(false);
     const meta = POST_META[post.type];
-    const initials = post.author.split(' ').map(n => n[0]).join('').slice(0, 2);
-    const avatarClrs = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#DC2626', '#0891B2'];
-    const avatarColor = avatarClrs[post.author.charCodeAt(0) % avatarClrs.length];
+    const initials = post.author.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    const avatarColor = AVATAR_COLORS[post.author.name.charCodeAt(0) % AVATAR_COLORS.length];
+    const sourceLabel = post.source === 'class' ? (divisionName || 'My Class') : 'General';
+    const sourceBg = post.source === 'class' ? theme.classBadgeBg : theme.generalBadgeBg;
+    const sourceColor = post.source === 'class' ? theme.classBadgeText : theme.generalBadgeText;
 
     return (
         <View style={[styles.feedCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <View style={[styles.typeChip, { backgroundColor: isDark ? meta.darkBg : meta.bg }]}>
-                <Text style={{ fontSize: 12 }}>{meta.emoji}</Text>
-                <Text style={[styles.typeChipText, { color: isDark ? meta.darkColor : meta.color }]}>{meta.label}</Text>
-                {post.subject ? <Text style={[styles.subjectTag, { color: isDark ? meta.darkColor : meta.color }]}>· {post.subject}</Text> : null}
+            {/* Type chip + source badge + time */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <View style={[styles.typeChip, { backgroundColor: isDark ? meta.darkBg : meta.bg }]}>
+                    <Text style={{ fontSize: 12 }}>{meta.emoji}</Text>
+                    <Text style={[styles.typeChipText, { color: isDark ? meta.darkColor : meta.color }]}>{meta.label}</Text>
+                    {post.subject ? <Text style={[styles.subjectTag, { color: isDark ? meta.darkColor : meta.color }]}>· {post.subject}</Text> : null}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ backgroundColor: sourceBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 }}>
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: sourceColor }}>{sourceLabel}</Text>
+                    </View>
+                    <Text style={[styles.authorMeta, { color: theme.muted }]}>{formatRelative(post.createdAt)}</Text>
+                </View>
             </View>
 
+            {/* Author */}
             <View style={styles.authorRow}>
                 <View style={[styles.avatar, { backgroundColor: avatarColor + '22', borderColor: avatarColor }]}>
                     <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                    <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
-                    <Text style={[styles.authorMeta, { color: theme.muted }]}>{post.role} · {post.time}</Text>
+                    <Text style={[styles.authorName, { color: theme.text }]}>{post.author.name}</Text>
+                    <Text style={[styles.authorMeta, { color: theme.muted }]} numberOfLines={1}>
+                        {post.author.role.charAt(0) + post.author.role.slice(1).toLowerCase()}
+                    </Text>
+                    <Text style={[styles.authorMeta, { color: theme.muted, opacity: 0.7, marginTop: 1 }]} numberOfLines={1}>
+                        {formatDateTime(post.createdAt)}
+                    </Text>
                 </View>
             </View>
 
             <Text style={[styles.postTitle, { color: theme.text }]}>{post.title}</Text>
-            <Text style={[styles.postBody, { color: theme.subText }]} numberOfLines={expanded ? undefined : 2}>{post.body}</Text>
+            {post.body ? (
+                <Text style={[styles.postBody, { color: theme.subText }]} numberOfLines={expanded ? undefined : 2}>{post.body}</Text>
+            ) : null}
 
-            {post.attachments && expanded && (
-                <View style={{ gap: 6, marginTop: 4 }}>
-                    {post.attachments.map((att, i) => (
-                        <TouchableOpacity key={i} activeOpacity={0.8}
-                            style={[styles.attachment, { backgroundColor: isDark ? '#0D1F3C' : '#EFF6FF', borderColor: isDark ? '#1E3A8A' : '#BFDBFE' }]}>
-                            <Text style={{ fontSize: 14 }}>{att.kind === 'pdf' ? '📄' : '🔗'}</Text>
-                            <Text style={[styles.attachmentName, { color: isDark ? '#60A5FA' : '#1D4ED8' }]}>{att.name}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
+            {post.attachmentUrl && post.attachmentName && post.attachmentType && (
+                <AttachmentPreview
+                    url={post.attachmentUrl}
+                    name={post.attachmentName}
+                    type={post.attachmentType}
+                />
             )}
 
             <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
@@ -343,45 +324,145 @@ function FeedCard({ post, theme, isDark }: { post: FeedPost; theme: typeof LIGHT
     );
 }
 
-const FILTERS: { key: PostType | 'all'; label: string; emoji: string }[] = [
-    { key: 'all', label: 'All', emoji: '🗂️' },
-    { key: 'announcement', label: 'Alerts', emoji: '📢' },
-    { key: 'notice', label: 'Notice', emoji: '📌' },
-    { key: 'material', label: 'Files', emoji: '📄' },
-    { key: 'result', label: 'Results', emoji: '✅' },
+// ── Feed Skeleton ─────────────────────────────────────────────────────────────
+function FeedSkeleton({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean }) {
+    const shimmer = isDark ? '#2D1F50' : '#E9E3FA';
+    return (
+        <View style={{ gap: 12 }}>
+            {[1, 2, 3].map(i => (
+                <View key={i} style={[styles.feedCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <View style={{ width: 110, height: 28, borderRadius: 99, backgroundColor: shimmer }} />
+                        <View style={{ width: 60, height: 18, borderRadius: 99, backgroundColor: shimmer }} />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 99, backgroundColor: shimmer }} />
+                        <View style={{ gap: 6 }}>
+                            <View style={{ width: 100, height: 12, borderRadius: 6, backgroundColor: shimmer }} />
+                            <View style={{ width: 70, height: 10, borderRadius: 5, backgroundColor: shimmer }} />
+                        </View>
+                    </View>
+                    <View style={{ gap: 6 }}>
+                        <View style={{ width: '70%', height: 14, borderRadius: 6, backgroundColor: shimmer }} />
+                        <View style={{ width: '100%', height: 11, borderRadius: 5, backgroundColor: shimmer }} />
+                        <View style={{ width: '85%', height: 11, borderRadius: 5, backgroundColor: shimmer }} />
+                    </View>
+                </View>
+            ))}
+        </View>
+    );
+}
+
+// ── Filter types ──────────────────────────────────────────────────────────────
+type FilterKey = PostType | FeedSource | 'all';
+
+const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
+    { key: 'all',          label: 'All',      emoji: '🗂️' },
+    { key: 'general',      label: 'General',  emoji: '🏫' },
+    { key: 'class',        label: 'My Class', emoji: '🏷️' },
+    { key: 'announcement', label: 'Alerts',   emoji: '📢' },
+    { key: 'notice',       label: 'Notice',   emoji: '📌' },
+    { key: 'material',     label: 'Files',    emoji: '📄' },
+    { key: 'result',       label: 'Results',  emoji: '✅' },
 ];
 
+// ── Main Screen ───────────────────────────────────────────────────────────────
 export default function Feed() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
-    const [activeFilter, setActiveFilter] = useState<PostType | 'all'>('all');
-    const { institutionType } = useInstitution();
+    const { profile } = useStudent();
+    const { setFeedHasNew } = useFeedBadge();
+    const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+    const [posts, setPosts] = useState<FeedPost[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [inScreenHasNew, setInScreenHasNew] = useState(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const latestCreatedAtRef = useRef<string | null>(null);
+    const isFocusedRef = useRef(false);
 
+    // Track focus: clear tab badge on enter, mark unfocused on leave
+    useFocusEffect(useCallback(() => {
+        isFocusedRef.current = true;
+        setFeedHasNew(false);
+        return () => { isFocusedRef.current = false; };
+    }, [setFeedHasNew]));
 
-    const FEED_POSTS = institutionType === 'school' ? SCHOOL_FEED_POSTS : COLLEGE_FEED_POSTS;
-    const filteredPosts = activeFilter === 'all' ? FEED_POSTS : FEED_POSTS.filter(p => p.type === activeFilter);
+    const fetchPosts = useCallback(async (isInitial = false) => {
+        if (isInitial) setLoading(true);
+        try {
+            const typeParam = (activeFilter === 'general' || activeFilter === 'class' || activeFilter === 'all')
+                ? undefined
+                : activeFilter;
+            const res = await api.get('/student/feed/posts', {
+                params: { limit: 50, ...(typeParam ? { type: typeParam } : {}) },
+            });
+            const all: FeedPost[] = res.data.data;
+            const newestAt = all[0]?.createdAt ?? null;
+
+            if (isInitial) {
+                latestCreatedAtRef.current = newestAt;
+                setInScreenHasNew(false);
+            } else if (newestAt && latestCreatedAtRef.current && newestAt > latestCreatedAtRef.current) {
+                latestCreatedAtRef.current = newestAt;
+                setInScreenHasNew(true);
+                if (!isFocusedRef.current) setFeedHasNew(true);
+            }
+
+            const filtered = activeFilter === 'general'
+                ? all.filter(p => p.source === 'general')
+                : activeFilter === 'class'
+                ? all.filter(p => p.source === 'class')
+                : all;
+
+            setPosts(filtered);
+        } catch { /* silent on poll */ }
+        if (isInitial) setLoading(false);
+    }, [activeFilter, setFeedHasNew]);
+
+    useEffect(() => {
+        fetchPosts(true);
+        pollRef.current = setInterval(() => fetchPosts(false), 30_000);
+        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }, [fetchPosts]);
+
+    const divisionName = profile?.division ?? 'My Class';
+
+    const filters = FILTERS.map(f =>
+        f.key === 'class' ? { ...f, label: divisionName } : f
+    );
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Feed" />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
                 <View style={styles.body}>
 
-                    <MiniCalendar theme={theme} isDark={isDark} events={institutionType === 'school' ? SCHOOL_EVENTS : COLLEGE_EVENTS} />
-                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: -5, marginTop: -3 }}> 📢 Announcements & Feed  </Text>
+                    <MiniCalendar theme={theme} isDark={isDark} />
+
+                    {/* Feed header */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>
+                            📢 Announcements & Feed
+                        </Text>
+                        {loading
+                            ? <ActivityIndicator size="small" color={theme.purple} />
+                            : inScreenHasNew
+                            ? <View style={{ width: 10, height: 10, borderRadius: 99, backgroundColor: '#10B981' }} />
+                            : null
+                        }
+                    </View>
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                        {FILTERS.map(tab => {
+                        {filters.map(tab => {
                             const isActive = activeFilter === tab.key;
                             return (
-                                <TouchableOpacity
-                                    key={tab.key}
+                                <TouchableOpacity key={tab.key}
                                     style={[styles.filterChip, {
                                         backgroundColor: isActive ? theme.purple : theme.card,
                                         borderColor: isActive ? theme.purple : theme.cardBorder,
                                     }]}
                                     onPress={() => setActiveFilter(tab.key)}
-                                    activeOpacity={0.75}
-                                >
+                                    activeOpacity={0.75}>
                                     <Text style={{ fontSize: 12 }}>{tab.emoji}</Text>
                                     <Text style={[styles.filterChipText, { color: isActive ? 'white' : theme.subText }]}>{tab.label}</Text>
                                 </TouchableOpacity>
@@ -389,11 +470,20 @@ export default function Feed() {
                         })}
                     </ScrollView>
 
-                    <View style={{ gap: 12 }}>
-                        {filteredPosts.map(post => (
-                            <FeedCard key={post.id} post={post} theme={theme} isDark={isDark} />
-                        ))}
-                    </View>
+                    {loading ? (
+                        <FeedSkeleton theme={theme} isDark={isDark} />
+                    ) : posts.length === 0 ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold', color: theme.subText, fontSize: 14 }}>No posts here</Text>
+                            <Text style={{ fontFamily: 'Poppins_400Regular', color: theme.muted, fontSize: 12, marginTop: 4 }}>Check back later</Text>
+                        </View>
+                    ) : (
+                        <View style={{ gap: 12 }}>
+                            {posts.map(post => (
+                                <FeedCard key={post.id} post={post} theme={theme} isDark={isDark} divisionName={divisionName} />
+                            ))}
+                        </View>
+                    )}
 
                 </View>
             </ScrollView>
@@ -409,9 +499,7 @@ const styles = StyleSheet.create({
 
     calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     navBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1 },
-    navArrow: { fontSize: 20, fontWeight: '700' },
     monthTitle: { fontSize: 15, fontFamily: 'Poppins_700Bold' },
-    eventBadge: { paddingHorizontal: 3, paddingVertical: 1, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
 
     dayHeaderRow: { flexDirection: 'row', marginBottom: 4, width: CELL_SIZE * 7, alignSelf: 'center' },
     dayHeader: { width: CELL_SIZE, textAlign: 'center', fontSize: 11, fontFamily: 'Poppins_600SemiBold' },
@@ -435,10 +523,6 @@ const styles = StyleSheet.create({
     modalEventLabel: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
     modalCloseBtn: { alignItems: 'center', paddingVertical: 12, borderRadius: 14, marginTop: 4 },
 
-    feedDivider: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    dividerLine: { flex: 1, height: 1 },
-    dividerLabel: { fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
-
     filterRow: { gap: 8, paddingBottom: 2 },
     filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },
     filterChipText: { fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
@@ -456,8 +540,7 @@ const styles = StyleSheet.create({
 
     postTitle: { fontSize: 14, fontFamily: 'Poppins_700Bold', lineHeight: 20 },
     postBody: { fontSize: 12, fontFamily: 'Poppins_400Regular', lineHeight: 18 },
-    attachment: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
-    attachmentName: { fontSize: 12, fontFamily: 'Poppins_600SemiBold', flex: 1 },
+
     expandRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
     expandText: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
 });

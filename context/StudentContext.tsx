@@ -8,6 +8,7 @@ export interface StudentProfile {
     rollNo: string;
     standard: string;
     division: string;
+    divisionId: string;
     houseColor: string;
     institutionName: string;
     tempPassword: string | null;
@@ -79,6 +80,7 @@ export function StudentProvider({ children }: { children: React.ReactNode }) {
                 rollNo: s.rollNo ?? '',
                 standard: s.standard?.name ?? '',
                 division: s.division?.name ?? '',
+                divisionId: s.division?.id ?? '',
                 houseColor: s.houseColor ?? '',
                 institutionName: s.institution?.name ?? '',
                 tempPassword: s.tempPassword ?? null,

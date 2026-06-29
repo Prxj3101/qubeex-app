@@ -1,4 +1,5 @@
 import PencilLoader from '@/components/Pencilloader';
+import { FeedBadgeProvider, useFeedBadge } from '@/context/FeedBadgeContext';
 import { InstitutionProvider } from '@/context/InstitutionContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts } from '@expo-google-fonts/poppins';
@@ -11,6 +12,27 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
+
+function FeedTabIcon({ color }: { color: string }) {
+  const { isDark } = useTheme();
+  const { feedHasNew } = useFeedBadge();
+  return (
+    <View style={{ position: 'relative' }}>
+      <Rss size={22} color={color} />
+      {feedHasNew && (
+        <View style={{
+          position: 'absolute',
+          top: -2, right: -4,
+          width: 8, height: 8,
+          borderRadius: 99,
+          backgroundColor: '#EF4444',
+          borderWidth: 1.5,
+          borderColor: isDark ? '#1A1030' : 'white',
+        }} />
+      )}
+    </View>
+  );
+}
 
 function TabLayout() {
   const { isDark } = useTheme();
@@ -67,20 +89,7 @@ function TabLayout() {
       >
         <Tabs.Screen name="feed" options={{
           title: 'Feed',
-          tabBarIcon: ({ color }) => (
-            <View style={{ position: 'relative' }}>
-              <Rss size={22} color={color} />
-              <View style={{
-                position: 'absolute',
-                top: -2, right: -4,
-                width: 8, height: 8,
-                borderRadius: 99,
-                backgroundColor: '#EF4444',
-                borderWidth: 1.5,
-                borderColor: isDark ? '#1A1030' : 'white',
-              }} />
-            </View>
-          ),
+          tabBarIcon: ({ color }) => <FeedTabIcon color={color} />,
         }} />
         <Tabs.Screen name="tasks" options={{
           title: 'Tasks',
@@ -122,7 +131,9 @@ export default function Layout() {
 
   return (
     <InstitutionProvider>
-      <TabLayout />
+      <FeedBadgeProvider>
+        <TabLayout />
+      </FeedBadgeProvider>
     </InstitutionProvider>
   );
 }
