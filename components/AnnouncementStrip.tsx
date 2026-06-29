@@ -2,11 +2,15 @@ import { useTheme } from '@/context/ThemeContext';
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export function AnnouncementStrip() {
+interface AnnouncementStripProps {
+    title?: string | null;
+}
+
+export function AnnouncementStrip({ title }: AnnouncementStripProps) {
     const [visible, setVisible] = useState(true);
     const { isDark } = useTheme();
 
-    if (!visible) return null;
+    if (!visible || !title) return null;
 
     return (
         <View style={[
@@ -17,8 +21,8 @@ export function AnnouncementStrip() {
             }
         ]}>
             <Text style={styles.icon}>📢</Text>
-            <Text style={[styles.text, { color: isDark ? '#FCD34D' : '#92400E' }]}>
-                Exam schedule updated — Check calendar for new dates
+            <Text style={[styles.text, { color: isDark ? '#FCD34D' : '#92400E' }]} numberOfLines={1}>
+                {title}
             </Text>
             <TouchableOpacity onPress={() => setVisible(false)}>
                 <Text style={[styles.close, { color: isDark ? '#FCD34D' : '#B45309' }]}>✕</Text>

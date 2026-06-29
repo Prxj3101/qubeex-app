@@ -529,7 +529,7 @@ export default function Profile() {
         name: profile?.name ?? '',
         rollNo: profile?.rollNo ?? '',
         standard: profile?.standard ?? '',
-        div: profile?.division ?? '',
+        div: (() => { const d = profile?.division ?? ''; const parts = d.split('-'); return parts.length > 1 ? `Division ${parts.slice(1).join('-')}` : d ? `Division ${d}` : ''; })(),
         dob: profile?.dob ?? '',
         email: profile?.email ?? '',
         uid: profile?.studentId ?? '',

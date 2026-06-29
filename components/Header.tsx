@@ -1,4 +1,5 @@
 import { useInstitution } from '@/context/InstitutionContext';
+import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
@@ -11,8 +12,10 @@ interface HeaderProps {
 
 export function Header({ showPurple = false }: HeaderProps) {
   const { isDark } = useTheme();
+  const { profile } = useStudent();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const displayName = profile?.name || 'Student';
 
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const star1Anim = useRef(new Animated.Value(0.15)).current;
@@ -97,7 +100,7 @@ export function Header({ showPurple = false }: HeaderProps) {
       <View style={styles.row}>
         <View style={styles.greetingBox}>
           <Text style={styles.greetingText}>{greeting},</Text>
-          <Text style={styles.nameText}>Prajwal Kotian</Text>
+          <Text style={styles.nameText}>{displayName}</Text>
           <Text style={styles.subText}>{config?.batchLabel}</Text>
         </View>
 
