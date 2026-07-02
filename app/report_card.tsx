@@ -1,9 +1,11 @@
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
+import { useStudent } from '@/context/StudentContext';
 import api from '@/lib/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Image as RNImage,
     Platform,
     ScrollView,
     StyleSheet,
@@ -90,6 +92,7 @@ const SHEET_TEXT = '#2A1F10';
 export default function ReportCard() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const { student } = useStudent();
     const [tab, setTab] = useState<'offline' | 'online'>('offline');
     const [data, setData] = useState<MarksheetData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -161,8 +164,10 @@ export default function ReportCard() {
 
                 {/* ── Name card ── */}
                 <View style={[styles.nameCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: getAvatarColor(studentName) }}>
-                        <Text style={{ fontSize: fs(16) + iosExtra, fontFamily: 'Poppins_700Bold', color: 'white' }}>{getInitials(studentName)}</Text>
+                    <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: student?.photo ? 'transparent' : getAvatarColor(studentName), overflow: 'hidden' }}>
+                        {student?.photo
+                            ? <RNImage source={{ uri: student.photo }} style={{ width: 56, height: 56, borderRadius: 28 }} />
+                            : <Text style={{ fontSize: fs(16) + iosExtra, fontFamily: 'Poppins_700Bold', color: 'white' }}>{getInitials(studentName)}</Text>}
                     </View>
                     <View style={{ alignItems: 'center' }}>
                         <Text style={{ fontSize: fs(14) + iosExtra, fontFamily: 'Poppins_700Bold', color: theme.text }}>{studentName}</Text>
