@@ -10,6 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import {
     ActivityIndicator,
     Dimensions,
+    Image as RNImage,
     Modal,
     Pressable,
     ScrollView,
@@ -55,7 +56,7 @@ interface FeedPost {
     id: string;
     type: PostType;
     source: FeedSource;
-    author: { id: string; name: string; role: string };
+    author: { id: string; name: string; role: string; avatarUrl?: string | null };
     subject?: string | null;
     title: string;
     body: string;
@@ -289,8 +290,10 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
 
             {/* Author */}
             <View style={styles.authorRow}>
-                <View style={[styles.avatar, { backgroundColor: avatarColor + '22', borderColor: avatarColor }]}>
-                    <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+                <View style={[styles.avatar, { backgroundColor: post.author.avatarUrl ? 'transparent' : avatarColor + '22', borderColor: avatarColor, overflow: 'hidden' }]}>
+                    {post.author.avatarUrl
+                        ? <RNImage source={{ uri: post.author.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                        : <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={[styles.authorName, { color: theme.text }]}>{post.author.name}</Text>
