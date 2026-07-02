@@ -24,7 +24,7 @@ function AuthGate() {
             const loggedIn = !!token;
             const mustChangePassword = mustChange === 'true';
 
-            const AUTHENTICATED_SCREENS = new Set(['(tabs)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card']);
+            const AUTHENTICATED_SCREENS = new Set(['(tabs)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card', 'test-webview']);
             const inTabs = segments[0] === '(tabs)';
             const inSetup = segments[0] === 'setup-required';
             const inAuthenticatedScreen = AUTHENTICATED_SCREENS.has(segments[0]);

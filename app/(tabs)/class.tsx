@@ -54,13 +54,13 @@ const DARK = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Subject {
-    id: string; name: string; code: string; color: string; teacherName: string;
+    id: string; name: string; code: string; color: string; teacherName: string; teacherAvatarUrl: string | null;
 }
 interface Classmate {
     id: string; name: string; rollNo: string;
     rank: number | null; attendancePct: number | null;
     marksPct: number | null; offlinePct: number | null; onlinePct: number | null;
-    isMe: boolean;
+    isMe: boolean; avatarUrl: string | null;
 }
 interface SubjectScore {
     subjectId: string; subjectName: string; subjectCode: string; subjectColor: string;
@@ -68,7 +68,7 @@ interface SubjectScore {
     totalScored: number; totalMax: number; pct: number | null;
 }
 interface LbEntry {
-    name: string; combinedPct: number; offlinePct: number | null; onlinePct: number | null; isMe: boolean;
+    name: string; avatarUrl: string | null; combinedPct: number; offlinePct: number | null; onlinePct: number | null; isMe: boolean;
 }
 interface ResultFile {
     id: string; title: string;
@@ -151,8 +151,15 @@ function FileViewerModal({ file, onClose }: { file: ViewerFile | null; onClose: 
 }
 
 // ── Small Avatar ──────────────────────────────────────────────────────────────
-function Avatar({ name, size }: { name: string; size: number }) {
+function Avatar({ name, avatarUrl, size }: { name: string; avatarUrl?: string | null; size: number }) {
     const bg = getAvatarBg(name);
+    if (avatarUrl) {
+        return (
+            <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', borderWidth: 1.5, borderColor: bg }}>
+                <Image source={{ uri: avatarUrl }} style={{ width: size, height: size }} resizeMode="cover" />
+            </View>
+        );
+    }
     return (
         <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg + '20', borderWidth: 1.5, borderColor: bg, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: size * 0.36, fontWeight: '700', color: bg }}>{getInitials(name)}</Text>
@@ -375,7 +382,7 @@ export default function Courses() {
                                                         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: sub.color }} />
                                                         <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{sub.name}</Text>
                                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                            <Avatar name={sub.teacherName} size={22} />
+                                                            <Avatar name={sub.teacherName} avatarUrl={sub.teacherAvatarUrl} size={22} />
                                                             <Text style={{ fontSize: 11, color: theme.subText, fontFamily: 'Poppins_400Regular', maxWidth: 130 }} numberOfLines={1}>{sub.teacherName}</Text>
                                                         </View>
                                                     </View>
@@ -409,7 +416,7 @@ export default function Courses() {
                                                                     const pct = getPct(s, lbMode);
                                                                     return (
                                                                         <View key={s.id} style={{ alignItems: 'center', gap: 4 }}>
-                                                                            <Avatar name={s.name} size={i === 1 ? 44 : 36} />
+                                                                            <Avatar name={s.name} avatarUrl={s.avatarUrl} size={i === 1 ? 44 : 36} />
                                                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text, width: 66, textAlign: 'center' }} numberOfLines={2}>{s.name.split(' ')[0]}</Text>
                                                                             {s.isMe && <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>YOU</Text>}
                                                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: cfg.color }}>{pct != null ? `${pct}%` : '—'}</Text>
@@ -429,7 +436,7 @@ export default function Courses() {
                                                                 return (
                                                                     <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 14, borderWidth: 1, borderColor: s.isMe ? theme.purple + '50' : theme.cardBorder }}>
                                                                         <Text style={{ fontSize: 16, width: 28, textAlign: 'center' }}>{i === 0 ? '4️⃣' : '5️⃣'}</Text>
-                                                                        <Avatar name={s.name} size={34} />
+                                                                        <Avatar name={s.name} avatarUrl={s.avatarUrl} size={34} />
                                                                         <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: s.isMe ? theme.purple : theme.text }} numberOfLines={1}>{s.name}{s.isMe ? ' (You)' : ''}</Text>
                                                                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: theme.purple }}>{pct != null ? `${pct}%` : '—'}</Text>
                                                                     </View>
@@ -485,7 +492,7 @@ export default function Courses() {
                                             : <View style={{ gap: 6 }}>
                                                 {classmates.map(s => (
                                                     <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: s.isMe ? theme.purple + '40' : 'transparent' }}>
-                                                        <Avatar name={s.name} size={32} />
+                                                        <Avatar name={s.name} avatarUrl={s.avatarUrl} size={32} />
                                                         <View style={{ flex: 1 }}>
                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: s.isMe ? theme.purple : theme.text }} numberOfLines={1}>{s.name}</Text>
@@ -542,7 +549,7 @@ export default function Courses() {
                                                                 <View style={{ flex: 1 }}>
                                                                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>{activeSubject.name}</Text>
                                                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                                                        <Avatar name={activeSubject.teacherName} size={18} />
+                                                                        <Avatar name={activeSubject.teacherName} avatarUrl={activeSubject.teacherAvatarUrl} size={18} />
                                                                         <Text style={{ fontSize: 11, color: theme.subText, fontFamily: 'Poppins_400Regular' }}>{activeSubject.teacherName}</Text>
                                                                     </View>
                                                                 </View>
@@ -571,7 +578,7 @@ export default function Courses() {
                                                                         return (
                                                                             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: e.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: e.isMe ? theme.purple + '50' : theme.cardBorder }}>
                                                                                 <Text style={{ fontSize: medal ? 18 : 12, width: 28, textAlign: 'center', fontFamily: 'Poppins_700Bold', color: theme.muted }}>{medal ?? `#${i + 1}`}</Text>
-                                                                                <Avatar name={e.name} size={30} />
+                                                                                <Avatar name={e.name} avatarUrl={e.avatarUrl} size={30} />
                                                                                 <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: e.isMe ? theme.purple : theme.text }} numberOfLines={1}>{e.name.split(' ')[0]}{e.isMe ? ' (You)' : ''}</Text>
                                                                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: activeSubject.color }}>{pct != null ? `${pct}%` : '—'}</Text>
                                                                             </View>

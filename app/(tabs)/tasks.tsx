@@ -1,6 +1,8 @@
+import api from '@/lib/api';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
-import * as Linking from 'expo-linking';
+import * as DocumentPicker from 'expo-document-picker';
+import { router, useFocusEffect } from 'expo-router';
 import {
     AlertCircle,
     BookOpen,
@@ -9,14 +11,14 @@ import {
     ChevronDown,
     ChevronUp,
     Clock,
-    ExternalLink,
     FileText,
     Radio,
     Upload,
     Zap,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
@@ -48,11 +50,11 @@ const DARK = {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type TestStatus = 'live' | 'upcoming' | 'completed';
-type SubmissionStatus = 'pending' | 'submitted' | 'late' | 'missed';
+type SubmissionStatus = 'pending' | 'submitted' | 'late' | 'missed' | 'write_again' | 'correct';
 type SubmissionType = 'assignment' | 'project';
 
 interface TestItem {
-    id: number;
+    id: string;
     subject: string;
     subjectShort: string;
     title: string;
@@ -64,12 +66,12 @@ interface TestItem {
     topics: string[];
     marks: number;
     scored?: number;
-    webLink?: string;
+    daysLeft?: number | null;
     color: string;
 }
 
 interface SubmissionItem {
-    id: number;
+    id: string;
     subject: string;
     title: string;
     type: SubmissionType;
@@ -78,169 +80,125 @@ interface SubmissionItem {
     dueTime: string;
     marks: number;
     description: string;
-    submittedFile?: string;
+    submittedFile?: string | null;
     color: string;
+    submissionType: 'OFFLINE' | 'ONLINE';
+    reviewNote?: string | null;
+    offlineReceived?: boolean;
+    daysLeft?: number | null;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const TESTS: TestItem[] = [
-    {
-        id: 1,
-        subject: 'Social Media Analytics',
-        subjectShort: 'SMA',
-        title: 'Unit Test 2 — Live Now',
-        type: 'test',
-        status: 'live',
-        date: 'Today',
-        time: '11:00 AM',
-        duration: '45 mins',
-        topics: ['Chapter 5 — Sentiment Analysis', 'Chapter 6 — Engagement Metrics'],
-        marks: 20,
-        webLink: 'https://qubeex.app/test/sma-ut2',
-        color: '#8B5CF6',
-    },
-    {
-        id: 2,
-        subject: 'Deep Learning',
-        subjectShort: 'DL',
-        title: 'Unit Test 2',
-        type: 'test',
-        status: 'upcoming',
-        date: '28 May',
-        time: '9:00 AM',
-        duration: '45 mins',
-        topics: ['CNN Architecture', 'Transfer Learning', 'Object Detection'],
-        marks: 20,
-        webLink: 'https://qubeex.app/test/dl-ut2',
-        color: '#2563EB',
-    },
-    {
-        id: 3,
-        subject: 'Distributed Computing',
-        subjectShort: 'DC',
-        title: 'Mid Semester Exam',
-        type: 'exam',
-        status: 'upcoming',
-        date: '2 Jun',
-        time: '10:00 AM',
-        duration: '2 hrs',
-        topics: ['MapReduce', 'HDFS', 'Spark Basics', 'CAP Theorem', 'Consistency Models'],
-        marks: 80,
-        webLink: 'https://qubeex.app/exam/dc-midsem',
-        color: '#10B981',
-    },
-    {
-        id: 4,
-        subject: 'Deep Learning',
-        subjectShort: 'DL',
-        title: 'Unit Test 1',
-        type: 'test',
-        status: 'completed',
-        date: '10 May',
-        time: '9:00 AM',
-        duration: '45 mins',
-        topics: ['Perceptron', 'Backpropagation', 'Activation Functions'],
-        marks: 20,
-        scored: 17,
-        color: '#2563EB',
-    },
-    {
-        id: 5,
-        subject: 'Distributed Computing',
-        subjectShort: 'DC',
-        title: 'Unit Test 1',
-        type: 'test',
-        status: 'completed',
-        date: '5 May',
-        time: '11:00 AM',
-        duration: '45 mins',
-        topics: ['Cloud Computing Basics', 'Virtualization'],
-        marks: 20,
-        scored: 31,
-        color: '#10B981',
-    },
-];
+// ─── API Response Types ───────────────────────────────────────────────────────
+interface ApiTest {
+    id: string;
+    title: string;
+    description: string | null;
+    subjectName: string;
+    durationMinutes: number;
+    totalMarks: number;
+    startDate: string | null;
+    validUntil: string | null;
+    daysLeft: number | null;
+    studentStatus: 'LIVE' | 'UPCOMING' | 'DONE';
+    bestScore: number | null;
+}
 
-const SUBMISSIONS: SubmissionItem[] = [
-    {
-        id: 1,
-        subject: 'Deep Learning',
-        title: 'CNN Implementation — MNIST Dataset',
-        type: 'assignment',
-        status: 'pending',
-        dueDate: '26 May',
-        dueTime: '11:59 PM',
-        marks: 10,
-        description: 'Implement a CNN from scratch using PyTorch to classify MNIST handwritten digits. Submit Jupyter notebook with accuracy > 98%.',
-        color: '#2563EB',
-    },
-    {
-        id: 2,
-        subject: 'Social Media Analytics',
-        title: 'Twitter Sentiment Analysis Report',
-        type: 'assignment',
-        status: 'submitted',
-        dueDate: '20 May',
-        dueTime: '11:59 PM',
-        marks: 15,
-        description: 'Analyse sentiment of 1000 tweets on a trending topic. Use VADER or TextBlob. Submit PDF report.',
-        submittedFile: 'SMA_Sentiment_Report.pdf',
-        color: '#8B5CF6',
-    },
-    {
-        id: 3,
-        subject: 'Major Project 2',
-        title: 'Phase 2 — Working Prototype',
-        type: 'project',
-        status: 'pending',
-        dueDate: '30 May',
-        dueTime: '5:00 PM',
-        marks: 50,
-        description: 'Submit working prototype with all core features implemented. Include demo video (max 5 mins) and updated SRS document.',
-        color: '#F59E0B',
-    },
-    {
-        id: 4,
-        subject: 'Distributed Computing',
-        title: 'MapReduce Word Count Implementation',
-        type: 'assignment',
-        status: 'late',
-        dueDate: '15 May',
-        dueTime: '11:59 PM',
-        marks: 10,
-        description: 'Implement Word Count using Hadoop MapReduce. Submit source code and output screenshots.',
-        color: '#10B981',
-    },
-    {
-        id: 5,
-        subject: 'Project Management',
-        title: 'Agile Sprint Plan — Unit 3',
-        type: 'assignment',
-        status: 'missed',
-        dueDate: '10 May',
-        dueTime: '11:59 PM',
-        marks: 10,
-        description: 'Create a 2-week sprint plan for your major project using Jira or Trello. Export and submit as PDF.',
-        color: '#EF4444',
-    },
-];
+interface ApiAssignment {
+    id: string;
+    title: string;
+    description: string | null;
+    subjectName: string;
+    totalMarks: number;
+    dueDate: string | null;
+    daysLeft: number | null;
+    submissionType: 'OFFLINE' | 'ONLINE';
+    studentStatus: 'PENDING' | 'SUBMITTED' | 'WRITE_AGAIN' | 'CORRECT' | 'MISSED' | 'OVERDUE';
+    submission: {
+        fileUrl: string | null;
+        reviewNote: string | null;
+        offlineSubmittedAt: string | null;
+    } | null;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function getDaysLeft(dateStr: string): number | null {
-    if (dateStr === 'Today') return 0;
-    const months: Record<string, number> = {
-        Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-        Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+const SUBJECT_COLORS = ['#7C3AED', '#2563EB', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4'];
+
+function subjectColor(name: string): string {
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff;
+    return SUBJECT_COLORS[Math.abs(h) % SUBJECT_COLORS.length];
+}
+
+function fmtDate(iso: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+function fmtTime(iso: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+function fmtDuration(mins: number): string {
+    if (mins < 60) return `${mins} mins`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} hr ${m} mins` : `${h} hr${h > 1 ? 's' : ''}`;
+}
+
+function mapTest(t: ApiTest): TestItem {
+    const dateIso = t.startDate ?? t.validUntil;
+    return {
+        id: t.id,
+        subject: t.subjectName,
+        subjectShort: t.subjectName.substring(0, 3).toUpperCase(),
+        title: t.title,
+        type: 'test',
+        status: t.studentStatus === 'LIVE' ? 'live' : t.studentStatus === 'UPCOMING' ? 'upcoming' : 'completed',
+        date: fmtDate(dateIso),
+        time: fmtTime(dateIso),
+        duration: fmtDuration(t.durationMinutes ?? 45),
+        topics: (t.description ?? '').split('\n').map(l => l.trim()).filter(Boolean),
+        marks: t.totalMarks,
+        scored: t.bestScore ?? undefined,
+        daysLeft: t.daysLeft,
+        color: subjectColor(t.subjectName),
     };
-    const parts = dateStr.split(' ');
-    if (parts.length < 2) return null;
-    const day = parseInt(parts[0]);
-    const month = months[parts[1]];
-    if (isNaN(day) || month === undefined) return null;
-    const now = new Date();
-    const target = new Date(now.getFullYear(), month, day);
-    const diff = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diff;
+}
+
+function mapAssignment(a: ApiAssignment): SubmissionItem {
+    const statusMap: Record<string, SubmissionStatus> = {
+        PENDING: 'pending',
+        SUBMITTED: 'submitted',
+        WRITE_AGAIN: 'write_again',
+        CORRECT: 'correct',
+        MISSED: 'missed',
+        OVERDUE: 'late',
+    };
+    return {
+        id: a.id,
+        subject: a.subjectName,
+        title: a.title,
+        type: 'assignment',
+        status: statusMap[a.studentStatus] ?? 'pending',
+        dueDate: fmtDate(a.dueDate),
+        dueTime: '11:59 PM',
+        marks: a.totalMarks,
+        description: a.description ?? '',
+        submittedFile: a.submission?.fileUrl ?? null,
+        color: subjectColor(a.subjectName),
+        submissionType: a.submissionType,
+        reviewNote: a.submission?.reviewNote ?? null,
+        offlineReceived: !!a.submission?.offlineSubmittedAt,
+        daysLeft: a.daysLeft,
+    };
 }
 
 // ─── Card wrapper ─────────────────────────────────────────────────────────────
@@ -260,7 +218,6 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 // ─── Test Card ────────────────────────────────────────────────────────────────
 function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT; isDark: boolean }) {
     const [expanded, setExpanded] = useState(item.status === 'live');
-    const daysLeft = getDaysLeft(item.date);
 
     const statusConfig = {
         live: { bg: '#FEE2E2', darkBg: '#2B0D0D', text: '#DC2626', darkText: '#F87171', label: '🔴 Live Now', pulse: true },
@@ -269,6 +226,10 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
     };
 
     const s = statusConfig[item.status];
+
+    function handleStartTest() {
+        router.push({ pathname: '/test-webview', params: { testId: item.id } });
+    }
 
     return (
         <Card theme={theme}>
@@ -310,10 +271,10 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                 <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
                     <Text style={[styles.infoChipText, { color: theme.subText }]}>📊 {item.marks} marks</Text>
                 </View>
-                {item.status === 'upcoming' && daysLeft !== null && (
-                    <View style={[styles.infoChip, { backgroundColor: daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
-                        <Text style={[styles.infoChipText, { color: daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
-                            {daysLeft === 0 ? 'Today!' : `${daysLeft}d left`}
+                {item.status === 'upcoming' && item.daysLeft != null && (
+                    <View style={[styles.infoChip, { backgroundColor: item.daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
+                        <Text style={[styles.infoChipText, { color: item.daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
+                            {item.daysLeft === 0 ? 'Today!' : `${item.daysLeft}d left`}
                         </Text>
                     </View>
                 )}
@@ -329,33 +290,36 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
             {/* Expanded content */}
             {expanded && (
                 <View style={{ gap: 10 }}>
-                    {/* Topics */}
-                    <View style={{ gap: 6 }}>
-                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>SYLLABUS</Text>
-                        {item.topics.map((topic, i) => (
-                            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: item.color }} />
-                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, flex: 1 }}>{topic}</Text>
-                            </View>
-                        ))}
-                    </View>
+                    {item.topics.length > 0 && (
+                        <View style={{ gap: 6 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>SYLLABUS</Text>
+                            {item.topics.map((topic, i) => (
+                                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: item.color }} />
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, flex: 1 }}>{topic}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
 
-                    {/* Live / Upcoming CTA */}
-                    {(item.status === 'live' || item.status === 'upcoming') && item.webLink && (
+                    {item.status === 'live' && (
                         <TouchableOpacity
-                            onPress={() => Linking.openURL(item.webLink!)}
-                            style={[styles.ctaBtn, {
-                                backgroundColor: item.status === 'live' ? '#EF4444' : item.color,
-                            }]}
+                            onPress={handleStartTest}
+                            style={[styles.ctaBtn, { backgroundColor: '#EF4444' }]}
                             activeOpacity={0.85}
                         >
-                            {item.status === 'live'
-                                ? <Radio size={15} color="white" />
-                                : <ExternalLink size={15} color="white" />
-                            }
-                            <Text style={styles.ctaBtnText}>
-                                {item.status === 'live' ? 'Start Test Now' : 'Open Test Link'}
-                            </Text>
+                            <Radio size={15} color="white" />
+                            <Text style={styles.ctaBtnText}>Start Test Now</Text>
+                        </TouchableOpacity>
+                    )}
+                    {item.status === 'upcoming' && (
+                        <TouchableOpacity
+                            onPress={handleStartTest}
+                            style={[styles.ctaBtn, { backgroundColor: item.color }]}
+                            activeOpacity={0.85}
+                        >
+                            <Clock size={15} color="white" />
+                            <Text style={styles.ctaBtnText}>Open Test Link</Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -371,19 +335,58 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
 }
 
 // ─── Submission Card ──────────────────────────────────────────────────────────
-function SubmissionCard({ item, theme, isDark }: { item: SubmissionItem; theme: typeof LIGHT; isDark: boolean }) {
+function SubmissionCard({
+    item, theme, isDark, onSubmitted,
+}: {
+    item: SubmissionItem; theme: typeof LIGHT; isDark: boolean; onSubmitted: () => void;
+}) {
     const [expanded, setExpanded] = useState(false);
-    const daysLeft = getDaysLeft(item.dueDate);
+    const [uploading, setUploading] = useState(false);
 
-    const statusConfig = {
-        pending: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '⏳ Pending', icon: <Clock size={11} color={theme.amber} /> },
-        submitted: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Submitted', icon: <CheckCircle2 size={11} color={theme.green} /> },
-        late: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '⚠️ Late', icon: <AlertCircle size={11} color={theme.red} /> },
-        missed: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '❌ Missed', icon: <AlertCircle size={11} color={theme.red} /> },
+    const statusConfig: Record<SubmissionStatus, { bg: string; darkBg: string; text: string; label: string }> = {
+        pending: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '⏳ Pending' },
+        submitted: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Submitted' },
+        late: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '⚠️ Late' },
+        missed: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '❌ Missed' },
+        write_again: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '✍️ Write Again' },
+        correct: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Correct' },
     };
 
     const s = statusConfig[item.status];
-    const canSubmit = item.status === 'pending' || item.status === 'late';
+    const canSubmit = (item.status === 'pending' || item.status === 'write_again') && item.submissionType === 'ONLINE';
+
+    async function handlePickAndUpload() {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true,
+            });
+            if (result.canceled) return;
+
+            const asset = result.assets[0];
+            setUploading(true);
+
+            const formData = new FormData();
+            formData.append('file', {
+                uri: asset.uri,
+                type: asset.mimeType ?? 'application/pdf',
+                name: asset.name ?? 'submission.pdf',
+            } as any);
+
+            await api.post(`/student/tasks/assignments/${item.id}/submit`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                transformRequest: (data) => data,
+            });
+
+            Alert.alert('Submitted!', 'Your assignment has been submitted successfully.');
+            onSubmitted();
+        } catch (err: any) {
+            const msg = err?.response?.data?.error ?? 'Upload failed. Please try again.';
+            Alert.alert('Error', msg);
+        } finally {
+            setUploading(false);
+        }
+    }
 
     return (
         <Card theme={theme}>
@@ -422,17 +425,24 @@ function SubmissionCard({ item, theme, isDark }: { item: SubmissionItem; theme: 
                 <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
                     <Text style={[styles.infoChipText, { color: theme.subText }]}>📊 {item.marks} marks</Text>
                 </View>
-                {item.status === 'pending' && daysLeft !== null && (
-                    <View style={[styles.infoChip, { backgroundColor: daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
-                        <Text style={[styles.infoChipText, { color: daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
-                            {daysLeft === 0 ? 'Due Today!' : daysLeft < 0 ? 'Overdue' : `${daysLeft}d left`}
+                {item.submissionType === 'OFFLINE' && (
+                    <View style={[styles.infoChip, { backgroundColor: item.offlineReceived ? theme.greenLight : theme.bg }]}>
+                        <Text style={[styles.infoChipText, { color: item.offlineReceived ? theme.green : theme.muted }]}>
+                            {item.offlineReceived ? '📋 Copy received' : '📋 Offline'}
                         </Text>
                     </View>
                 )}
-                {item.status === 'submitted' && item.submittedFile && (
+                {item.status === 'pending' && item.daysLeft != null && (
+                    <View style={[styles.infoChip, { backgroundColor: item.daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
+                        <Text style={[styles.infoChipText, { color: item.daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
+                            {item.daysLeft === 0 ? 'Due Today!' : item.daysLeft < 0 ? 'Overdue' : `${item.daysLeft}d left`}
+                        </Text>
+                    </View>
+                )}
+                {(item.status === 'submitted' || item.status === 'correct') && item.submittedFile && (
                     <View style={[styles.infoChip, { backgroundColor: theme.greenLight }]}>
                         <FileText size={11} color={theme.green} />
-                        <Text style={[styles.infoChipText, { color: theme.green }]} numberOfLines={1}>{item.submittedFile}</Text>
+                        <Text style={[styles.infoChipText, { color: theme.green }]} numberOfLines={1}>PDF submitted</Text>
                     </View>
                 )}
             </View>
@@ -440,23 +450,33 @@ function SubmissionCard({ item, theme, isDark }: { item: SubmissionItem; theme: 
             {/* Expanded */}
             {expanded && (
                 <View style={{ gap: 10 }}>
-                    <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12 }}>
-                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 4 }}>DESCRIPTION</Text>
-                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, lineHeight: 18 }}>{item.description}</Text>
-                    </View>
+                    {item.description ? (
+                        <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 4 }}>DESCRIPTION</Text>
+                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, lineHeight: 18 }}>{item.description}</Text>
+                        </View>
+                    ) : null}
+
+                    {item.status === 'write_again' && item.reviewNote && (
+                        <View style={{ padding: 12, backgroundColor: isDark ? '#2D2010' : theme.amberLight, borderRadius: 12 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber, marginBottom: 4 }}>TEACHER FEEDBACK</Text>
+                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: isDark ? theme.text : '#92400E', lineHeight: 18 }}>{item.reviewNote}</Text>
+                        </View>
+                    )}
 
                     {canSubmit && (
                         <TouchableOpacity
-                            onPress={() => Alert.alert('Upload', `Select PDF for "${item.title}"`, [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Choose File', onPress: () => Alert.alert('Coming Soon', 'File picker will open here.') },
-                            ])}
-                            style={[styles.ctaBtn, { backgroundColor: item.color }]}
+                            onPress={handlePickAndUpload}
+                            disabled={uploading}
+                            style={[styles.ctaBtn, { backgroundColor: uploading ? theme.muted : item.color }]}
                             activeOpacity={0.85}
                         >
-                            <Upload size={15} color="white" />
+                            {uploading
+                                ? <ActivityIndicator size="small" color="white" />
+                                : <Upload size={15} color="white" />
+                            }
                             <Text style={styles.ctaBtnText}>
-                                {item.status === 'late' ? 'Submit Late (PDF)' : 'Submit PDF'}
+                                {uploading ? 'Uploading…' : item.status === 'write_again' ? 'Resubmit PDF' : 'Submit PDF'}
                             </Text>
                         </TouchableOpacity>
                     )}
@@ -485,11 +505,56 @@ export default function Tasks() {
     const [testFilter, setTestFilter] = useState<TestFilter>('all');
     const [subFilter, setSubFilter] = useState<SubFilter>('all');
 
-    const liveCount = TESTS.filter(t => t.status === 'live').length;
-    const pendingCount = SUBMISSIONS.filter(s => s.status === 'pending').length;
+    const [tests, setTests] = useState<TestItem[]>([]);
+    const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
+    const [loadingTests, setLoadingTests] = useState(true);
+    const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+    const [submissionsLoaded, setSubmissionsLoaded] = useState(false);
 
-    const filteredTests = testFilter === 'all' ? TESTS : TESTS.filter(t => t.status === testFilter);
-    const filteredSubs = subFilter === 'all' ? SUBMISSIONS : SUBMISSIONS.filter(s => s.status === subFilter);
+    async function fetchTests() {
+        try {
+            setLoadingTests(true);
+            const res = await api.get('/student/tasks/tests');
+            setTests((res.data.data ?? []).map(mapTest));
+        } catch {
+            // leave empty
+        } finally {
+            setLoadingTests(false);
+        }
+    }
+
+    async function fetchSubmissions() {
+        try {
+            setLoadingSubmissions(true);
+            const res = await api.get('/student/tasks/assignments');
+            setSubmissions((res.data.data ?? []).map(mapAssignment));
+            setSubmissionsLoaded(true);
+        } catch {
+            // leave empty
+        } finally {
+            setLoadingSubmissions(false);
+        }
+    }
+
+    useFocusEffect(useCallback(() => {
+        fetchTests();
+        if (submissionsLoaded) fetchSubmissions();
+    }, [submissionsLoaded]));
+
+    function handleSwitchToSubmissions() {
+        setMainTab('submissions');
+        if (!submissionsLoaded) fetchSubmissions();
+    }
+
+    const liveCount = tests.filter(t => t.status === 'live').length;
+    const upcomingCount = tests.filter(t => t.status === 'upcoming').length;
+    const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'write_again').length;
+
+    const filteredTests = testFilter === 'all' ? tests : tests.filter(t => t.status === testFilter);
+    const filteredSubs = subFilter === 'all' ? submissions
+        : subFilter === 'submitted' ? submissions.filter(s => s.status === 'submitted' || s.status === 'correct')
+        : subFilter === 'late' ? submissions.filter(s => s.status === 'late' || s.status === 'write_again')
+        : submissions.filter(s => s.status === subFilter);
 
     const TEST_FILTERS: { key: TestFilter; label: string }[] = [
         { key: 'all', label: 'All' },
@@ -521,7 +586,7 @@ export default function Tasks() {
                         </View>
                         <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
                             <Clock size={18} color={theme.amber} />
-                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{TESTS.filter(t => t.status === 'upcoming').length}</Text>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{upcomingCount}</Text>
                             <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Upcoming</Text>
                         </View>
                         <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : theme.amberLight, flex: 1 }]}>
@@ -547,7 +612,7 @@ export default function Tasks() {
                             )}
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={() => setMainTab('submissions')}
+                            onPress={handleSwitchToSubmissions}
                             style={[styles.mainTab, mainTab === 'submissions' && { backgroundColor: theme.purple }]}
                         >
                             <Text style={[styles.mainTabText, { color: mainTab === 'submissions' ? 'white' : theme.subText }]}>
@@ -583,9 +648,14 @@ export default function Tasks() {
                                 </View>
                             </ScrollView>
 
-                            {filteredTests.map(item => (
-                                <TestCard key={item.id} item={item} theme={theme} isDark={isDark} />
-                            ))}
+                            {loadingTests
+                                ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
+                                : filteredTests.length === 0
+                                    ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No tests found</Text>
+                                    : filteredTests.map(item => (
+                                        <TestCard key={item.id} item={item} theme={theme} isDark={isDark} />
+                                    ))
+                            }
                         </View>
                     )}
 
@@ -611,9 +681,20 @@ export default function Tasks() {
                                 </View>
                             </ScrollView>
 
-                            {filteredSubs.map(item => (
-                                <SubmissionCard key={item.id} item={item} theme={theme} isDark={isDark} />
-                            ))}
+                            {loadingSubmissions
+                                ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
+                                : filteredSubs.length === 0
+                                    ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No assignments found</Text>
+                                    : filteredSubs.map(item => (
+                                        <SubmissionCard
+                                            key={item.id}
+                                            item={item}
+                                            theme={theme}
+                                            isDark={isDark}
+                                            onSubmitted={fetchSubmissions}
+                                        />
+                                    ))
+                            }
                         </View>
                     )}
 
