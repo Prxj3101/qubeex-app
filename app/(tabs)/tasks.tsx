@@ -575,7 +575,7 @@ export default function Tasks() {
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Tasks" />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-                <View style={styles.body}>
+                <View style={[styles.body, { paddingTop: 6 }]}>
 
                     {/* ── Summary Banner ── */}
                     <View style={{ flexDirection: 'row', gap: 10 }}>

@@ -66,7 +66,7 @@ function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#F59E0B',
+          tabBarActiveTintColor: '#DA7756',
           tabBarInactiveTintColor: isDark ? '#64748B' : '#94A3B8',
           tabBarStyle: {
             backgroundColor: isDark ? '#1A1030' : 'white',

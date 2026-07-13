@@ -60,8 +60,8 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
 
 const styles = StyleSheet.create({
     container: {
+        height: 58,
         paddingHorizontal: 18,
-        paddingVertical: 8,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -87,8 +87,8 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     btn: {
-        width: 36,
-        height: 36,
+        width: 38,
+        height: 38,
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',

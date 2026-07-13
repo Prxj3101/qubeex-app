@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import {
     ActivityIndicator,
     Dimensions,
@@ -154,11 +155,11 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
 
     return (
         <>
-            <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: -5, marginTop: -3 }}>
-                📅 Academic Calendar
-            </Text>
+            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, paddingBottom: 8 }]}>
+                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 12 }}>
+                    📅 Academic Calendar
+                </Text>
 
-            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                 <View style={styles.calHeader}>
                     <TouchableOpacity onPress={prevMonth} style={[styles.navBtn, { borderColor: theme.cardBorder }]} activeOpacity={0.7}>
                         <ChevronLeft size={18} color={theme.purple} />
@@ -208,15 +209,19 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
                     })}
                 </View>
 
-                {/* Legend — only unique types present this month */}
+                {/* Legend — all event types always shown (matches web) */}
                 <View style={[styles.legendRow, { borderTopColor: theme.cardBorder }]}>
-                    {(Object.keys(EVENT_CFG) as EventType[]).filter(t => events.some(e => e.type === t)).map(type => (
+                    {(Object.keys(EVENT_CFG) as EventType[]).map(type => (
                         <View key={type} style={styles.legendItem}>
                             <View style={[styles.legendDot, { backgroundColor: EVENT_CFG[type].dot }]} />
                             <Text style={[styles.legendText, { color: theme.muted }]}>{EVENT_CFG[type].label}</Text>
                         </View>
                     ))}
                 </View>
+
+                <Text style={{ fontSize: 10, color: theme.muted, opacity: 0.7, textAlign: 'center', marginTop: 12 }}>
+                    Managed by Principal Office and Teachers
+                </Text>
 
                 <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
                     <Pressable style={styles.overlay} onPress={() => setModalVisible(false)}>
@@ -261,6 +266,25 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
     );
 }
 
+// ── Verified Badge (same as web teacher/admin feed) ────────────────────────────
+function VerifiedBadge() {
+    return (
+        <Svg width={12} height={12} viewBox="0 0 40 40" fill="none">
+            <Path d="M20 2
+                L23.5 6.5 L29 5 L31.5 10.5 L37.5 12
+                L36 18 L40 22 L36 26 L37.5 32
+                L31.5 33.5 L29 39 L23.5 37.5
+                L20 42 L16.5 37.5 L11 39
+                L8.5 33.5 L2.5 32 L4 26
+                L0 22 L4 18 L2.5 12
+                L8.5 10.5 L11 5 L16.5 6.5 Z"
+                fill="#DA7756" />
+            <Path d="M13 21l5 5 9-10"
+                stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+    );
+}
+
 // ── Feed Card ─────────────────────────────────────────────────────────────────
 function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme: typeof LIGHT; isDark: boolean; divisionName: string }) {
     const [expanded, setExpanded] = useState(false);
@@ -297,12 +321,14 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={[styles.authorName, { color: theme.text }]}>{post.author.name}</Text>
-                    <Text style={[styles.authorMeta, { color: theme.muted }]} numberOfLines={1}>
-                        {post.author.role.charAt(0) + post.author.role.slice(1).toLowerCase()}
-                    </Text>
-                    <Text style={[styles.authorMeta, { color: theme.muted, opacity: 0.7, marginTop: 1 }]} numberOfLines={1}>
-                        {formatDateTime(post.createdAt)}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -4 }}>
+                        <Text style={[styles.authorMeta, { color: theme.muted }]} numberOfLines={1}>
+                            {post.author.role.charAt(0) + post.author.role.slice(1).toLowerCase()}
+                        </Text>
+                        <View style={{ marginTop: -2 }}>
+                            <VerifiedBadge />
+                        </View>
+                    </View>
                 </View>
             </View>
 
@@ -319,10 +345,15 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
                 />
             )}
 
-            <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-                {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
-                <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'Read more'}</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+                    {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
+                    <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'Read more'}</Text>
+                </TouchableOpacity>
+                <Text style={[styles.authorMeta, { color: theme.muted, opacity: 0.7 }]} numberOfLines={1}>
+                    {formatDateTime(post.createdAt)}
+                </Text>
+            </View>
         </View>
     );
 }
@@ -437,56 +468,65 @@ export default function Feed() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Feed" />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-                <View style={styles.body}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 2 }}>
+                <View style={[styles.body, { paddingTop: 6 }]}>
 
                     <MiniCalendar theme={theme} isDark={isDark} />
 
-                    {/* Feed header */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>
-                            📢 Announcements & Feed
-                        </Text>
-                        {loading
-                            ? <ActivityIndicator size="small" color={theme.purple} />
-                            : inScreenHasNew
-                            ? <View style={{ width: 10, height: 10, borderRadius: 99, backgroundColor: '#10B981' }} />
-                            : null
-                        }
+                    {/* Feed — fixed-height card, header/filters stay put, posts scroll inside */}
+                    <View style={[styles.feedPanel, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                        <View style={[styles.feedPanelHeader, { borderBottomColor: theme.cardBorder }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>
+                                    📢 Announcements & Feed
+                                </Text>
+                                {loading
+                                    ? <ActivityIndicator size="small" color={theme.purple} />
+                                    : inScreenHasNew
+                                    ? <View style={{ width: 10, height: 10, borderRadius: 99, backgroundColor: '#10B981' }} />
+                                    : null
+                                }
+                            </View>
+
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterRow, { marginTop: 10 }]}>
+                                {filters.map(tab => {
+                                    const isActive = activeFilter === tab.key;
+                                    return (
+                                        <TouchableOpacity key={tab.key}
+                                            style={[styles.filterChip, {
+                                                backgroundColor: isActive ? theme.purple : theme.bg,
+                                                borderColor: isActive ? theme.purple : theme.cardBorder,
+                                            }]}
+                                            onPress={() => setActiveFilter(tab.key)}
+                                            activeOpacity={0.75}>
+                                            <Text style={{ fontSize: 12 }}>{tab.emoji}</Text>
+                                            <Text style={[styles.filterChipText, { color: isActive ? 'white' : theme.subText }]}>{tab.label}</Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+
+                        <ScrollView
+                            style={{ flex: 1, backgroundColor: theme.bg }}
+                            contentContainerStyle={{ padding: 14, gap: 12, flexGrow: 1 }}
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {loading ? (
+                                <FeedSkeleton theme={theme} isDark={isDark} />
+                            ) : posts.length === 0 ? (
+                                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+                                    <Text style={{ fontFamily: 'Poppins_600SemiBold', color: theme.subText, fontSize: 14 }}>No posts here</Text>
+                                    <Text style={{ fontFamily: 'Poppins_400Regular', color: theme.muted, fontSize: 12, marginTop: 4 }}>Check back later</Text>
+                                </View>
+                            ) : (
+                                posts.map(post => (
+                                    <FeedCard key={post.id} post={post} theme={theme} isDark={isDark} divisionName={divisionName} />
+                                ))
+                            )}
+                        </ScrollView>
                     </View>
-
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                        {filters.map(tab => {
-                            const isActive = activeFilter === tab.key;
-                            return (
-                                <TouchableOpacity key={tab.key}
-                                    style={[styles.filterChip, {
-                                        backgroundColor: isActive ? theme.purple : theme.card,
-                                        borderColor: isActive ? theme.purple : theme.cardBorder,
-                                    }]}
-                                    onPress={() => setActiveFilter(tab.key)}
-                                    activeOpacity={0.75}>
-                                    <Text style={{ fontSize: 12 }}>{tab.emoji}</Text>
-                                    <Text style={[styles.filterChipText, { color: isActive ? 'white' : theme.subText }]}>{tab.label}</Text>
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </ScrollView>
-
-                    {loading ? (
-                        <FeedSkeleton theme={theme} isDark={isDark} />
-                    ) : posts.length === 0 ? (
-                        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                            <Text style={{ fontFamily: 'Poppins_600SemiBold', color: theme.subText, fontSize: 14 }}>No posts here</Text>
-                            <Text style={{ fontFamily: 'Poppins_400Regular', color: theme.muted, fontSize: 12, marginTop: 4 }}>Check back later</Text>
-                        </View>
-                    ) : (
-                        <View style={{ gap: 12 }}>
-                            {posts.map(post => (
-                                <FeedCard key={post.id} post={post} theme={theme} isDark={isDark} divisionName={divisionName} />
-                            ))}
-                        </View>
-                    )}
 
                 </View>
             </ScrollView>
@@ -525,6 +565,9 @@ const styles = StyleSheet.create({
     modalEventType: { fontSize: 11, fontFamily: 'Poppins_600SemiBold', opacity: 0.75 },
     modalEventLabel: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
     modalCloseBtn: { alignItems: 'center', paddingVertical: 12, borderRadius: 14, marginTop: 4 },
+
+    feedPanel: { height: 600, borderRadius: 20, borderWidth: 1, overflow: 'hidden', shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+    feedPanelHeader: { padding: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 
     filterRow: { gap: 8, paddingBottom: 2 },
     filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },

@@ -1,3 +1,4 @@
+import { InlineWheel } from '@/components/InlineWheel';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
@@ -9,14 +10,16 @@ import {
     Calendar,
     Download,
     Eye,
+    GraduationCap,
     Trophy,
     Users,
     FileText,
     X,
 } from 'lucide-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
     Dimensions,
     Image,
     Modal,
@@ -81,7 +84,7 @@ interface MaterialFile {
     postedBy: string; createdAt: string;
 }
 interface ClassData {
-    division: { id: string; name: string; standardName: string; classTeacherName: string | null; totalStudents: number; subjects: Subject[] } | null;
+    division: { id: string; name: string; standardName: string; classTeacherName: string | null; classTeacherAvatarUrl: string | null; totalStudents: number; subjects: Subject[] } | null;
     resultFiles: ResultFile[];
     subjectMaterials: Record<string, MaterialFile[]>;
     classmates: Classmate[];
@@ -176,25 +179,9 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
     );
 }
 
-// ── LB Mode Filter ────────────────────────────────────────────────────────────
-function LbFilter({ mode, onChange, theme }: { mode: LbMode; onChange: (m: LbMode) => void; theme: typeof LIGHT }) {
-    const tabs: { key: LbMode; label: string }[] = [
-        { key: 'offline', label: 'Offline' },
-        { key: 'online', label: 'Online' },
-        { key: 'combined', label: 'Combined' },
-    ];
-    return (
-        <View style={{ flexDirection: 'row', backgroundColor: theme.cardBorder, borderRadius: 99, padding: 2, alignSelf: 'flex-start' }}>
-            {tabs.map(t => (
-                <TouchableOpacity key={t.key} onPress={() => { Haptics.selectionAsync(); onChange(t.key); }}
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, backgroundColor: mode === t.key ? theme.purple : 'transparent' }}
-                    activeOpacity={0.8}>
-                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: mode === t.key ? 'white' : theme.subText }}>{t.label}</Text>
-                </TouchableOpacity>
-            ))}
-        </View>
-    );
-}
+// LB mode filter now uses the shared InlineWheel picker (components/InlineWheel.tsx) —
+// same exact control as the Subject Performance wheel on the Profile screen.
+const LB_MODE_OPTIONS = ['combined', 'offline', 'online'];
 
 // ── Timetable Card ────────────────────────────────────────────────────────────
 const TIMETABLE_IMAGE = require('../../assets/images/timetable.jpeg');
@@ -258,6 +245,129 @@ function TimetableImageCard({ theme, isDark }: { theme: typeof LIGHT; isDark: bo
     );
 }
 
+// ── Tab Switcher (reused inline + in sticky overlay) ─────────────────────────
+function TabSwitcher({ activeTab, setActiveTab, theme }: { activeTab: 'batch' | 'subjects'; setActiveTab: (t: 'batch' | 'subjects') => void; theme: typeof LIGHT }) {
+    // Sliding pill indicator (like web's framer-motion layoutId tab animation) —
+    // one shared background pill that animates its position instead of each
+    // button toggling its own background on/off.
+    const [containerWidth, setContainerWidth] = useState(0);
+    const indicatorPos = useRef(new Animated.Value(activeTab === 'batch' ? 0 : 1)).current;
+
+    useEffect(() => {
+        Animated.spring(indicatorPos, {
+            toValue: activeTab === 'batch' ? 0 : 1,
+            useNativeDriver: true,
+            bounciness: 8,
+            speed: 14,
+        }).start();
+    }, [activeTab]);
+
+    const pillWidth = containerWidth > 8 ? (containerWidth - 8) / 2 : 0;
+    const translateX = indicatorPos.interpolate({ inputRange: [0, 1], outputRange: [0, pillWidth] });
+
+    return (
+        <View
+            style={[styles.mainTabRow, { backgroundColor: theme.card, borderColor: theme.cardBorder, marginHorizontal: 0, marginTop: 0, marginBottom: 0 }]}
+            onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+        >
+            {pillWidth > 0 && (
+                <Animated.View
+                    style={{
+                        position: 'absolute', top: 4, bottom: 4, left: 4,
+                        width: pillWidth, borderRadius: 99, backgroundColor: theme.purple,
+                        transform: [{ translateX }],
+                    }}
+                />
+            )}
+            {(['batch', 'subjects'] as const).map(tab => (
+                <TouchableOpacity
+                    key={tab}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }}
+                    style={styles.mainTab}
+                >
+                    <Text style={[styles.mainTabText, { color: activeTab === tab ? 'white' : theme.subText }]}>
+                        {tab === 'batch' ? '📋 View' : '📚 Subjects'}
+                    </Text>
+                </TouchableOpacity>
+            ))}
+        </View>
+    );
+}
+
+// ── Animated Pill Toggle (sliding-indicator toggle, for unequal-width labels
+//    like "Results"/"Materials" — same web-style animation as TabSwitcher above) ──
+function AnimatedPillToggle<T extends string>({ options, activeKey, onChange, activeColor, theme }: {
+    options: { key: T; label: string; emoji: string }[];
+    activeKey: T;
+    onChange: (key: T) => void;
+    activeColor: string;
+    theme: { subText: string; cardBorder: string; bg: string };
+}) {
+    const [layouts, setLayouts] = useState<Partial<Record<string, { x: number; width: number }>>>({});
+    const activeLayout = layouts[activeKey];
+    const translateX = useRef(new Animated.Value(0)).current;
+    const widthAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (!activeLayout) return;
+        Animated.spring(translateX, { toValue: activeLayout.x, useNativeDriver: false, bounciness: 8, speed: 14 }).start();
+        Animated.spring(widthAnim, { toValue: activeLayout.width, useNativeDriver: false, bounciness: 8, speed: 14 }).start();
+    }, [activeKey, activeLayout?.x, activeLayout?.width]);
+
+    return (
+        <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 15, padding: 2, borderWidth: 1, borderColor: theme.cardBorder, alignSelf: 'flex-start' }}>
+            {activeLayout && (
+                <Animated.View
+                    style={{
+                        position: 'absolute', top: 2, bottom: 2, left: 0,
+                        width: widthAnim, borderRadius: 13, backgroundColor: activeColor,
+                        transform: [{ translateX }],
+                    }}
+                />
+            )}
+            {options.map(o => {
+                const active = o.key === activeKey;
+                return (
+                    <TouchableOpacity
+                        key={o.key}
+                        onLayout={(e) => {
+                            const { x, width } = e.nativeEvent.layout;
+                            setLayouts(prev => ({ ...prev, [o.key]: { x, width } }));
+                        }}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onChange(o.key); }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 13 }}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={{ fontSize: 10 }}>{o.emoji}</Text>
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: active ? 'white' : theme.subText }}>{o.label}</Text>
+                    </TouchableOpacity>
+                );
+            })}
+        </View>
+    );
+}
+
+// ── Subject Chip Selector (reused inline-spacer + sticky-overlay) ────────────
+function SubjectChipSelector({ subjects, activeSubjectIdx, setActiveSubjectIdx, theme }: {
+    subjects: Subject[]; activeSubjectIdx: number; setActiveSubjectIdx: (i: number) => void; theme: typeof LIGHT;
+}) {
+    return (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
+            {subjects.map((sub, i) => {
+                const active = i === activeSubjectIdx;
+                return (
+                    <TouchableOpacity key={sub.id} onPress={() => { Haptics.selectionAsync(); setActiveSubjectIdx(i); }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1, borderColor: active ? sub.color : theme.cardBorder, backgroundColor: active ? sub.color + '20' : theme.card }}
+                        activeOpacity={0.8}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sub.color }} />
+                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: active ? sub.color : theme.subText }}>{sub.name}</Text>
+                    </TouchableOpacity>
+                );
+            })}
+        </ScrollView>
+    );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Courses() {
     const { isDark } = useTheme();
@@ -268,10 +378,40 @@ export default function Courses() {
     const [refreshing, setRefreshing] = useState(false);
 
     const [activeTab, setActiveTab] = useState<'batch' | 'subjects'>('batch');
+    // Keep a tab's content mounted once visited, and just toggle its visibility afterwards.
+    // Unmount/remount on every switch is what caused the noticeable lag (Subjects tab has a
+    // LineChart + images, which are expensive to recreate every tap).
+    const [hasVisitedSubjects, setHasVisitedSubjects] = useState(false);
+    useEffect(() => { if (activeTab === 'subjects') setHasVisitedSubjects(true); }, [activeTab]);
     const [activeSubjectIdx, setActiveSubjectIdx] = useState(0);
+    const [subjectCenterTab, setSubjectCenterTab] = useState<'results' | 'materials'>('results');
     const [lbMode, setLbMode] = useState<LbMode>('combined');
     const [subjLbMode, setSubjLbMode] = useState<LbMode>('combined');
     const [viewerFile, setViewerFile] = useState<ViewerFile | null>(null);
+    const [chartTooltip, setChartTooltip] = useState<number | null>(null);
+    useEffect(() => { setChartTooltip(null); }, [activeSubjectIdx]);
+
+    // Sticky-toggle-on-scroll (manual, native-driver Animated — not stickyHeaderIndices,
+    // which has a known Android bug where the stuck header stops receiving taps).
+    // The overlay's translateY is animated frame-by-frame in native code (no React re-render
+    // lag), so it tracks the scroll in perfect lockstep and "catches" at the top with zero pop.
+    const scrollY = useRef(new Animated.Value(0)).current;
+    const currentScrollY = useRef(0); // plain JS mirror of scrollY, for reading synchronously on tab switch
+    const scrollRef = useRef<any>(null);
+    const [switcherY, setSwitcherY] = useState(0);
+    const overlayTranslateY = switcherY > 0
+        ? scrollY.interpolate({ inputRange: [0, switcherY], outputRange: [switcherY, 0], extrapolate: 'clamp' })
+        : 0;
+
+    // Switching tabs: only snap scroll if we were already scrolled past the sticky-catch
+    // point (switcherY) — in that case snap to exactly switcherY so the new tab's content
+    // starts at its own top without re-revealing the banner. If we hadn't scrolled that far
+    // yet, leave the scroll position alone — it's already showing the banner correctly.
+    useEffect(() => {
+        if (currentScrollY.current > switcherY) {
+            scrollRef.current?.scrollTo({ y: switcherY, animated: false });
+        }
+    }, [activeTab]);
 
     const fetchData = useCallback(async () => {
         try {
@@ -316,67 +456,84 @@ export default function Courses() {
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
             <ScreenHeader title="Class" />
-            <ScrollView
+
+            <View style={{ flex: 1 }}>
+            <Animated.ScrollView
+                ref={scrollRef}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 30 }}
+                contentContainerStyle={{ paddingBottom: 2 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: true, listener: (e: any) => { currentScrollY.current = e.nativeEvent.contentOffset.y; } }
+                )}
+                scrollEventThrottle={16}
             >
+                {/* ── Banner (scrolls away normally) ── */}
+                <View style={[styles.banner, { backgroundColor: isDark ? '#1A0A3E' : '#7C3AED' }]}>
+                    <View style={styles.bannerOrb1} />
+                    <View style={styles.bannerOrb2} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={styles.bannerIconBox}>
+                            <BookOpen size={20} color="white" />
+                        </View>
+                        <View>
+                            <Text style={styles.bannerTitle}>{divLabel}</Text>
+                            <Text style={styles.bannerSub}>
+                                {division?.classTeacherName ? `Class Teacher - ${division.classTeacherName}` : `${division?.totalStudents ?? classmates.length} Students`}
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* ── Tab switcher spacer (layout/measurement only — NOT interactive.
+                     The overlay below is the sole tappable copy; keeping both touchable caused
+                     overlapping hit-targets and made taps feel laggy/missed. ── */}
+                <View
+                    onLayout={(e) => setSwitcherY(e.nativeEvent.layout.y)}
+                    pointerEvents="none"
+                    style={{ backgroundColor: theme.bg, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4 }}
+                >
+                    <TabSwitcher activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
+                    {activeTab === 'subjects' && subjects.length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                            <SubjectChipSelector subjects={subjects} activeSubjectIdx={activeSubjectIdx} setActiveSubjectIdx={setActiveSubjectIdx} theme={theme} />
+                        </View>
+                    )}
+                </View>
+
                 {loading ? (
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
                         <ActivityIndicator size="large" color={theme.purple} />
                     </View>
                 ) : (
-                    <>
-                        {/* ── Banner ── */}
-                        <View style={[styles.banner, { backgroundColor: isDark ? '#1A0A3E' : '#7C3AED' }]}>
-                            <View style={styles.bannerOrb1} />
-                            <View style={styles.bannerOrb2} />
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                <View style={styles.bannerIconBox}>
-                                    <BookOpen size={20} color="white" />
-                                </View>
-                                <View>
-                                    <Text style={styles.bannerTitle}>{divLabel}</Text>
-                                    <Text style={styles.bannerSub}>
-                                        {division?.totalStudents ?? classmates.length} Students
-                                        {division?.classTeacherName ? ` · ${division.classTeacherName}` : ''}
-                                    </Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        {/* ── Tab switcher ── */}
-                        <View style={[styles.mainTabRow, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                            {(['batch', 'subjects'] as const).map(tab => (
-                                <TouchableOpacity
-                                    key={tab}
-                                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }}
-                                    style={[styles.mainTab, activeTab === tab && { backgroundColor: theme.purple }]}
-                                >
-                                    <Text style={[styles.mainTabText, { color: activeTab === tab ? 'white' : theme.subText }]}>
-                                        {tab === 'batch' ? '📋 View' : '📚 Subjects'}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
                         <View style={styles.body}>
 
-                            {/* ══ BATCH TAB ══ */}
-                            {activeTab === 'batch' && (
-                                <View style={{ gap: 14 }}>
+                            {/* ══ BATCH TAB ══ (always mounted — it's the default tab) */}
+                            <View style={{ gap: 14, marginTop: -8, display: activeTab === 'batch' ? 'flex' : 'none' }}>
                                     {/* Timetable */}
                                     <TimetableImageCard theme={theme} isDark={isDark} />
 
                                     {/* Subject teachers */}
                                     <Card theme={theme}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                                            <BookOpen size={16} color={theme.purple} />
-                                            <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Subject Teachers</Text>
+                                            <GraduationCap size={17} color={theme.green} />
+                                            <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Teachers</Text>
                                         </View>
-                                        {subjects.length === 0
+                                        {subjects.length === 0 && !division?.classTeacherName
                                             ? <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>No subjects assigned yet</Text>
-                                            : <View style={{ gap: 8 }}>
+                                            : <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                              <View style={{ gap: 8 }}>
+                                                {division?.classTeacherName && (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
+                                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#F59E0B' }} />
+                                                        <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Class Teacher</Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                            <Avatar name={division.classTeacherName} avatarUrl={division.classTeacherAvatarUrl} size={22} />
+                                                            <Text style={{ fontSize: 11, color: theme.subText, fontFamily: 'Poppins_400Regular', maxWidth: 130 }} numberOfLines={1}>{division.classTeacherName}</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
                                                 {subjects.map(sub => (
                                                     <View key={sub.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
                                                         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: sub.color }} />
@@ -387,7 +544,8 @@ export default function Courses() {
                                                         </View>
                                                     </View>
                                                 ))}
-                                            </View>
+                                              </View>
+                                              </ScrollView>
                                         }
                                     </Card>
 
@@ -396,8 +554,8 @@ export default function Courses() {
                                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
                                             <Trophy size={16} color={theme.amber} />
                                             <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, flex: 1 }}>Leaderboard — Top 5</Text>
+                                            <InlineWheel options={LB_MODE_OPTIONS} value={lbMode} onChange={(v) => setLbMode(v as LbMode)} isDark={isDark} theme={theme} />
                                         </View>
-                                        <LbFilter mode={lbMode} onChange={setLbMode} theme={theme} />
                                         <View style={{ marginTop: 12 }}>
 
                                             {top5.length === 0
@@ -417,8 +575,15 @@ export default function Courses() {
                                                                     return (
                                                                         <View key={s.id} style={{ alignItems: 'center', gap: 4 }}>
                                                                             <Avatar name={s.name} avatarUrl={s.avatarUrl} size={i === 1 ? 44 : 36} />
-                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text, width: 66, textAlign: 'center' }} numberOfLines={2}>{s.name.split(' ')[0]}</Text>
-                                                                            {s.isMe && <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>YOU</Text>}
+                                                                            <View style={{ width: 66 }}>
+                                                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: theme.text, textAlign: 'center', lineHeight: 12 }} numberOfLines={1}>{s.name.split(' ')[0]}</Text>
+                                                                                <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.text, textAlign: 'center', lineHeight: 11, marginTop: 0 }} numberOfLines={1}>{s.name.split(' ').slice(1).join(' ')}</Text>
+                                                                            </View>
+                                                                            {s.isMe && (
+                                                                                <View style={{ backgroundColor: theme.purple + '20', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 99 }}>
+                                                                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>You</Text>
+                                                                                </View>
+                                                                            )}
                                                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: cfg.color }}>{pct != null ? `${pct}%` : '—'}</Text>
                                                                             <View style={{ height: cfg.height, width: 52, backgroundColor: cfg.color, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}>
                                                                                 <Text style={{ fontSize: 22 }}>{cfg.medal}</Text>
@@ -489,32 +654,47 @@ export default function Courses() {
                                         </View>
                                         {classmates.length === 0
                                             ? <Text style={{ fontSize: 12, color: theme.muted, textAlign: 'center', paddingVertical: 16 }}>No classmates found</Text>
-                                            : <View style={{ gap: 6 }}>
-                                                {classmates.map(s => (
-                                                    <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: s.isMe ? theme.purple + '40' : 'transparent' }}>
-                                                        <Avatar name={s.name} avatarUrl={s.avatarUrl} size={32} />
-                                                        <View style={{ flex: 1 }}>
-                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: s.isMe ? theme.purple : theme.text }} numberOfLines={1}>{s.name}</Text>
-                                                                {s.isMe && <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple, backgroundColor: theme.purpleLight, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 }}>YOU</Text>}
+                                            : (
+                                                <ScrollView
+                                                    style={{ maxHeight: 342 }}
+                                                    nestedScrollEnabled
+                                                    showsVerticalScrollIndicator={false}
+                                                >
+                                                    <View style={{ gap: 6 }}>
+                                                        {classmates.map(s => (
+                                                            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: s.isMe ? theme.purple + '40' : 'transparent' }}>
+                                                                <Avatar name={s.name} avatarUrl={s.avatarUrl} size={32} />
+                                                                <View style={{ flex: 1 }}>
+                                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: s.isMe ? theme.purple : theme.text }} numberOfLines={1}>{s.name}</Text>
+                                                                        {s.isMe && (
+                                                                            <View style={{ backgroundColor: theme.purple + '20', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 99 }}>
+                                                                                <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>You</Text>
+                                                                            </View>
+                                                                        )}
+                                                                    </View>
+                                                                    <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Roll {s.rollNo}</Text>
+                                                                </View>
+                                                                {s.rank != null && (
+                                                                    <View style={{ alignItems: 'center' }}>
+                                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_700Bold', color: s.rank === 1 ? '#F59E0B' : s.rank === 2 ? '#94A3B8' : s.rank === 3 ? '#CD7C2F' : theme.purple }}>
+                                                                            #{s.rank}
+                                                                        </Text>
+                                                                        <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>rank</Text>
+                                                                    </View>
+                                                                )}
                                                             </View>
-                                                            <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Roll {s.rollNo}</Text>
-                                                        </View>
-                                                        <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                                                            {s.rank != null && <Text style={{ fontSize: 11, fontFamily: 'Poppins_700Bold', color: theme.purple }}>#{s.rank}</Text>}
-                                                            {s.attendancePct != null && <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: s.attendancePct >= 75 ? theme.green : theme.red }}>{s.attendancePct}% att</Text>}
-                                                        </View>
+                                                        ))}
                                                     </View>
-                                                ))}
-                                            </View>
+                                                </ScrollView>
+                                            )
                                         }
                                     </Card>
                                 </View>
-                            )}
 
-                            {/* ══ SUBJECTS TAB ══ */}
-                            {activeTab === 'subjects' && (
-                                <View style={{ gap: 14 }}>
+                            {/* ══ SUBJECTS TAB ══ (mounted after first visit, then kept alive) */}
+                            {hasVisitedSubjects && (
+                                <View style={{ gap: 14, marginTop: -8, display: activeTab === 'subjects' ? 'flex' : 'none' }}>
                                     {subjects.length === 0
                                         ? (
                                             <Card theme={theme}>
@@ -523,28 +703,13 @@ export default function Courses() {
                                         )
                                         : (
                                             <>
-                                                {/* Subject chip selector */}
-                                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
-                                                    {subjects.map((sub, i) => {
-                                                        const active = i === activeSubjectIdx;
-                                                        return (
-                                                            <TouchableOpacity key={sub.id} onPress={() => { Haptics.selectionAsync(); setActiveSubjectIdx(i); }}
-                                                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1, borderColor: active ? sub.color : theme.cardBorder, backgroundColor: active ? sub.color + '20' : theme.card }}
-                                                                activeOpacity={0.8}>
-                                                                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sub.color }} />
-                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: active ? sub.color : theme.subText }}>{sub.name}</Text>
-                                                            </TouchableOpacity>
-                                                        );
-                                                    })}
-                                                </ScrollView>
-
                                                 {activeSubject && (
                                                     <>
                                                         {/* Teacher + score card */}
                                                         <Card theme={theme}>
                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                                                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: activeSubject.color + '20', borderWidth: 1.5, borderColor: activeSubject.color, alignItems: 'center', justifyContent: 'center' }}>
-                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: activeSubject.color }}>{activeSubject.code}</Text>
+                                                                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: activeSubject.color, alignItems: 'center', justifyContent: 'center' }}>
+                                                                    <Text style={{ fontSize: 15, fontFamily: 'Poppins_800ExtraBold', color: 'white' }}>{activeSubject.code || activeSubject.name.slice(0, 2).toUpperCase()}</Text>
                                                                 </View>
                                                                 <View style={{ flex: 1 }}>
                                                                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>{activeSubject.name}</Text>
@@ -553,12 +718,6 @@ export default function Courses() {
                                                                         <Text style={{ fontSize: 11, color: theme.subText, fontFamily: 'Poppins_400Regular' }}>{activeSubject.teacherName}</Text>
                                                                     </View>
                                                                 </View>
-                                                                {activeScore && (
-                                                                    <View style={{ alignItems: 'flex-end' }}>
-                                                                        <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: activeSubject.color }}>{activeScore.pct != null ? `${activeScore.pct}%` : '—'}</Text>
-                                                                        <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>{activeScore.totalScored}/{activeScore.totalMax}</Text>
-                                                                    </View>
-                                                                )}
                                                             </View>
                                                         </Card>
 
@@ -566,9 +725,9 @@ export default function Courses() {
                                                         <Card theme={theme}>
                                                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
                                                                 <Trophy size={15} color={theme.amber} />
-                                                                <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, flex: 1 }}>{activeSubject.code} — Top 5</Text>
+                                                                <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, flex: 1 }}>{activeSubject.name} — Top 5</Text>
+                                                                <InlineWheel options={LB_MODE_OPTIONS} value={subjLbMode} onChange={(v) => setSubjLbMode(v as LbMode)} isDark={isDark} theme={theme} />
                                                             </View>
-                                                            <LbFilter mode={subjLbMode} onChange={setSubjLbMode} theme={theme} />
                                                             <View style={{ marginTop: 10, gap: 8 }}>
                                                                 {activeSubjLeaderboard.length === 0
                                                                     ? <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingVertical: 12 }}>No results published yet</Text>
@@ -580,7 +739,7 @@ export default function Courses() {
                                                                                 <Text style={{ fontSize: medal ? 18 : 12, width: 28, textAlign: 'center', fontFamily: 'Poppins_700Bold', color: theme.muted }}>{medal ?? `#${i + 1}`}</Text>
                                                                                 <Avatar name={e.name} avatarUrl={e.avatarUrl} size={30} />
                                                                                 <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: e.isMe ? theme.purple : theme.text }} numberOfLines={1}>{e.name.split(' ')[0]}{e.isMe ? ' (You)' : ''}</Text>
-                                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: activeSubject.color }}>{pct != null ? `${pct}%` : '—'}</Text>
+                                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: i === 0 ? '#F59E0B' : i === 1 ? '#94A3B8' : i === 2 ? '#CD7F32' : activeSubject.color }}>{pct != null ? `${pct}%` : '—'}</Text>
                                                                             </View>
                                                                         );
                                                                     })
@@ -588,118 +747,182 @@ export default function Courses() {
                                                             </View>
                                                         </Card>
 
-                                                        {/* Performance chart */}
-                                                        {!activeScore
-                                                            ? (
-                                                                <Card theme={theme}>
+                                                        {/* Results / Materials — one card, toggle inside at the top (matches web) */}
+                                                        <Card theme={theme}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
+                                                                <AnimatedPillToggle
+                                                                    options={[
+                                                                        { key: 'results' as const, label: 'Results', emoji: '📊' },
+                                                                        { key: 'materials' as const, label: 'Materials', emoji: '📄' },
+                                                                    ]}
+                                                                    activeKey={subjectCenterTab}
+                                                                    onChange={setSubjectCenterTab}
+                                                                    activeColor={activeSubject.color}
+                                                                    theme={theme}
+                                                                />
+                                                                {subjectCenterTab === 'results' && (
+                                                                    <InlineWheel options={LB_MODE_OPTIONS} value={subjLbMode} onChange={(v) => setSubjLbMode(v as LbMode)} isDark={isDark} theme={theme} />
+                                                                )}
+                                                            </View>
+
+                                                            <View style={{ minHeight: 480 }}>
+                                                            {subjectCenterTab === 'results' ? (
+                                                                !activeScore ? (
                                                                     <Text style={{ fontSize: 12, color: theme.muted, textAlign: 'center', paddingVertical: 16 }}>Marks not published yet</Text>
-                                                                </Card>
-                                                            )
-                                                            : hasChart && (
-                                                                <Card theme={theme}>
-                                                                    <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 4 }}>Performance Trend</Text>
-                                                                    <LineChart
-                                                                        renderDotContent={({ x, y, index, indexData }) => {
-                                                                            const max = Math.max(...chartValues);
-                                                                            const min = Math.min(...chartValues);
-                                                                            if (indexData !== max && indexData !== min) return null;
-                                                                            const isMin = indexData === min;
-                                                                            return (
-                                                                                <View key={index} style={{ position: 'absolute', top: isMin ? y + 6 : y - 22, left: x - 12, backgroundColor: isMin ? theme.red : theme.green, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 }}>
-                                                                                    <Text style={{ fontSize: 9, color: 'white', fontFamily: 'Poppins_600SemiBold' }}>{indexData}%</Text>
-                                                                                </View>
-                                                                            );
-                                                                        }}
-                                                                        data={{ labels: chartLabels, datasets: [{ data: chartValues, color: () => activeSubject.color, strokeWidth: 2 }] }}
-                                                                        width={width - 80}
-                                                                        height={180}
-                                                                        yAxisSuffix="%"
-                                                                        chartConfig={{
-                                                                            backgroundColor: 'transparent',
-                                                                            backgroundGradientFrom: theme.card,
-                                                                            backgroundGradientTo: theme.card,
-                                                                            decimalPlaces: 0,
-                                                                            color: () => activeSubject.color,
-                                                                            fillShadowGradient: activeSubject.color,
-                                                                            fillShadowGradientOpacity: 0.15,
-                                                                            labelColor: () => theme.subText,
-                                                                            propsForDots: { r: '4', strokeWidth: '2', stroke: theme.card, fill: activeSubject.color },
-                                                                            propsForBackgroundLines: { stroke: theme.cardBorder, strokeWidth: 1, strokeDasharray: '' },
-                                                                            propsForLabels: { fontSize: 9, fontFamily: 'Poppins_400Regular' },
-                                                                        }}
-                                                                        bezier
-                                                                        style={{ borderRadius: 12, marginLeft: -16, marginBottom: 4 }}
-                                                                        fromZero
-                                                                        withInnerLines
-                                                                        withHorizontalLabels
-                                                                        segments={5}
-                                                                    />
-                                                                </Card>
-                                                            )
-                                                        }
-
-                                                        {/* Materials */}
-                                                        {activeSubjMaterials.length > 0 && (
-                                                            <Card theme={theme}>
-                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                                                    <BookOpen size={15} color={activeSubject.color} />
-                                                                    <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }}>Materials</Text>
-                                                                </View>
-                                                                <View style={{ gap: 8 }}>
-                                                                    {activeSubjMaterials.map(m => (
-                                                                        <TouchableOpacity key={m.id}
-                                                                            onPress={() => m.attachmentUrl && setViewerFile({ title: m.title, url: m.attachmentUrl, type: m.attachmentType })}
-                                                                            activeOpacity={m.attachmentUrl ? 0.75 : 1}
-                                                                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: theme.bg, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder }}>
-                                                                            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: activeSubject.color + '20', alignItems: 'center', justifyContent: 'center' }}>
-                                                                                <FileText size={16} color={activeSubject.color} />
-                                                                            </View>
-                                                                            <View style={{ flex: 1 }}>
-                                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{m.title}</Text>
-                                                                                <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>
-                                                                                    {m.postedBy} · {new Date(m.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                                                </Text>
-                                                                            </View>
-                                                                            {m.attachmentUrl && <Eye size={13} color={theme.muted} />}
-                                                                        </TouchableOpacity>
-                                                                    ))}
-                                                                </View>
-                                                            </Card>
-                                                        )}
-
-                                                        {/* Exam results list */}
-                                                        {activeScore && activeScore.columns.length > 0 && (
-                                                            <Card theme={theme}>
-                                                                <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 12 }}>My Results</Text>
-                                                                <View style={{ gap: 10 }}>
-                                                                    {activeScore.columns.map((col, i) => {
-                                                                        const pct = col.isAbsent ? null : col.scored != null ? Math.round((col.scored / col.max) * 100) : null;
-                                                                        const color = pct == null ? theme.muted : pct >= 75 ? theme.green : pct >= 40 ? theme.amber : theme.red;
-                                                                        return (
-                                                                            <View key={i} style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 14, gap: 8 }}>
-                                                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text, flex: 1 }} numberOfLines={1}>{col.name}</Text>
-                                                                                    {col.isAbsent
-                                                                                        ? <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: theme.red, backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 }}>Absent</Text>
-                                                                                        : (
-                                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: activeSubject.color }}>{col.scored}/{col.max}</Text>
-                                                                                                {pct != null && <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color, backgroundColor: color + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 }}>{pct}%</Text>}
+                                                                ) : (
+                                                                    <>
+                                                                        {hasChart && (
+                                                                            <>
+                                                                                <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 4 }}>Performance Trend</Text>
+                                                                                <View style={{ position: 'relative' }}>
+                                                                                <LineChart
+                                                                                    renderDotContent={({ x, y, index, indexData }) => {
+                                                                                        const max = Math.max(...chartValues);
+                                                                                        const min = Math.min(...chartValues);
+                                                                                        if (chartTooltip === index) {
+                                                                                            const chartWidth = width - 80;
+                                                                                            const tooltipW = 60;
+                                                                                            const clampedLeft = Math.max(2, Math.min(x - tooltipW / 2, chartWidth - tooltipW - 2));
+                                                                                            const showBelow = y - 38 < 4;
+                                                                                            return (
+                                                                                                <View
+                                                                                                    key={index}
+                                                                                                    style={{
+                                                                                                        position: 'absolute',
+                                                                                                        top: showBelow ? y + 10 : y - 38,
+                                                                                                        left: clampedLeft,
+                                                                                                        backgroundColor: theme.text,
+                                                                                                        paddingHorizontal: 8,
+                                                                                                        paddingVertical: 5,
+                                                                                                        borderRadius: 6,
+                                                                                                        alignItems: 'center',
+                                                                                                        minWidth: 52,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <Text style={{ fontSize: 9, color: theme.card, fontFamily: 'Poppins_600SemiBold' }} numberOfLines={1}>
+                                                                                                        {chartLabels[index]}
+                                                                                                    </Text>
+                                                                                                    <Text style={{ fontSize: 11, color: theme.card, fontFamily: 'Poppins_700Bold' }}>
+                                                                                                        {indexData}%
+                                                                                                    </Text>
+                                                                                                </View>
+                                                                                            );
+                                                                                        }
+                                                                                        if (indexData !== max && indexData !== min) return null;
+                                                                                        const isMin = indexData === min;
+                                                                                        return (
+                                                                                            <View key={index} style={{ position: 'absolute', top: isMin ? y + 6 : y - 22, left: x - 12, backgroundColor: isMin ? theme.red : theme.green, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 }}>
+                                                                                                <Text style={{ fontSize: 9, color: 'white', fontFamily: 'Poppins_600SemiBold' }}>{indexData}%</Text>
                                                                                             </View>
-                                                                                        )
-                                                                                    }
+                                                                                        );
+                                                                                    }}
+                                                                                    onDataPointClick={({ index }) => {
+                                                                                        setChartTooltip(prev => prev === index ? null : index);
+                                                                                    }}
+                                                                                    data={{ labels: chartLabels, datasets: [{ data: chartValues, color: () => activeSubject.color, strokeWidth: 2 }] }}
+                                                                                    width={width - 80}
+                                                                                    height={180}
+                                                                                    yAxisSuffix="%"
+                                                                                    chartConfig={{
+                                                                                        backgroundColor: 'transparent',
+                                                                                        backgroundGradientFrom: theme.card,
+                                                                                        backgroundGradientTo: theme.card,
+                                                                                        decimalPlaces: 0,
+                                                                                        color: () => activeSubject.color,
+                                                                                        fillShadowGradient: activeSubject.color,
+                                                                                        fillShadowGradientOpacity: 0.15,
+                                                                                        labelColor: () => theme.subText,
+                                                                                        propsForDots: { r: '4', strokeWidth: '2', stroke: theme.card, fill: activeSubject.color },
+                                                                                        propsForBackgroundLines: { stroke: theme.cardBorder, strokeWidth: 1, strokeDasharray: '' },
+                                                                                        propsForLabels: { fontSize: 9, fontFamily: 'Poppins_400Regular' },
+                                                                                    }}
+                                                                                    bezier
+                                                                                    style={{ borderRadius: 12, marginLeft: -16, marginBottom: 4 }}
+                                                                                    fromZero
+                                                                                    withInnerLines
+                                                                                    withHorizontalLabels
+                                                                                    segments={5}
+                                                                                />
+                                                                                {/* Explicit tap targets — chart-kit's own SVG onPress only
+                                                                                    registers on an exact dot hit, so we detect column taps
+                                                                                    ourselves (same fix as the attendance chart on Profile). */}
+                                                                                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' }}>
+                                                                                    {chartLabels.map((_, i) => (
+                                                                                        <TouchableOpacity
+                                                                                            key={i}
+                                                                                            activeOpacity={1}
+                                                                                            style={{ flex: 1, height: '100%' }}
+                                                                                            onPress={() => setChartTooltip(prev => prev === i ? null : i)}
+                                                                                        />
+                                                                                    ))}
                                                                                 </View>
-                                                                                {!col.isAbsent && pct != null && (
-                                                                                    <View style={{ height: 4, backgroundColor: theme.cardBorder, borderRadius: 4, overflow: 'hidden' }}>
-                                                                                        <View style={{ height: '100%', width: `${pct}%`, backgroundColor: activeSubject.color, borderRadius: 4 }} />
-                                                                                    </View>
-                                                                                )}
+                                                                                </View>
+                                                                            </>
+                                                                        )}
+
+                                                                        {activeScore.columns.length > 0 && (
+                                                                            <View style={{ marginTop: hasChart ? 16 : 0 }}>
+                                                                                <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 12 }}>My Results</Text>
+                                                                                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                                                                <View style={{ gap: 10 }}>
+                                                                                    {activeScore.columns.map((col, i) => {
+                                                                                        const pct = col.isAbsent ? null : col.scored != null ? Math.round((col.scored / col.max) * 100) : null;
+                                                                                        const color = pct == null ? theme.muted : pct >= 75 ? theme.green : pct >= 40 ? theme.amber : theme.red;
+                                                                                        return (
+                                                                                            <View key={i} style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder, gap: 8 }}>
+                                                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                                                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text, flex: 1 }} numberOfLines={1}>{col.name}</Text>
+                                                                                                    {col.isAbsent
+                                                                                                        ? <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.red, backgroundColor: theme.red + '20', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 99 }}>Absent</Text>
+                                                                                                        : (
+                                                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                                                                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_700Bold', color: theme.muted }}>{col.scored}/{col.max}</Text>
+                                                                                                                {pct != null && <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color, backgroundColor: color + '25', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 99 }}>{pct}%</Text>}
+                                                                                                            </View>
+                                                                                                        )
+                                                                                                    }
+                                                                                                </View>
+                                                                                                {!col.isAbsent && pct != null && (
+                                                                                                    <View style={{ height: 4, borderRadius: 99, backgroundColor: theme.cardBorder, overflow: 'hidden' }}>
+                                                                                                        <View style={{ height: '100%', width: `${pct}%`, borderRadius: 99, backgroundColor: color }} />
+                                                                                                    </View>
+                                                                                                )}
+                                                                                            </View>
+                                                                                        );
+                                                                                    })}
+                                                                                </View>
+                                                                                </ScrollView>
                                                                             </View>
-                                                                        );
-                                                                    })}
-                                                                </View>
-                                                            </Card>
-                                                        )}
+                                                                        )}
+                                                                    </>
+                                                                )
+                                                            ) : (
+                                                                activeSubjMaterials.length === 0 ? (
+                                                                    <Text style={{ fontSize: 12, color: theme.muted, textAlign: 'center', paddingVertical: 16 }}>No materials uploaded yet</Text>
+                                                                ) : (
+                                                                    <View style={{ gap: 8 }}>
+                                                                        {activeSubjMaterials.map(m => (
+                                                                            <TouchableOpacity key={m.id}
+                                                                                onPress={() => m.attachmentUrl && setViewerFile({ title: m.title, url: m.attachmentUrl, type: m.attachmentType })}
+                                                                                activeOpacity={m.attachmentUrl ? 0.75 : 1}
+                                                                                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: theme.bg, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder }}>
+                                                                                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: activeSubject.color + '20', alignItems: 'center', justifyContent: 'center' }}>
+                                                                                    <FileText size={16} color={activeSubject.color} />
+                                                                                </View>
+                                                                                <View style={{ flex: 1 }}>
+                                                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{m.title}</Text>
+                                                                                    <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>
+                                                                                        {m.postedBy} · {new Date(m.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                                                    </Text>
+                                                                                </View>
+                                                                                {m.attachmentUrl && <Eye size={13} color={theme.muted} />}
+                                                                            </TouchableOpacity>
+                                                                        ))}
+                                                                    </View>
+                                                                )
+                                                            )}
+                                                            </View>
+                                                        </Card>
                                                     </>
                                                 )}
                                             </>
@@ -708,23 +931,45 @@ export default function Courses() {
                                 </View>
                             )}
                         </View>
-                    </>
                 )}
-            </ScrollView>
+            </Animated.ScrollView>
+
+            {/* ── Sticky overlay: a real, separate, always-tappable copy of the switcher.
+                 Its translateY is driven by the native-animated interpolation above, so it
+                 tracks the scroll in perfect lockstep — moves with content, then "catches"
+                 and holds at the top with zero pop, and (unlike stickyHeaderIndices) still
+                 receives taps reliably. ── */}
+            {switcherY > 0 && (
+                <Animated.View
+                    style={{
+                        position: 'absolute', top: 0, left: 0, right: 0,
+                        transform: [{ translateY: overlayTranslateY }],
+                        backgroundColor: theme.bg, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4,
+                    }}
+                >
+                    <TabSwitcher activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
+                    {activeTab === 'subjects' && subjects.length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                            <SubjectChipSelector subjects={subjects} activeSubjectIdx={activeSubjectIdx} setActiveSubjectIdx={setActiveSubjectIdx} theme={theme} />
+                        </View>
+                    )}
+                </Animated.View>
+            )}
+            </View>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    banner: { marginHorizontal: 14, marginTop: 10, borderRadius: 20, padding: 18, overflow: 'hidden', marginBottom: 4 },
+    banner: { marginHorizontal: 14, marginTop: 4, borderRadius: 20, padding: 18, overflow: 'hidden', marginBottom: 4 },
     bannerOrb1: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.06)', top: -30, right: -20 },
     bannerOrb2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.04)', top: 40, right: 30 },
     bannerIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
     bannerTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: 'white' },
     bannerSub: { fontSize: 12, fontFamily: 'Poppins_400Regular', color: 'rgba(255,255,255,0.7)' },
-    mainTabRow: { flexDirection: 'row', marginHorizontal: 14, marginTop: 12, marginBottom: 4, borderRadius: 14, padding: 4, borderWidth: 1 },
-    mainTab: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+    mainTabRow: { flexDirection: 'row', marginHorizontal: 14, marginTop: 12, marginBottom: 4, borderRadius: 99, padding: 4, borderWidth: 1 },
+    mainTab: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 99 },
     mainTabText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
     body: { padding: 14, gap: 14 },
 });

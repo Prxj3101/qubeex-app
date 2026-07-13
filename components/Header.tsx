@@ -23,7 +23,7 @@ export function Header({ showPurple = false }: HeaderProps) {
   const star3Anim = useRef(new Animated.Value(0.15)).current;
   const { config } = useInstitution();
   const { institutionType } = useInstitution();
-  const CHARACTERS = institutionType === 'school' ? [
+  const CHARACTERS = institutionType !== 'college' ? [
     require('../assets/images/school_boy1.png'),
     require('../assets/images/school_girl1.png'),
     require('../assets/images/school_boy2.png'),
@@ -46,8 +46,8 @@ export function Header({ showPurple = false }: HeaderProps) {
     // Bounce
     Animated.loop(
       Animated.sequence([
-        Animated.timing(bounceAnim, { toValue: -10, duration: 700, useNativeDriver: true }),
-        Animated.timing(bounceAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: -10, duration: 1100, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0, duration: 1100, useNativeDriver: true }),
       ])
     ).start();
 
@@ -56,14 +56,14 @@ export function Header({ showPurple = false }: HeaderProps) {
       Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
-          Animated.timing(anim, { toValue: 0.9, duration: 800, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0.15, duration: 800, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0.9, duration: 1000, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0.15, duration: 1000, useNativeDriver: true }),
         ])
       ).start();
     };
     twinkle(star1Anim, 0);
-    twinkle(star2Anim, 600);
-    twinkle(star3Anim, 1100);
+    twinkle(star2Anim, 300);
+    twinkle(star3Anim, 500);
   }, []);
 
   useEffect(() => {
@@ -74,12 +74,12 @@ export function Header({ showPurple = false }: HeaderProps) {
       const curr = currentIndex.current;
       const next = (curr + 1) % CHARACTERS.length;
       Animated.parallel([
-        Animated.timing(opacities[curr], { toValue: 0, duration: 900, useNativeDriver: true }),
-        Animated.timing(opacities[next], { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(opacities[curr], { toValue: 0, duration: 1200, useNativeDriver: true }),
+        Animated.timing(opacities[next], { toValue: 1, duration: 1200, useNativeDriver: true }),
       ]).start(() => {
         currentIndex.current = next;
       });
-    }, 4000);
+    }, 7000);
 
     return () => clearInterval(interval);
   }, [institutionType]);

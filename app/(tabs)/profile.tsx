@@ -1,3 +1,4 @@
+import { InlineWheel } from '@/components/InlineWheel';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
@@ -8,11 +9,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import {
     Award,
     BarChart2, Bell, CalendarDays,
-    ChevronDown, ChevronRight, ChevronUp, Copy,
+    ChevronRight, Copy,
     Flag, Hash, IndianRupee, LogOut,
     Settings, Star,
     Trophy,
@@ -103,123 +103,7 @@ interface MarksheetSubject {
     total: { scored: number; max: number }; pct: number | null; grade: string;
 }
 
-// ─── Inline Wheel Picker ──────────────────────────────────────────────────────
-const WHEEL_ITEM_H = 22;
-function InlineWheel({ options, value, onChange, isDark, theme }: {
-    options: string[];
-    value: string;
-    onChange: (v: string) => void;
-    isDark: boolean;
-    theme: typeof LIGHT;
-}) {
-    const scrollRef = React.useRef<ScrollView>(null);
-    const n = options.length;
-    const REPEAT = 9;
-    const middleSet = Math.floor(REPEAT / 2);
-    const loopedOptions = React.useMemo(
-        () => Array.from({ length: REPEAT * n }, (_, i) => options[i % n]),
-        [options]
-    );
-
-    // One step per gesture, regardless of drag distance: we only look at the
-    // direction the user dragged (not where they landed), advance `value` by
-    // exactly one option in that direction, and always recenter afterwards.
-    // `handledRef` ensures a gesture commits at most once even if both
-    // onScrollEndDrag-style events fire for it.
-    const startOffsetRef = React.useRef(0);
-    const handledRef = React.useRef(true);
-
-    const centerOn = (val: string, animated: boolean) => {
-        const idx = middleSet * n + options.indexOf(val);
-        scrollRef.current?.scrollTo({ y: idx * WHEEL_ITEM_H, animated });
-    };
-
-    React.useEffect(() => {
-        centerOn(value, false);
-    }, [value]);
-
-    const onDragStart = (e: any) => {
-        startOffsetRef.current = e.nativeEvent.contentOffset.y;
-        handledRef.current = false;
-    };
-
-    // Shared single-step logic so both the drag gesture and the arrow
-    // buttons advance exactly one option in the given direction.
-    const step = (dir: 1 | -1) => {
-        const curIdx = options.indexOf(value);
-        const next = options[(curIdx + dir + n) % n];
-        // selectionAsync's "view tick" haptic is barely perceptible on most
-        // Android devices/OEMs, so use a real vibrator-driven impact there
-        // (matches the impactAsync pattern already used in TopBar/ScreenHeader).
-        if (Platform.OS === 'android') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } else {
-            Haptics.selectionAsync();
-        }
-        onChange(next);
-    };
-
-    const commitStep = (e: any) => {
-        if (handledRef.current) return;
-        handledRef.current = true;
-        const delta = e.nativeEvent.contentOffset.y - startOffsetRef.current;
-        if (Math.abs(delta) >= WHEEL_ITEM_H / 2) {
-            step(delta > 0 ? 1 : -1);
-        } else {
-            centerOn(value, false);
-        }
-    };
-
-    return (
-        <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            height: WHEEL_ITEM_H,
-            width: 86,
-            paddingHorizontal: 4,
-            gap: 2,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: isDark ? '#2D1F50' : '#E4DCFA',
-            backgroundColor: isDark ? '#1E1533' : '#F3F0FA',
-        }}>
-            <View style={{ flex: 1, height: WHEEL_ITEM_H, overflow: 'hidden' }}>
-                <ScrollView
-                    ref={scrollRef}
-                    showsVerticalScrollIndicator={false}
-                    snapToInterval={WHEEL_ITEM_H}
-                    decelerationRate="fast"
-                    disableIntervalMomentum
-                    onScrollBeginDrag={onDragStart}
-                    onScrollEndDrag={commitStep}
-                    onMomentumScrollEnd={commitStep}
-                    nestedScrollEnabled
-                >
-                    {loopedOptions.map((opt, i) => (
-                        <View key={i} style={{ height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{
-                                fontSize: 10,
-                                fontFamily: 'Poppins_600SemiBold',
-                                color: theme.purple,
-                                textTransform: 'capitalize',
-                            }}>
-                                {opt}
-                            </Text>
-                        </View>
-                    ))}
-                </ScrollView>
-            </View>
-            <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <TouchableOpacity activeOpacity={0.6} onPress={() => step(-1)} hitSlop={{ top: 6, bottom: 2, left: 6, right: 6 }}>
-                    <ChevronUp size={11} color={theme.purple} />
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.6} onPress={() => step(1)} hitSlop={{ top: 2, bottom: 6, left: 6, right: 6 }}>
-                    <ChevronDown size={11} color={theme.purple} style={{ marginTop: -2 }} />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-}
+// InlineWheel picker now lives in components/InlineWheel.tsx (shared with class.tsx).
 
 // ─── Subject Performance Chart ────────────────────────────────────────────────
 function SubjectPerformanceChart({
@@ -347,7 +231,7 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
     const classDiv = `${classNum}-${divLetter}`;
 
     return (
-        <View style={{ paddingHorizontal: 14, paddingTop: 14 }}>
+        <View style={{ paddingHorizontal: 14, paddingTop: 6 }}>
             <View style={[idStyles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, shadowColor: theme.purple }]}>
                 <LinearGradient
                     colors={isDark ? ['#4C1D95', '#2D1F50'] : ['#7C3AED', '#5B21B6']}
@@ -735,13 +619,17 @@ export default function Profile() {
                                             // Tapped point — like hovering a point on the web graph,
                                             // shows that month's exact detail.
                                             if (activeTrendPoint === index) {
+                                                const chartWidth = attendanceTrend.length * 56;
+                                                const tooltipW = 60;
+                                                const clampedLeft = Math.max(2, Math.min(x - tooltipW / 2, chartWidth - tooltipW - 2));
+                                                const showBelow = y - 38 < 4;
                                                 return (
                                                     <View
                                                         key={index}
                                                         style={{
                                                             position: 'absolute',
-                                                            top: y - 38,
-                                                            left: x - 26,
+                                                            top: showBelow ? y + 10 : y - 38,
+                                                            left: clampedLeft,
                                                             backgroundColor: theme.text,
                                                             paddingHorizontal: 8,
                                                             paddingVertical: 5,
