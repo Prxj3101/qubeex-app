@@ -4,7 +4,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
-import { FLAGS } from '@/data/flags';
+import { Flag as FlagItem } from '@/data/flags';
 import api from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -392,6 +392,7 @@ export default function Profile() {
     const [activeTrendPoint, setActiveTrendPoint] = useState<number | null>(null);
     const [attendanceApiData, setAttendanceApiData] = useState<AttendanceData | null>(null);
     const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; classSize: number | null } | null>(null);
+    const [flags, setFlags] = useState<FlagItem[]>([]);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -403,6 +404,9 @@ export default function Profile() {
                 .catch(() => {});
             api.get('/student/marksheet')
                 .then(r => setMarksheetData(r.data.data))
+                .catch(() => {});
+            api.get('/student/remarks')
+                .then(r => setFlags(r.data.data))
                 .catch(() => {});
             setAttendanceVisible(false);
             fadeAnim.setValue(0);
@@ -793,7 +797,7 @@ export default function Profile() {
                                 <View style={{ width: 12, height: 18, borderRadius: 2, backgroundColor: '#FCFF38', transform: [{ rotate: '-5deg' }], shadowColor: '#000', shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.4, shadowRadius: 2, elevation: 4 }} />
                                 <View>
                                     <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>
-                                        {FLAGS.filter(f => f.type === 'yellow').length}
+                                        {flags.filter(f => f.type === 'yellow').length}
                                     </Text>
                                     <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.amber }}>Yellow Cards</Text>
                                 </View>
@@ -802,13 +806,13 @@ export default function Profile() {
                                 <View style={{ width: 12, height: 18, borderRadius: 2, backgroundColor: '#DC2626', transform: [{ rotate: '-5deg' }], shadowColor: '#000', shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.4, shadowRadius: 2, elevation: 4 }} />
                                 <View>
                                     <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: theme.red }}>
-                                        {FLAGS.filter(f => f.type === 'red').length}
+                                        {flags.filter(f => f.type === 'red').length}
                                     </Text>
                                     <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.red }}>Red Cards</Text>
                                 </View>
                             </View>
                         </View>
-                        {FLAGS.length === 0 ? (
+                        {flags.length === 0 ? (
                             <View style={{ alignItems: 'center', padding: 16 }}>
                                 <Text style={{ fontSize: 28 }}>✅</Text>
                                 <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 4 }}>No FLAGS! Keep it up.</Text>
@@ -816,9 +820,9 @@ export default function Profile() {
                         ) : (
                             <View style={{ gap: 8 }}>
                                 {[
-                                    [...FLAGS].filter(f => f.type === 'yellow').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
-                                    [...FLAGS].filter(f => f.type === 'red').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
-                                ].filter((f): f is typeof FLAGS[0] => f !== undefined).map((flag, i) => (
+                                    [...flags].filter(f => f.type === 'yellow').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
+                                    [...flags].filter(f => f.type === 'red').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
+                                ].filter((f): f is FlagItem => f !== undefined).map((flag, i) => (
                                     <View key={i} style={{ flexDirection: 'row', gap: 10, padding: 10, backgroundColor: flag.type === 'yellow' ? theme.amberLight : theme.redLight, borderRadius: 12, borderLeftWidth: 3, borderLeftColor: flag.type === 'yellow' ? theme.amber : theme.red }}>
                                         <View style={{
                                             width: 14,

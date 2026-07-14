@@ -1,6 +1,7 @@
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
-import { CardType, FLAGS, Flag } from '@/data/flags';
+import { CardType, Flag } from '@/data/flags';
+import api from '@/lib/api';
 import { BookOpen, Calendar, ChevronDown, ChevronUp, ShieldAlert, User } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -164,12 +165,19 @@ export default function Flags() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
     const [activeTab, setActiveTab] = useState<CardType>('yellow');
+    const [flags, setFlags] = useState<Flag[]>([]);
 
-    const sortByDateDesc = (arr: typeof FLAGS) =>
+    useEffect(() => {
+        api.get('/student/remarks')
+            .then(res => setFlags(res.data.data))
+            .catch(() => setFlags([]));
+    }, []);
+
+    const sortByDateDesc = (arr: Flag[]) =>
         [...arr].sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1);
 
-    const yellowFlags = sortByDateDesc(FLAGS.filter(f => f.type === 'yellow'));
-    const redFlags = sortByDateDesc(FLAGS.filter(f => f.type === 'red'));
+    const yellowFlags = sortByDateDesc(flags.filter(f => f.type === 'yellow'));
+    const redFlags = sortByDateDesc(flags.filter(f => f.type === 'red'));
     const activeFlags = activeTab === 'yellow' ? yellowFlags : redFlags;
     const cfg = activeTab === 'yellow' ? YELLOW : RED;
     const mode = isDark ? 'dark' : 'light';
