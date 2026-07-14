@@ -49,10 +49,26 @@ function scoreColor(pct: number | null, theme: typeof LIGHT) {
     return theme.red;
 }
 
-const GRADE_COLORS: Record<string, string> = {
-    'A+': '#059669', 'A': '#10B981', 'B': '#3B82F6', 'C': '#F59E0B', 'D': '#F97316', 'F': '#EF4444',
-};
-function gradeColor(g: string | null, theme: typeof LIGHT) { return g ? (GRADE_COLORS[g] ?? theme.muted) : theme.muted; }
+interface GradeScaleEntry { grade: string; minPct: number }
+const DEFAULT_GRADE_SCALE: GradeScaleEntry[] = [
+    { grade: 'A', minPct: 75 },
+    { grade: 'B', minPct: 60 },
+    { grade: 'C', minPct: 45 },
+    { grade: 'D', minPct: 35 },
+    { grade: 'F', minPct: 0 },
+];
+// Best-to-worst color ramp, assigned by rank within the scale — every grade
+// (including custom labels) gets its own distinct color, bottom always red.
+const GRADE_COLOR_RAMP = ['#059669', '#16A34A', '#65A30D', '#CA8A04', '#D97706', '#EA580C', '#DC2626', '#B91C1C', '#991B1B'];
+function gradeColor(g: string | null, theme: typeof LIGHT, scale: GradeScaleEntry[]) {
+    if (!g) return theme.muted;
+    const sorted = scale.length > 0 ? [...scale].sort((a, b) => b.minPct - a.minPct) : DEFAULT_GRADE_SCALE;
+    const rank = sorted.findIndex(e => e.grade.toUpperCase() === g.toUpperCase());
+    if (rank === -1) return theme.muted;
+    if (sorted.length <= 1) return GRADE_COLOR_RAMP[0];
+    const idx = Math.round((rank / (sorted.length - 1)) * (GRADE_COLOR_RAMP.length - 1));
+    return GRADE_COLOR_RAMP[idx];
+}
 
 interface ExamCol { id: string; name: string; maxMarks: number; score: number | null; isAbsent: boolean; }
 interface MarksheetSubject {
@@ -64,6 +80,7 @@ interface MarksheetSubject {
 interface GradedSubject { id: string; name: string; term1Grade: string | null; term2Grade: string | null; }
 interface MarksheetData {
     student: { name: string; rollNo: string };
+    gradeScale: GradeScaleEntry[];
     subjects: MarksheetSubject[];
     grandTotal: { scored: number; max: number };
     grandPct: number | null;
@@ -333,12 +350,12 @@ export default function ReportCard() {
                                             </View>
                                             <View style={[sheetStyles.dataCell, { width: GRADED_TERM_W }]}>
                                                 {gs.term1Grade
-                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term1Grade, theme) }]}>{gs.term1Grade}</Text>
+                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term1Grade, theme, data.gradeScale) }]}>{gs.term1Grade}</Text>
                                                     : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
                                             </View>
                                             <View style={[sheetStyles.dataCell, { width: GRADED_TERM_W }]}>
                                                 {gs.term2Grade
-                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term2Grade, theme) }]}>{gs.term2Grade}</Text>
+                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term2Grade, theme, data.gradeScale) }]}>{gs.term2Grade}</Text>
                                                     : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
                                             </View>
                                         </View>
