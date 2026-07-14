@@ -1,3 +1,4 @@
+import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -693,6 +694,7 @@ export default function StudentDetail() {
     const theme = isDark ? DARK : LIGHT;
     const router = useRouter();
     const { photo, setPhoto, profile, fetchProfile, saveProfile, uploadPhoto, isSaving } = useStudent();
+    const [photoExpanded, setPhotoExpanded] = useState(false);
 
     const pickPhoto = async () => {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -825,12 +827,17 @@ export default function StudentDetail() {
                             style={styles.banner}
                         >
                             <View style={styles.avatarWrap}>
-                                <LinearGradient colors={['#A78BFA', '#7C3AED']} style={styles.avatar}>
-                                    {photo
-                                        ? <Image source={{ uri: photo }} style={styles.avatarImage} />
-                                        : <Text style={styles.avatarText}>{initials}</Text>
-                                    }
-                                </LinearGradient>
+                                <TouchableOpacity
+                                    activeOpacity={photo ? 0.85 : 1}
+                                    onPress={() => photo && setPhotoExpanded(true)}
+                                >
+                                    <LinearGradient colors={['#A78BFA', '#7C3AED']} style={styles.avatar}>
+                                        {photo
+                                            ? <Image source={{ uri: photo }} style={styles.avatarImage} />
+                                            : <Text style={styles.avatarText}>{initials}</Text>
+                                        }
+                                    </LinearGradient>
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={pickPhoto}
                                     style={styles.cameraBtn}
@@ -840,9 +847,12 @@ export default function StudentDetail() {
                                         <Camera size={13} color="white" />
                                     </LinearGradient>
                                 </TouchableOpacity>
+                                <PhotoViewerModal visible={photoExpanded} photoUrl={photo} onClose={() => setPhotoExpanded(false)} />
                             </View>
                             <Text style={styles.bannerName}>{data.name}</Text>
-                            <Text style={styles.bannerSub}>{data.standard} · {data.div}</Text>
+                            <Text style={styles.bannerSub}>
+                                Class {data.standard.replace(/^Class\s*/i, '')} · Division {data.div.includes('-') ? data.div.split('-').slice(1).join('-') : data.div.replace(/^Division\s*/i, '')}
+                            </Text>
                             <View style={styles.bannerChipRow}>
                                 <View style={styles.bannerChip}><Text style={styles.bannerChipText}>Roll No: {data.rollNo}</Text></View>
                                 <View style={styles.bannerChip}><Text style={styles.bannerChipText}>{data.standard}</Text></View>
@@ -1012,7 +1022,7 @@ export default function StudentDetail() {
                             editable={false}
                         />
                         <InfoRow label="Class" value={data.standard.replace(/^Class\s*/i, '')} theme={theme} />
-                        <InfoRow label="Division" value={data.div.replace(/^Division\s*/i, '')} theme={theme} />
+                        <InfoRow label="Division" value={data.div.includes('-') ? data.div.split('-').slice(1).join('-') : data.div.replace(/^Division\s*/i, '')} theme={theme} />
                         <InfoRow label="Roll No" value={data.rollNo} theme={theme} />
                         <InfoRow label="House Color" value={data.houseColor.replace(/\s*House\s*/i, ' ').trim()} theme={theme} />
                         {/* Student ID (read only) */}

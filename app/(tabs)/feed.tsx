@@ -13,6 +13,7 @@ import {
     Dimensions,
     Image as RNImage,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -156,9 +157,10 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
     return (
         <>
             <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, paddingBottom: 8 }]}>
-                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 12 }}>
-                    📅 Academic Calendar
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 14 }}>📅</Text>
+                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Academic Calendar</Text>
+                </View>
 
                 <View style={styles.calHeader}>
                     <TouchableOpacity onPress={prevMonth} style={[styles.navBtn, { borderColor: theme.cardBorder }]} activeOpacity={0.7}>
@@ -321,7 +323,7 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={[styles.authorName, { color: theme.text }]}>{post.author.name}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Platform.OS === 'ios' ? 0.5 : -4 }}>
                         <Text style={[styles.authorMeta, { color: theme.muted }]} numberOfLines={1}>
                             {post.author.role.charAt(0) + post.author.role.slice(1).toLowerCase()}
                         </Text>
@@ -468,7 +470,7 @@ export default function Feed() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Feed" />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 2 }}>
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 2 }}>
                 <View style={[styles.body, { paddingTop: 6 }]}>
 
                     <MiniCalendar theme={theme} isDark={isDark} />
@@ -477,9 +479,10 @@ export default function Feed() {
                     <View style={[styles.feedPanel, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                         <View style={[styles.feedPanelHeader, { borderBottomColor: theme.cardBorder }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>
-                                    📢 Announcements & Feed
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={{ fontSize: 14 }}>📢</Text>
+                                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Announcements & Feed</Text>
+                                </View>
                                 {loading
                                     ? <ActivityIndicator size="small" color={theme.purple} />
                                     : inScreenHasNew

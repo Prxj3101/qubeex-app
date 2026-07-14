@@ -11,8 +11,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8' };
-const DARK  = { bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
+const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED' };
+const DARK  = { bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA' };
 
 interface OverviewData {
     student: { name: string; rollNo: string; divisionName: string; standardName: string };
@@ -48,17 +48,6 @@ function Avatar({ name, color, bg, size }: { name: string; color: string; bg: st
     );
 }
 
-const RANK_COLORS = [
-    { color: '#F59E0B', bg: { light: '#FEF3C7', dark: '#2D2010' } },
-    { color: '#94A3B8', bg: { light: '#F1F5F9', dark: '#1E2530' } },
-    { color: '#CD7C2F', bg: { light: '#FEF3C7', dark: '#2D1F10' } },
-    { color: '#7C3AED', bg: { light: '#EDE9FE', dark: '#2D1F50' } },
-    { color: '#0891B2', bg: { light: '#CFFAFE', dark: '#0D2B30' } },
-];
-const PODIUM_MEDALS = ['🥇', '🥈', '🥉'];
-const PODIUM_HEIGHTS = [70, 50, 40];
-const PODIUM_SIZES = [54, 44, 44];
-const PODIUM_BGCOLORS = ['#F59E0B', '#94A3B8', '#CD7C2F'];
 
 export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
@@ -88,12 +77,12 @@ export default function Home() {
     }, [fetchProfile, fetchOverview]);
 
     const lb = overview?.leaderboard ?? [];
-    // Arrange podium: 2nd | 1st | 3rd
+    // Arrange podium: 2nd | 1st | 3rd — same layout/colors as Class > Leaderboard
     const podiumOrder = [lb[1], lb[0], lb[2]].filter(Boolean);
     const podiumMedals  = ['🥈', '🥇', '🥉'];
-    const podiumHeights = [50, 70, 40];
-    const podiumSizes   = [44, 54, 44];
-    const podiumColors  = ['#94A3B8', '#F59E0B', '#CD7C2F'];
+    const podiumHeights = [64, 96, 48];
+    const podiumSizes   = [36, 44, 36];
+    const podiumColors  = ['#C0C0C0', '#F59E0B', '#CD7F32'];
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -129,29 +118,34 @@ export default function Home() {
                                 </Text>
                             </View>
 
-                            {/* Podium — Top 3 */}
+                            {/* Podium — Top 3 (same styling as Class > Leaderboard) */}
                             {lb.length >= 3 && (
-                                <View style={styles.podium}>
+                                <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 12, marginBottom: 14 }}>
                                     {podiumOrder.map((student, i) => {
                                         if (!student) return null;
-                                        const ci = student.rank - 1;
-                                        const rc = RANK_COLORS[ci] ?? RANK_COLORS[3];
                                         return (
-                                            <View key={student.rank} style={styles.podiumItem}>
+                                            <View key={student.rank} style={{ alignItems: 'center', gap: 4 }}>
                                                 <Avatar
                                                     name={student.name}
                                                     color={podiumColors[i]}
                                                     bg={isDark ? '#1A1030' : '#F8F4FF'}
                                                     size={podiumSizes[i]}
                                                 />
-                                                <Text style={[styles.podiumName, { color: theme.text }]} numberOfLines={1}>
-                                                    {student.name.split(' ')[0]}
-                                                </Text>
+                                                <View style={{ width: 66 }}>
+                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: theme.text, textAlign: 'center', lineHeight: 12 }} numberOfLines={1}>
+                                                        {student.name.split(' ')[0]}
+                                                    </Text>
+                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.text, textAlign: 'center', lineHeight: 11 }} numberOfLines={1}>
+                                                        {student.name.split(' ').slice(1).join(' ')}
+                                                    </Text>
+                                                </View>
                                                 {student.isMe && (
-                                                    <Text style={{ fontSize: 9, color: '#7C3AED', fontWeight: '700' }}>YOU</Text>
+                                                    <View style={{ backgroundColor: theme.purple + '20', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 99 }}>
+                                                        <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>You</Text>
+                                                    </View>
                                                 )}
-                                                <Text style={[styles.podiumPct, { color: podiumColors[i] }]}>{student.pct}%</Text>
-                                                <View style={[styles.podiumBlock, { height: podiumHeights[i], backgroundColor: podiumColors[i] }]}>
+                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: podiumColors[i] }}>{student.pct}%</Text>
+                                                <View style={{ height: podiumHeights[i], width: 52, backgroundColor: podiumColors[i], borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}>
                                                     <ShinyMedal emoji={podiumMedals[i]} />
                                                 </View>
                                             </View>
@@ -160,24 +154,19 @@ export default function Home() {
                                 </View>
                             )}
 
-                            {/* 4th & 5th */}
+                            {/* 4th & 5th — flat list rows, same as Class > Leaderboard */}
                             {lb.length > 3 && (
-                                <View style={styles.restList}>
-                                    {lb.slice(3).map((student) => {
-                                        const rc = RANK_COLORS[student.rank - 1] ?? RANK_COLORS[3];
-                                        const bgColor = isDark ? rc.bg.dark : rc.bg.light;
-                                        const rankEmoji = student.rank === 4 ? '4️⃣' : '5️⃣';
-                                        return (
-                                            <View key={student.rank} style={[styles.restCard, { backgroundColor: bgColor, borderColor: rc.color, borderWidth: student.isMe ? 2 : 1.5 }]}>
-                                                <Text style={styles.restRankEmoji}>{rankEmoji}</Text>
-                                                <Avatar name={student.name} color={rc.color} bg={bgColor} size={36} />
-                                                <Text style={[styles.restName, { color: theme.text }]} numberOfLines={1}>
-                                                    {student.name} {student.isMe ? '(You)' : ''}
-                                                </Text>
-                                                <Text style={[styles.restPct, { color: rc.color }]}>{student.pct}%</Text>
-                                            </View>
-                                        );
-                                    })}
+                                <View style={{ gap: 8 }}>
+                                    {lb.slice(3).map((student, i) => (
+                                        <View key={student.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: student.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.card, borderRadius: 14, borderWidth: 1, borderColor: student.isMe ? theme.purple + '50' : theme.cardBorder }}>
+                                            <Text style={{ fontSize: 16, width: 28, textAlign: 'center' }}>{i === 0 ? '4️⃣' : '5️⃣'}</Text>
+                                            <Avatar name={student.name} color={theme.purple} bg={isDark ? '#1A1030' : '#F8F4FF'} size={34} />
+                                            <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: student.isMe ? theme.purple : theme.text }} numberOfLines={1}>
+                                                {student.name}{student.isMe ? ' (You)' : ''}
+                                            </Text>
+                                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: theme.purple }}>{student.pct}%</Text>
+                                        </View>
+                                    ))}
                                 </View>
                             )}
                         </>
@@ -203,16 +192,6 @@ const styles = StyleSheet.create({
     lbTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     lbTitle: { fontSize: 15, fontWeight: '700' },
     lbSub: { fontSize: 11 },
-    podium: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 8, marginBottom: 8 },
-    podiumItem: { alignItems: 'center', gap: 4 },
-    podiumBlock: { width: 80, borderTopLeftRadius: 8, borderTopRightRadius: 8, alignItems: 'center', justifyContent: 'center' },
-    podiumName: { fontSize: 11, fontWeight: '600', textAlign: 'center', maxWidth: 80 },
-    podiumPct: { fontSize: 11, fontWeight: '700' },
-    restList: { gap: 8 },
-    restCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14 },
-    restRankEmoji: { fontSize: 18 },
-    restName: { flex: 1, fontSize: 13, fontWeight: '600' },
-    restPct: { fontSize: 13, fontWeight: '700' },
     lbEmpty: { borderRadius: 16, borderWidth: 1, padding: 24, alignItems: 'center', gap: 8 },
     lbEmptyText: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
 });

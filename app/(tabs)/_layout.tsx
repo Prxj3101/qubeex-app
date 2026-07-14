@@ -1,6 +1,7 @@
 import PencilLoader from '@/components/Pencilloader';
 import { FeedBadgeProvider, useFeedBadge } from '@/context/FeedBadgeContext';
 import { InstitutionProvider } from '@/context/InstitutionContext';
+import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts } from '@expo-google-fonts/poppins';
 import { RobotoMono_600SemiBold } from '@expo-google-fonts/roboto-mono';
@@ -8,8 +9,21 @@ import { Tabs } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { BookOpen, FileText, Home, Rss, User } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+function ProfileTabIcon({ color, size }: { color: string; size: number }) {
+  const { photo } = useStudent();
+  if (photo) {
+    return (
+      <Image
+        source={{ uri: photo }}
+        style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 1.5, borderColor: color }}
+      />
+    );
+  }
+  return <User size={size} color={color} />;
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -105,7 +119,7 @@ function TabLayout() {
         }} />
         <Tabs.Screen name="profile" options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <User size={22} color={color} />,
+          tabBarIcon: ({ color }) => <ProfileTabIcon color={color} size={22} />,
         }} />
       </Tabs>
     </>

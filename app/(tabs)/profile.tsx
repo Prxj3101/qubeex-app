@@ -1,4 +1,5 @@
 import { InlineWheel } from '@/components/InlineWheel';
+import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
@@ -113,10 +114,10 @@ function SubjectPerformanceChart({
     theme: typeof LIGHT;
     avg: number;
 }) {
-    const maxBarHeight = 110;
+    const maxBarHeight = 140;
     const topPad = 16;
-    const barColWidth = 30;
-    const gap = 8;
+    const barColWidth = 36;
+    const gap = 10;
     const totalBarsWidth = data.length * barColWidth + (data.length - 1) * gap;
     const yTicks = [100, 75, 50, 25, 0];
 
@@ -135,7 +136,7 @@ function SubjectPerformanceChart({
                 {/* Y axis */}
                 <View style={{ width: 22, height: maxBarHeight, marginTop: topPad, justifyContent: 'space-between' }}>
                     {yTicks.map(t => (
-                        <Text key={t} style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.subText, textAlign: 'right' }}>
+                        <Text key={t} style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.subText, textAlign: 'right' }}>
                             {t}
                         </Text>
                     ))}
@@ -164,7 +165,7 @@ function SubjectPerformanceChart({
                                             colors={[d.color, d.color + '73']}
                                             start={{ x: 0, y: 0 }}
                                             end={{ x: 0, y: 1 }}
-                                            style={{ width: '60%', height: barHeight, borderRadius: 4 }}
+                                            style={{ width: '65%', height: barHeight, borderRadius: 4 }}
                                         />
                                     </View>
                                 );
@@ -222,6 +223,7 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 // ─── ID Card ──────────────────────────────────────────────────────────────────
 function IDCard({ student, theme, isDark, router }: { student: any; theme: typeof LIGHT; isDark: boolean; router: any }) {
     const [copied, setCopied] = useState(false);
+    const [photoExpanded, setPhotoExpanded] = useState(false);
     const { photo } = useStudent();
     const dobDate = new Date(student.dob);
     const age = new Date().getFullYear() - dobDate.getFullYear();
@@ -264,7 +266,11 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
 
                 <View style={idStyles.body}>
                     <View style={idStyles.avatarSection}>
-                        <View style={idStyles.avatarWrap}>
+                        <TouchableOpacity
+                            style={idStyles.avatarWrap}
+                            activeOpacity={photo ? 0.85 : 1}
+                            onPress={() => photo && setPhotoExpanded(true)}
+                        >
                             <LinearGradient colors={['#A78BFA', '#7C3AED']} style={idStyles.avatar}>
                                 {photo
                                     ? <Image source={{ uri: photo }} style={idStyles.avatarImage} />
@@ -276,7 +282,8 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
                                 }
                             </LinearGradient>
                             <View style={[idStyles.onlineDot, { backgroundColor: theme.green, borderColor: theme.card }]} />
-                        </View>
+                        </TouchableOpacity>
+                        <PhotoViewerModal visible={photoExpanded} photoUrl={photo} onClose={() => setPhotoExpanded(false)} />
                         <View style={[idStyles.batchBadge, { backgroundColor: theme.purpleLight }]}>
                             <Text style={[idStyles.batchBadgeText, { color: theme.purple }]}>
                                 {student.standard}
@@ -519,7 +526,7 @@ export default function Profile() {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={{ marginBottom: 12 }}>
+                        <View style={{ marginBottom: 6 }}>
                             <InlineWheel
                                 options={['combined', 'offline', 'online']}
                                 value={marksMode}
@@ -658,7 +665,7 @@ export default function Profile() {
                                                     key={index}
                                                     style={{
                                                         position: 'absolute',
-                                                        top: isMin ? y + 6 : y - 22,
+                                                        top: y - 22,
                                                         left: x - 12,
                                                         backgroundColor: isMin ? theme.red : theme.green,
                                                         paddingHorizontal: 4,

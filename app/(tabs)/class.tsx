@@ -461,6 +461,7 @@ export default function Courses() {
             <Animated.ScrollView
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
+                bounces={false}
                 contentContainerStyle={{ paddingBottom: 2 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />}
                 onScroll={Animated.event(
