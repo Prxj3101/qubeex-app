@@ -4,11 +4,13 @@ import { useFeedBadge } from '@/context/FeedBadgeContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react-native';
+import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import {
+    Animated,
+    Easing,
     ActivityIndicator,
     Dimensions,
     Image as RNImage,
@@ -316,7 +318,7 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
 
             {/* Author */}
             <View style={styles.authorRow}>
-                <View style={[styles.avatar, { backgroundColor: post.author.avatarUrl ? 'transparent' : avatarColor + '22', borderColor: avatarColor, overflow: 'hidden' }]}>
+                <View style={[styles.avatar, { backgroundColor: post.author.avatarUrl ? 'transparent' : avatarColor + '22', overflow: 'hidden' }]}>
                     {post.author.avatarUrl
                         ? <RNImage source={{ uri: post.author.avatarUrl }} style={{ width: '100%', height: '100%' }} />
                         : <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>}
@@ -412,6 +414,10 @@ export default function Feed() {
     const [posts, setPosts] = useState<FeedPost[]>([]);
     const [loading, setLoading] = useState(true);
     const [inScreenHasNew, setInScreenHasNew] = useState(false);
+    const [showScrollTop, setShowScrollTop] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const feedScrollRef = useRef<ScrollView>(null);
+    const spinAnim = useRef(new Animated.Value(0)).current;
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const latestCreatedAtRef = useRef<string | null>(null);
     const isFocusedRef = useRef(false);
@@ -456,6 +462,32 @@ export default function Feed() {
     }, [activeFilter, setFeedHasNew]);
 
     useEffect(() => {
+        if (!isRefreshing) return;
+        let stopped = false;
+        const runLoop = () => {
+            if (stopped) return;
+            spinAnim.setValue(0);
+            Animated.timing(spinAnim, {
+                toValue: 1,
+                duration: 650,
+                easing: Easing.linear,
+                useNativeDriver: true,
+            }).start(({ finished }) => {
+                if (finished && !stopped) runLoop();
+            });
+        };
+        runLoop();
+        return () => { stopped = true; };
+    }, [isRefreshing]);
+
+    const handleRefresh = async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        await fetchPosts(true);
+        setIsRefreshing(false);
+    };
+
+    useEffect(() => {
         fetchPosts(true);
         pollRef.current = setInterval(() => fetchPosts(false), 30_000);
         return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -476,6 +508,7 @@ export default function Feed() {
                     <MiniCalendar theme={theme} isDark={isDark} />
 
                     {/* Feed — fixed-height card, header/filters stay put, posts scroll inside */}
+                    <View style={{ position: 'relative' }}>
                     <View style={[styles.feedPanel, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                         <View style={[styles.feedPanelHeader, { borderBottomColor: theme.cardBorder }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -483,12 +516,16 @@ export default function Feed() {
                                     <Text style={{ fontSize: 14 }}>📢</Text>
                                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Announcements & Feed</Text>
                                 </View>
-                                {loading
-                                    ? <ActivityIndicator size="small" color={theme.purple} />
-                                    : inScreenHasNew
-                                    ? <View style={{ width: 10, height: 10, borderRadius: 99, backgroundColor: '#10B981' }} />
-                                    : null
-                                }
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    {inScreenHasNew && (
+                                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: '#10B981' }} />
+                                    )}
+                                    <TouchableOpacity onPress={handleRefresh} activeOpacity={0.7} disabled={loading}>
+                                        <Animated.View style={{ transform: [{ rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>
+                                            <RefreshCw size={16} color="#FFFFFF" />
+                                        </Animated.View>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
 
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterRow, { marginTop: 10 }]}>
@@ -511,10 +548,13 @@ export default function Feed() {
                         </View>
 
                         <ScrollView
+                            ref={feedScrollRef}
                             style={{ flex: 1, backgroundColor: theme.bg }}
                             contentContainerStyle={{ padding: 14, gap: 12, flexGrow: 1 }}
                             nestedScrollEnabled
                             showsVerticalScrollIndicator={false}
+                            onScroll={e => setShowScrollTop(e.nativeEvent.contentOffset.y > 200)}
+                            scrollEventThrottle={16}
                         >
                             {loading ? (
                                 <FeedSkeleton theme={theme} isDark={isDark} />
@@ -529,6 +569,19 @@ export default function Feed() {
                                 ))
                             )}
                         </ScrollView>
+                    </View>
+
+                    {showScrollTop && (
+                        <View pointerEvents="box-none" style={{ position: 'absolute', bottom: 16, left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
+                            <TouchableOpacity
+                                style={[styles.scrollTopBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+                                onPress={() => feedScrollRef.current?.scrollTo({ y: 0, animated: true })}
+                                activeOpacity={0.8}
+                            >
+                                <ArrowUp size={16} color="#FFFFFF" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
                     </View>
 
                 </View>
@@ -582,7 +635,7 @@ const styles = StyleSheet.create({
     subjectTag: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
 
     authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    avatar: { width: 38, height: 38, borderRadius: 99, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+    avatar: { width: 38, height: 38, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
     avatarText: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
     authorName: { fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
     authorMeta: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
@@ -592,4 +645,6 @@ const styles = StyleSheet.create({
 
     expandRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
     expandText: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
+
+    scrollTopBtn: { width: 36, height: 36, borderRadius: 99, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 6 },
 });
