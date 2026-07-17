@@ -292,6 +292,7 @@ function VerifiedBadge() {
 // ── Feed Card ─────────────────────────────────────────────────────────────────
 function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme: typeof LIGHT; isDark: boolean; divisionName: string }) {
     const [expanded, setExpanded] = useState(false);
+    const isLongBody = (post.body?.length ?? 0) > 100;
     const meta = POST_META[post.type];
     const initials = post.author.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
     const avatarColor = AVATAR_COLORS[post.author.name.charCodeAt(0) % AVATAR_COLORS.length];
@@ -338,7 +339,7 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
 
             <Text style={[styles.postTitle, { color: theme.text }]}>{post.title}</Text>
             {post.body ? (
-                <Text style={[styles.postBody, { color: theme.subText }]} numberOfLines={expanded ? undefined : 2}>{post.body}</Text>
+                <Text style={[styles.postBody, { color: theme.subText }]} numberOfLines={!isLongBody || expanded ? undefined : 2}>{post.body}</Text>
             ) : null}
 
             {post.attachmentUrl && post.attachmentName && post.attachmentType && (
@@ -350,10 +351,12 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
             )}
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-                    {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
-                    <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'Read more'}</Text>
-                </TouchableOpacity>
+                {isLongBody ? (
+                    <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+                        {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
+                        <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'Read more'}</Text>
+                    </TouchableOpacity>
+                ) : <View />}
                 <Text style={[styles.authorMeta, { color: theme.muted, opacity: 0.7 }]} numberOfLines={1}>
                     {formatDateTime(post.createdAt)}
                 </Text>
