@@ -1,3 +1,5 @@
+import { isTodayBirthday } from '@/components/BirthdayBanner';
+import { SillyStringOverlay } from '@/components/SillyStringOverlay';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -10,12 +12,23 @@ interface HeaderProps {
 }
 
 
+function formatDivision(divisionName: string): string {
+  if (!divisionName) return '';
+  // "10-A" → "Division A", "12-B" → "Division B", "A" → "Division A"
+  const parts = divisionName.split('-');
+  const letter = parts.length > 1 ? parts.slice(1).join('-') : divisionName;
+  return `Division ${letter}`;
+}
+
 export function Header({ showPurple = false }: HeaderProps) {
   const { isDark } = useTheme();
   const { profile } = useStudent();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const displayName = profile?.name || 'Student';
+  const divisionLabel = formatDivision(profile?.division ?? '');
+  const metaLine = `${profile?.standard ?? ''}${divisionLabel ? ` · ${divisionLabel}` : ''}`;
+  const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const star1Anim = useRef(new Animated.Value(0.15)).current;
@@ -99,9 +112,13 @@ export function Header({ showPurple = false }: HeaderProps) {
 
       <View style={styles.row}>
         <View style={styles.greetingBox}>
-          <Text style={styles.greetingText}>{greeting},</Text>
-          <Text style={styles.nameText}>{displayName}</Text>
-          <Text style={styles.subText}>{config?.batchLabel}</Text>
+          <Text style={styles.greetingText}>{greeting} 👋</Text>
+          <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+            <Text style={styles.nameText}>{displayName}</Text>
+            <SillyStringOverlay name={displayName} fontSize={24} active={isTodayBirthday(profile?.dob ?? '')} />
+          </View>
+          <Text style={styles.subText}>{metaLine || config?.batchLabel}</Text>
+          <Text style={styles.dateText}>{dateStr}</Text>
         </View>
 
         <Animated.View style={{ transform: [{ translateY: bounceAnim }], width: 140, height: 150 }}>
@@ -159,6 +176,7 @@ const styles = StyleSheet.create({
   greetingBox: {
     paddingBottom: 16,
     flex: 1,
+    gap: 4,
   },
   greetingText: {
     fontSize: 17,
@@ -173,6 +191,10 @@ const styles = StyleSheet.create({
   subText: {
     fontSize: 14.5,
     color: 'rgba(255,255,255,0.65)',
+  },
+  dateText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
   },
   charImage: {
     width: 190,

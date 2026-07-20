@@ -1,4 +1,5 @@
 import { AnnouncementStrip } from '@/components/AnnouncementStrip';
+import { BirthdayBanner } from '@/components/BirthdayBanner';
 import { Header } from '@/components/Header';
 import { QuickStats } from '@/components/QuickStats';
 import { ThoughtOfTheDay } from '@/components/ThoughtOfTheDay';
@@ -53,7 +54,7 @@ export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
-    const { fetchProfile } = useStudent();
+    const { fetchProfile, profile } = useStudent();
 
     const [overview, setOverview] = useState<OverviewData | null>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -94,6 +95,10 @@ export default function Home() {
                 <Header showPurple />
                 <AnnouncementStrip title={overview?.latestPost?.title ?? null} />
                 <View style={styles.body}>
+
+                    {profile?.dob && (
+                        <BirthdayBanner name={profile.name || 'Student'} dob={profile.dob} />
+                    )}
 
                     <QuickStats
                         attendancePct={overview?.attendance.pct ?? null}
