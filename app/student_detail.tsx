@@ -59,6 +59,12 @@ function formatDob(text: string): string {
     return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
 }
 
+// Converts an uppercase enum-style string ("MALE") into title case ("Male") for display only.
+function toTitleCase(value?: string | null): string {
+    if (!value) return '';
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 // ─── Phone country codes + max digit lengths ────────────────────────────────
 const COUNTRY_CODES = [
     { code: '+91', flag: '🇮🇳', max: 10 },
@@ -926,7 +932,7 @@ export default function StudentDetail() {
                             theme={theme} isEditing={isEditing('basic')} editable
                             placeholder="YYYY-MM-DD"
                             onChangeText={t => setDraft(d => ({ ...d, dob: formatDob(t) }))} />
-                        <DropdownRow label="Gender" value={isEditing('basic') ? draft.gender : data.gender}
+                        <DropdownRow label="Gender" value={isEditing('basic') ? draft.gender : toTitleCase(data.gender)}
                             options={['Male', 'Female', 'Other']}
                             theme={theme} isEditing={isEditing('basic')}
                             onSelect={v => setDraft(d => ({ ...d, gender: v }))} />
