@@ -136,7 +136,7 @@ const INITIAL_STUDENT = {
     religion: 'Hindu',
     category: 'General',
     admissionYear: '2022',
-    uid: 'STU-SCH-MHS01-0042',
+    uid: 'SXHS-01S26-0001',
 };
 
 // ─── Card ─────────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { SUBJECT_PALETTE } from '@/lib/subjectColors';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import * as DocumentPicker from 'expo-document-picker';
@@ -121,12 +122,12 @@ interface ApiAssignment {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const SUBJECT_COLORS = ['#7C3AED', '#2563EB', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4'];
-
+// This list only has subjectName (no subject id/color from the API), so we
+// hash the name into the canonical palette instead of indexing it directly.
 function subjectColor(name: string): string {
     let h = 0;
     for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff;
-    return SUBJECT_COLORS[Math.abs(h) % SUBJECT_COLORS.length];
+    return SUBJECT_PALETTE[Math.abs(h) % SUBJECT_PALETTE.length];
 }
 
 function fmtDate(iso: string | null): string {

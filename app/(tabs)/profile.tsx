@@ -6,6 +6,7 @@ import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Flag as FlagItem } from '@/data/flags';
 import api from '@/lib/api';
+import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -97,7 +98,6 @@ function getAttendanceWindowMonths(date: Date) {
 // ─── Subject Performance Data ─────────────────────────────────────────────────
 type MarksMode = 'offline' | 'online' | 'combined';
 
-const SUBJECT_COLORS = ['#DA7756','#EC4899','#0891B2','#7C3AED','#059669','#0EA5E9','#6366F1','#D97706','#16A34A','#E11D48','#7C3AED','#0284C7'];
 
 interface MarksheetSubject {
     id: string; name: string; code: string; color: string | null;
@@ -436,7 +436,7 @@ export default function Profile() {
         const offline = s.pct ?? 0;
         const online = 0; // online marks not yet implemented
         const pct = marksMode === 'offline' ? offline : marksMode === 'online' ? online : Math.round((offline + online) / 2);
-        return { code: s.code, name: s.name, color: s.color ?? SUBJECT_COLORS[i % SUBJECT_COLORS.length], pct };
+        return { code: s.code, name: s.name, color: s.color ?? assignSubjectColor(i), pct };
     });
     const overallScore = subjectChartData.length > 0
         ? Math.round(subjectChartData.reduce((a, b) => a + b.pct, 0) / subjectChartData.length)
