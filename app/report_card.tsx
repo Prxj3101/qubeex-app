@@ -2,6 +2,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import { useStudent } from '@/context/StudentContext';
 import api from '@/lib/api';
+import { colorForSubject } from '@/lib/subjectColors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -252,7 +253,7 @@ export default function ReportCard() {
                                         {data.subjects.map(sub => (
                                             <View key={sub.id} style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: sub.color ?? '#94A3B8' }} />
+                                                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colorForSubject(sub) }} />
                                                     <Text style={sheetStyles.subjText} numberOfLines={1}>{sub.name}</Text>
                                                 </View>
                                             </View>
