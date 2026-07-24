@@ -581,7 +581,7 @@ export default function Feed() {
                                 onPress={() => feedScrollRef.current?.scrollTo({ y: 0, animated: true })}
                                 activeOpacity={0.8}
                             >
-                                <ArrowUp size={16} color="#FFFFFF" />
+                                <ArrowUp size={16} color={theme.text} />
                             </TouchableOpacity>
                         </View>
                     )}

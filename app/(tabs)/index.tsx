@@ -7,6 +7,7 @@ import { TopBar } from '@/components/TopBar';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
+import { useFocusEffect } from '@react-navigation/native';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -58,6 +59,7 @@ export default function Home() {
 
     const [overview, setOverview] = useState<OverviewData | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [focusKey, setFocusKey] = useState(0);
 
     const fetchOverview = useCallback(async () => {
         try {
@@ -66,10 +68,17 @@ export default function Home() {
         } catch { /* silent */ }
     }, []);
 
-    useEffect(() => {
-        fetchProfile();
-        fetchOverview();
-    }, []);
+    // Re-fetch fresh data and force Header/BirthdayBanner to remount every time
+    // this tab regains focus — tab screens stay mounted in the background, so a
+    // plain useEffect(() => {}, []) only runs once and never refires on revisit.
+    useFocusEffect(
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        useCallback(() => {
+            setFocusKey(k => k + 1);
+            fetchProfile();
+            fetchOverview();
+        }, [])
+    );
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -92,12 +101,12 @@ export default function Home() {
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />}
             >
-                <Header showPurple />
+                <Header key={focusKey} showPurple />
                 <AnnouncementStrip title={overview?.latestPost?.title ?? null} />
                 <View style={styles.body}>
 
                     {profile?.dob && (
-                        <BirthdayBanner name={profile.name || 'Student'} dob={profile.dob} />
+                        <BirthdayBanner key={focusKey} name={profile.name || 'Student'} dob={profile.dob} />
                     )}
 
                     <QuickStats

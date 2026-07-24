@@ -15,7 +15,14 @@ import {
     vec,
 } from '@shopify/react-native-skia';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
+
+// 'sans-serif' is an Android-only generic family alias — Skia's font manager on
+// iOS doesn't resolve it to a real typeface, which made measureText() return a
+// near-zero width for the name. That collapsed the left/right sweep range to
+// ~0px, so the spray can never actually moved — it just sat sprayed in place
+// at the start position. Use a real system font name per platform instead.
+const SYSTEM_FONT_FAMILY = Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' });
 
 interface SillyStringOverlayProps {
     name: string;
@@ -96,12 +103,12 @@ export function SillyStringOverlay({ name, fontSize = 30, active = true }: Silly
     const scale = Math.min(1, fontSize / 30);
 
     // Skia font used both for measuring (LW/LH) and for drawing into the offscreen collision surface
-    const font = useMemo(() => matchFont({ fontFamily: 'sans-serif', fontSize, fontStyle: 'normal', fontWeight: '600' }), [fontSize]);
+    const font = useMemo(() => matchFont({ fontFamily: SYSTEM_FONT_FAMILY, fontSize, fontStyle: 'normal', fontWeight: '600' }), [fontSize]);
     const scaleForLabel = Math.min(1, fontSize / 30);
     const canScaleForLabel = Math.max(0.833, scaleForLabel);
     // Tiny "SILLY STRING" label font drawn on the can body
     const labelFont = useMemo(
-        () => matchFont({ fontFamily: 'sans-serif', fontSize: 4 * canScaleForLabel, fontStyle: 'normal', fontWeight: 'bold' }),
+        () => matchFont({ fontFamily: SYSTEM_FONT_FAMILY, fontSize: 4 * canScaleForLabel, fontStyle: 'normal', fontWeight: 'bold' }),
         [canScaleForLabel]
     );
 
@@ -206,7 +213,7 @@ export function SillyStringOverlay({ name, fontSize = 30, active = true }: Silly
             }
             let tot = 0;
             for (const s of st.strands) tot += s.pts.length;
-            const MAX_POINTS = 3500;
+            const MAX_POINTS = 5500;
             while (tot > MAX_POINTS && st.strands.length > 1) {
                 const o = st.strands[0];
                 if (o === st.cur) break;
@@ -229,7 +236,10 @@ export function SillyStringOverlay({ name, fontSize = 30, active = true }: Silly
             const passIndex = Math.min(Math.floor(Math.max(activeElapsed, 0) / PASS_MS), 2);
             const passProgress = Math.min((Math.max(activeElapsed, 0) % PASS_MS) / PASS_MS, 1);
             const sweepLeft = LOX - Math.round(50 * Math.max(0.5, scale));
-            const sweepRight = LOX + LW - Math.round(50 * scale);
+            // Guard against a collapsed/near-zero sweep range (e.g. if text
+            // measurement ever comes back too small on some platform) so the
+            // can always has somewhere to travel instead of spraying in place.
+            const sweepRight = Math.max(LOX + LW - Math.round(50 * scale), sweepLeft + 40 * scale);
             const canX = passIndex % 2 === 0
                 ? sweepLeft + passProgress * (sweepRight - sweepLeft)
                 : sweepRight - passProgress * (sweepRight - sweepLeft);
@@ -239,8 +249,8 @@ export function SillyStringOverlay({ name, fontSize = 30, active = true }: Silly
 
             if (spraying) {
                 st.emitAccum += 1;
-                const emitEvery = passIndex === 0 ? Math.max(2, Math.round(2 / scale)) : Math.max(3, Math.round(3 / scale));
-                const particlesPer = passIndex === 0 ? Math.max(1, Math.round(3 * scale)) : Math.max(1, Math.round(2 * scale));
+                const emitEvery = passIndex === 0 ? Math.max(2, Math.round(1.5 / scale)) : Math.max(2, Math.round(2.5 / scale));
+                const particlesPer = passIndex === 0 ? Math.max(1, Math.round(4 * scale)) : Math.max(1, Math.round(3 * scale));
                 if (st.emitAccum >= emitEvery) {
                     st.emitAccum = 0;
                     if (!st.cur || st.cur.pts.length > Math.round(150 * scale)) {
@@ -280,7 +290,7 @@ export function SillyStringOverlay({ name, fontSize = 30, active = true }: Silly
     const st = stateRef.current;
     const { LW, LH } = layout;
     const W = LEFT_EXT + LW + RIGHT_EXT, H = topExt + LH + BOT_EXT;
-    const thick = Math.max(1.2, 2.25 * scale);
+    const thick = Math.max(1.3, 2.45 * scale);
     const canScale = Math.max(0.833, scale);
     const CW = 18 * canScale, CH = 46 * canScale;
     const NX = 10 * canScale, NY = -(CH / 2) - 3;
