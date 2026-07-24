@@ -87,6 +87,7 @@ interface ClassData {
     division: { id: string; name: string; standardName: string; classTeacherName: string | null; classTeacherAvatarUrl: string | null; totalStudents: number; subjects: Subject[] } | null;
     resultFiles: ResultFile[];
     subjectMaterials: Record<string, MaterialFile[]>;
+    generalMaterials?: MaterialFile[];
     classmates: Classmate[];
     myScores: SubjectScore[];
     subjectLeaderboards: Record<string, LbEntry[]>;
@@ -435,6 +436,8 @@ export default function Courses() {
     const subjectLeaderboards = classData?.subjectLeaderboards ?? {};
     const resultFiles = classData?.resultFiles ?? [];
     const subjectMaterials = classData?.subjectMaterials ?? {};
+    const generalMaterials = classData?.generalMaterials ?? [];
+    const resultsAndGeneralMaterials = [...resultFiles, ...generalMaterials];
 
     const top5 = [...classmates]
         .filter(c => getPct(c, lbMode) != null || c.rank != null)
@@ -619,13 +622,13 @@ export default function Courses() {
                                     <Card theme={theme}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                                             <FileText size={16} color={theme.red} />
-                                            <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Results</Text>
+                                            <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Results &amp; Materials</Text>
                                         </View>
-                                        {resultFiles.length === 0 ? (
-                                            <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingVertical: 8 }}>No published results yet</Text>
+                                        {resultsAndGeneralMaterials.length === 0 ? (
+                                            <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingVertical: 8 }}>No results or materials yet</Text>
                                         ) : (
                                             <View style={{ gap: 8 }}>
-                                                {resultFiles.map(f => (
+                                                {resultsAndGeneralMaterials.map(f => (
                                                     <TouchableOpacity key={f.id}
                                                         onPress={() => f.attachmentUrl && setViewerFile({ title: f.title, url: f.attachmentUrl, type: f.attachmentType })}
                                                         activeOpacity={f.attachmentUrl ? 0.75 : 1}

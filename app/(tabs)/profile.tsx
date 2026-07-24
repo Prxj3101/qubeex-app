@@ -435,7 +435,8 @@ export default function Profile() {
     const subjectChartData = (marksheetData?.subjects ?? []).map((s, i) => {
         const offline = s.pct ?? 0;
         const online = 0; // online marks not yet implemented
-        const pct = marksMode === 'offline' ? offline : marksMode === 'online' ? online : Math.round((offline + online) / 2);
+        const combinedPct = online > 0 ? Math.round((offline + online) / 2) : offline;
+        const pct = marksMode === 'offline' ? offline : marksMode === 'online' ? online : combinedPct;
         return { code: s.code, name: s.name, color: s.color ?? assignSubjectColor(i), pct };
     });
     const overallScore = subjectChartData.length > 0
