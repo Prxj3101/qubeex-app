@@ -627,25 +627,31 @@ export default function Courses() {
                                         {resultsAndGeneralMaterials.length === 0 ? (
                                             <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingVertical: 8 }}>No results or materials yet</Text>
                                         ) : (
-                                            <View style={{ gap: 8 }}>
-                                                {resultsAndGeneralMaterials.map(f => (
-                                                    <TouchableOpacity key={f.id}
-                                                        onPress={() => f.attachmentUrl && setViewerFile({ title: f.title, url: f.attachmentUrl, type: f.attachmentType })}
-                                                        activeOpacity={f.attachmentUrl ? 0.75 : 1}
-                                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: theme.bg, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
-                                                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
-                                                            <FileText size={18} color={theme.red} />
-                                                        </View>
-                                                        <View style={{ flex: 1 }}>
-                                                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{f.title}</Text>
-                                                            <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>
-                                                                {f.postedBy} · {new Date(f.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                            </Text>
-                                                        </View>
-                                                        {f.attachmentUrl && <Eye size={14} color={theme.muted} />}
-                                                    </TouchableOpacity>
-                                                ))}
-                                            </View>
+                                            <ScrollView
+                                                style={{ maxHeight: 264 }}
+                                                nestedScrollEnabled
+                                                showsVerticalScrollIndicator={false}
+                                            >
+                                                <View style={{ gap: 8 }}>
+                                                    {resultsAndGeneralMaterials.map(f => (
+                                                        <TouchableOpacity key={f.id}
+                                                            onPress={() => f.attachmentUrl && setViewerFile({ title: f.title, url: f.attachmentUrl, type: f.attachmentType })}
+                                                            activeOpacity={f.attachmentUrl ? 0.75 : 1}
+                                                            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: theme.bg, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                                                            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <FileText size={18} color={theme.red} />
+                                                            </View>
+                                                            <View style={{ flex: 1 }}>
+                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{f.title}</Text>
+                                                                <Text style={{ fontSize: 10, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>
+                                                                    {f.postedBy} · {new Date(f.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                                </Text>
+                                                            </View>
+                                                            {f.attachmentUrl && <Eye size={14} color={theme.muted} />}
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+                                            </ScrollView>
                                         )}
                                     </Card>
 

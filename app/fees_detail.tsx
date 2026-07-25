@@ -482,7 +482,7 @@ export default function FeesDetail() {
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Fees Detail" showBack />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 40 }}>
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 40 }}>
 
                 {/* ── Pay Fees ── */}
                 <SectionCard icon={<Landmark size={14} color={theme.muted} />} title="Pay Fees" theme={theme} isDark={isDark}>
