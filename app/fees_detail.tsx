@@ -2,11 +2,11 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import {
-    Building2, ChevronDown, CreditCard, Landmark, QrCode, Wallet,
+    Building2, ChevronDown, CreditCard, ImagePlus, Landmark, QrCode, Wallet,
 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Animated, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+    Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -162,12 +162,14 @@ function SectionCard({ icon, title, theme, isDark, children }: {
 
 // ─── Fee Flip Card ────────────────────────────────────────────────────────────
 
-function FeeFlipCard({ theme, isDark, selectedMonth, setSelectedMonth, fc }: {
+function FeeFlipCard({ theme, isDark, selectedMonth, setSelectedMonth, fc, schoolLogoUrl, schoolName }: {
     theme: typeof LIGHT;
     isDark: boolean;
     selectedMonth: string | null;
     setSelectedMonth: (id: string | null) => void;
     fc: { name: string; bg: string; border: string };
+    schoolLogoUrl: string | null;
+    schoolName: string;
 }) {
     const [flipped, setFlipped] = useState(false);
     // Only true for the ~500ms of the actual flip animation. At rest, neither
@@ -232,16 +234,27 @@ function FeeFlipCard({ theme, isDark, selectedMonth, setSelectedMonth, fc }: {
                     ? { transform: [{ rotateY: frontRotate }] }
                     : { opacity: flipped ? 0 : 1 },
             ]}>
-            {/* Header */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: fc.border, backgroundColor: fc.bg }}>
-                <View>
-                    <Text style={{ fontSize: Platform.OS === 'ios' ? 13 : 12, fontFamily: 'Poppins_700Bold', color: '#000000' }}>{STUDENT.name}'s Fee Card</Text>
-                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: '#000000' }}>{STUDENT.class}-{STUDENT.division}</Text>
+            {/* Header — school branding, same as web */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: fc.border, backgroundColor: fc.bg }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                    {schoolLogoUrl
+                        ? <Image source={{ uri: schoolLogoUrl }} resizeMode="contain" style={{ width: 60, height: 60, borderRadius: 10, backgroundColor: fc.bg }} />
+                        : <View style={{ width: 60, height: 60, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: fc.border, borderStyle: 'dashed' }}>
+                            <ImagePlus size={22} color="#000000" style={{ opacity: 0.3 }} />
+                          </View>}
+                    {schoolName
+                        ? <Text style={{ fontSize: 20, fontFamily: 'Poppins_700Bold', color: '#000000', flexShrink: 1 }}>{schoolName}</Text>
+                        : <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: '#000000', opacity: 0.4 }}>School name not added yet</Text>}
                 </View>
                 <TouchableOpacity onPress={() => flip(true)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1, borderColor: fc.border }}>
                     <Text style={{ fontSize: Platform.OS === 'ios' ? 11 : 10, fontFamily: 'Poppins_600SemiBold', color: '#000000' }}>↺ View Back</Text>
                 </TouchableOpacity>
+            </View>
+
+            {/* Strip — student name's fee card */}
+            <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: fc.border }}>
+                <Text style={{ fontSize: Platform.OS === 'ios' ? 13 : 12, fontFamily: 'Poppins_700Bold', color: '#000000' }}>{STUDENT.name}'s Fee Card</Text>
             </View>
 
             <View style={{ padding: 14, gap: 16 }}>
@@ -424,16 +437,29 @@ function FeeFlipCard({ theme, isDark, selectedMonth, setSelectedMonth, fc }: {
                     ? { transform: [{ rotateY: backRotate }] }
                     : { opacity: flipped ? 1 : 0 },
             ]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: fc.border, backgroundColor: fc.bg }}>
-                <View>
-                    <Text style={{ fontSize: Platform.OS === 'ios' ? 13 : 12, fontFamily: 'Poppins_700Bold', color: '#000000' }}>{STUDENT.name}'s Fee Card</Text>
-                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: '#000000' }}>Rules & Regulations</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: fc.border, backgroundColor: fc.bg }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                    {schoolLogoUrl
+                        ? <Image source={{ uri: schoolLogoUrl }} resizeMode="contain" style={{ width: 60, height: 60, borderRadius: 10, backgroundColor: fc.bg }} />
+                        : <View style={{ width: 60, height: 60, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: fc.border, borderStyle: 'dashed' }}>
+                            <ImagePlus size={22} color="#000000" style={{ opacity: 0.3 }} />
+                          </View>}
+                    {schoolName
+                        ? <Text style={{ fontSize: 20, fontFamily: 'Poppins_700Bold', color: '#000000', flexShrink: 1 }}>{schoolName}</Text>
+                        : <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: '#000000', opacity: 0.4 }}>School name not added yet</Text>}
                 </View>
                 <TouchableOpacity onPress={() => flip(false)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1, borderColor: fc.border }}>
                     <Text style={{ fontSize: Platform.OS === 'ios' ? 11 : 10, fontFamily: 'Poppins_600SemiBold', color: '#000000' }}>↺ View Front</Text>
                 </TouchableOpacity>
             </View>
+
+            {/* Strip — student name's fee card / rules & regulations */}
+            <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: fc.border }}>
+                <Text style={{ fontSize: Platform.OS === 'ios' ? 13 : 12, fontFamily: 'Poppins_700Bold', color: '#000000' }}>{STUDENT.name}'s Fee Card</Text>
+                <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: '#000000', opacity: 0.7 }}>Rules & Regulations</Text>
+            </View>
+
             <View style={{ padding: 14, gap: 12 }}>
                 {RULES.map((rule, i) => (
                     <View key={rule.id} style={{ flexDirection: 'row', gap: 8 }}>
@@ -462,9 +488,12 @@ export default function FeesDetail() {
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
     const [feeCardTheme, setFeeCardTheme] = useState<FeeCardThemeKey>('yellow');
     const fc = FEE_CARD_THEMES[feeCardTheme];
+    const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
+    const [schoolName, setSchoolName] = useState('');
 
-    // Fee card color is admin-selected — fetch the division's chosen theme,
-    // silently falling back to yellow if unavailable (mirrors web behaviour).
+    // Fee card color + branding is admin-selected — fetch the division's chosen
+    // theme/logo/name, silently falling back to defaults if unavailable
+    // (mirrors web behaviour).
     useEffect(() => {
         api.get('/student/class')
             .then(r => {
@@ -473,6 +502,8 @@ export default function FeesDetail() {
                 return api.get(`/admin/campus/divisions/${divisionId}/fee-structure`).then(res => {
                     const t = res.data?.data?.feeCardTheme;
                     if (t && t in FEE_CARD_THEMES) setFeeCardTheme(t as FeeCardThemeKey);
+                    setSchoolLogoUrl(res.data?.data?.schoolLogoUrl ?? null);
+                    setSchoolName(res.data?.data?.schoolName ?? '');
                 });
             })
             .catch(() => { /* fall back to default yellow theme */ });
@@ -566,6 +597,8 @@ export default function FeesDetail() {
                             selectedMonth={selectedMonth}
                             setSelectedMonth={setSelectedMonth}
                             fc={fc}
+                            schoolLogoUrl={schoolLogoUrl}
+                            schoolName={schoolName}
                         />
 
                     </View>
