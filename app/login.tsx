@@ -25,7 +25,7 @@ import Svg, { Circle, Defs, Line, RadialGradient, Stop } from 'react-native-svg'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ── Background grid — mirrors web's CursorWave in its resting (no-cursor)
+// ─ Background grid — mirrors web's CursorWave in its resting (no-cursor)
 // state: a faint static grid, since there's no mouse on mobile to lift it. ──
 const GRID_COLS = 22;
 const GRID_ROWS = 15;
