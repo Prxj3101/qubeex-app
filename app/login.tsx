@@ -205,8 +205,8 @@ export default function LoginScreen() {
             <Svg width={SCREEN_W} height={SCREEN_H} style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Defs>
                     <RadialGradient id="blobViolet" cx="30%" cy="8%" r="50%">
-                        <Stop offset="0%" stopColor="#7C3AED" stopOpacity={0.20} />
-                        <Stop offset="60%" stopColor="#7C3AED" stopOpacity={0} />
+                        <Stop offset="0%" stopColor="#71717A" stopOpacity={0.20} />
+                        <Stop offset="60%" stopColor="#71717A" stopOpacity={0} />
                     </RadialGradient>
                     <RadialGradient id="blobOrange" cx="78%" cy="98%" r="45%">
                         <Stop offset="0%" stopColor="#DA7756" stopOpacity={0.15} />
@@ -226,7 +226,8 @@ export default function LoginScreen() {
                             {/* ── Card ── */}
                             <Animated.View style={[styles.cardWrap, { transform: [{ translateX: shakeAnim }] }]}>
                                 <LinearGradient
-                                    colors={['transparent', '#7C3AED', '#DA7756', 'transparent']}
+                                    colors={['transparent', '#7C3AED', '#6946EB', '#5652EA', '#425EE8', '#2F6AE6', '#5A6DC2', '#85719E', '#AF747A', '#DA7756', 'transparent']}
+                                    locations={[0, 0.33, 0.40, 0.44, 0.48, 0.52, 0.56, 0.60, 0.63, 0.66, 1]}
                                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                                     style={styles.topAccent}
                                 />
@@ -248,7 +249,7 @@ export default function LoginScreen() {
                                         <View style={styles.fieldGroup}>
                                             <Text style={styles.label}>Email or ID</Text>
                                             <View style={[styles.inputWrap, focused === 'id' && styles.inputWrapFocused]}>
-                                                <AtSign size={15} color={focused === 'id' ? '#7C3AED' : 'rgba(255,255,255,0.25)'} style={styles.leftIcon} />
+                                                <AtSign size={15} color={focused === 'id' ? '#71717A' : 'rgba(255,255,255,0.25)'} style={styles.leftIcon} />
                                                 <TextInput
                                                     style={styles.input}
                                                     placeholder="you@example.com or INST-0001"
@@ -261,8 +262,8 @@ export default function LoginScreen() {
                                                     autoCorrect={false}
                                                 />
                                                 {identifier.length > 0 && (
-                                                    <View style={[styles.badge, { backgroundColor: isEmail ? 'rgba(139,92,246,0.15)' : 'rgba(218,119,86,0.15)' }]}>
-                                                        <Text style={[styles.badgeText, { color: isEmail ? '#A78BFA' : '#DA7756' }]}>
+                                                    <View style={[styles.badge, { backgroundColor: isEmail ? 'rgba(113,113,122,0.15)' : 'rgba(218,119,86,0.15)' }]}>
+                                                        <Text style={[styles.badgeText, { color: isEmail ? '#A1A1AA' : '#DA7756' }]}>
                                                             {isEmail ? 'EMAIL' : 'ID'}
                                                         </Text>
                                                     </View>
@@ -274,7 +275,7 @@ export default function LoginScreen() {
                                         <View style={styles.fieldGroup}>
                                             <Text style={styles.label}>Password</Text>
                                             <View style={[styles.inputWrap, focused === 'pw' && styles.inputWrapFocused]}>
-                                                <Lock size={15} color={focused === 'pw' ? '#7C3AED' : 'rgba(255,255,255,0.25)'} style={styles.leftIcon} />
+                                                <Lock size={15} color={focused === 'pw' ? '#71717A' : 'rgba(255,255,255,0.25)'} style={styles.leftIcon} />
                                                 <TextInput
                                                     style={[styles.input, { flex: 1 }]}
                                                     placeholder="••••••••••"
@@ -333,7 +334,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#0F0A1E' },
+    root: { flex: 1, backgroundColor: '#0B0B0F' },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
 
     cardWrap: {
@@ -370,8 +371,8 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     inputWrapFocused: {
-        borderColor: 'rgba(124,58,237,0.7)',
-        backgroundColor: 'rgba(124,58,237,0.08)',
+        borderColor: 'rgba(113,113,122,0.7)',
+        backgroundColor: 'rgba(113,113,122,0.08)',
     },
     leftIcon: { marginLeft: 2 },
     input: { flex: 1, fontSize: 14, fontFamily: 'Poppins_400Regular', color: '#fff', paddingVertical: 0 },
