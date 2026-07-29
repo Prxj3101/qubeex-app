@@ -33,17 +33,16 @@ function FeedTabIcon({ color }: { color: string }) {
   return (
     <View style={{ position: 'relative' }}>
       <Rss size={22} color={color} />
-      {feedHasNew && (
-        <View style={{
-          position: 'absolute',
-          top: -2, right: -4,
-          width: 8, height: 8,
-          borderRadius: 99,
-          backgroundColor: '#EF4444',
-          borderWidth: 1.5,
-          borderColor: isDark ? '#1A1030' : 'white',
-        }} />
-      )}
+      <View style={{
+        position: 'absolute',
+        top: -2, right: -4,
+        width: 8, height: 8,
+        borderRadius: 99,
+        backgroundColor: '#EF4444',
+        borderWidth: 1.5,
+        borderColor: isDark ? '#1A1030' : 'white',
+        opacity: feedHasNew ? 1 : 0,
+      }} />
     </View>
   );
 }
@@ -54,15 +53,11 @@ function TabLayout() {
   const insets = useSafeAreaInsets(); // 👈 yeh add karo
   const [topBarHeight, setTopBarHeight] = useState(64);
 
-  <View onLayout={(e) => setTopBarHeight(e.nativeEvent.layout.height)}>
-    <TabLayout />
-  </View>
-
-
   return (
     <>
-      {loading && (
-        <View style={{
+      <View
+        pointerEvents={loading ? 'auto' : 'none'}
+        style={{
           position: 'absolute',
           top: insets.top + topBarHeight,
           left: 0,
@@ -72,10 +67,10 @@ function TabLayout() {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 999,
+          opacity: loading ? 1 : 0,
         }}>
-          <PencilLoader size={85} />
-        </View>
-      )}
+        <PencilLoader size={85} />
+      </View>
 
       <Tabs
         screenOptions={{
