@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { useFocusEffect } from '@react-navigation/native';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED' };
@@ -23,7 +23,7 @@ interface OverviewData {
     pendingTasks: number;
     nextEvent: { type: string; label: string; date: string; daysAway: number } | null;
     latestPost: { title: string; type: string } | null;
-    leaderboard: { rank: number; name: string; rollNo: string; pct: number; isMe: boolean }[];
+    leaderboard: { rank: number; name: string; rollNo: string; pct: number; isMe: boolean; avatarUrl: string | null }[];
 }
 
 function ShinyMedal({ emoji }: { emoji: string }) {
@@ -42,9 +42,17 @@ function ShinyMedal({ emoji }: { emoji: string }) {
     return <Animated.Text style={{ fontSize: 28, opacity: shineAnim, transform: [{ scale }] }}>{emoji}</Animated.Text>;
 }
 
-function Avatar({ name, color, bg, size }: { name: string; color: string; bg: string; size: number }) {
+function Avatar({ name, avatarUrl, color, bg, size }: { name: string; avatarUrl?: string | null; color: string; bg: string; size: number }) {
+    const borderWidth = size > 40 ? 3 : 2;
+    if (avatarUrl) {
+        return (
+            <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', borderWidth, borderColor: color }}>
+                <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            </View>
+        );
+    }
     return (
-        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, borderWidth: size > 40 ? 3 : 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, borderWidth, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: size * 0.35, fontWeight: '700', color }}>{name[0]?.toUpperCase() ?? '?'}</Text>
         </View>
     );
@@ -141,6 +149,7 @@ export default function Home() {
                                             <View key={student.rank} style={{ alignItems: 'center', gap: 4 }}>
                                                 <Avatar
                                                     name={student.name}
+                                                    avatarUrl={student.avatarUrl}
                                                     color={podiumColors[i]}
                                                     bg={isDark ? '#1A1030' : '#F8F4FF'}
                                                     size={podiumSizes[i]}
@@ -174,7 +183,7 @@ export default function Home() {
                                     {lb.slice(3).map((student, i) => (
                                         <View key={student.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: student.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.card, borderRadius: 14, borderWidth: 1, borderColor: student.isMe ? theme.purple + '50' : theme.cardBorder }}>
                                             <Text style={{ fontSize: 16, width: 28, textAlign: 'center' }}>{i === 0 ? '4️⃣' : '5️⃣'}</Text>
-                                            <Avatar name={student.name} color={theme.purple} bg={isDark ? '#1A1030' : '#F8F4FF'} size={34} />
+                                            <Avatar name={student.name} avatarUrl={student.avatarUrl} color={theme.purple} bg={isDark ? '#1A1030' : '#F8F4FF'} size={34} />
                                             <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: student.isMe ? theme.purple : theme.text }} numberOfLines={1}>
                                                 {student.name}{student.isMe ? ' (You)' : ''}
                                             </Text>

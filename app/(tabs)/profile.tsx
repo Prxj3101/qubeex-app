@@ -49,6 +49,65 @@ const DARK = {
     blue: '#60A5FA', blueLight: '#0D1F3C',
 };
 
+// ─── Fees: same data model & derivation logic as /student/fees ─────────────────
+type FeeStructureType = 'REGULAR' | 'ADDON' | 'PENALTY' | 'ONE_TIME' | 'BUS' | 'LATE_FEE';
+interface FeeSubItem { id: string; label: string; amount: number; }
+interface FeeItem { id: string; label: string; amount: number; subItems: FeeSubItem[]; }
+interface FeeStructure { id: string; name: string; type: FeeStructureType; color: string; items: FeeItem[]; }
+interface FeeMonth { id: string; month: string; dueDate: string; assignedStructureIds: string[]; remark: string; }
+interface FeePayment { feeMonthId: string; status: 'PAID' | 'PENDING'; paidDate: string | null; remark: string | null; extraFields: Record<string, string> | null; extraStructureIds: string[] | null; }
+type StudentDetailField = { id: string; kind: 'default' | 'custom'; defaultKey?: 'name' | 'rollNo' | 'studentId' | 'class' | 'division' | 'bus'; label: string; value?: string; };
+
+const FEE_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Parses flexible free-text dates like "10 Aug 26", "Aug 10 2026", "10 August"
+// (year defaults to current year if omitted) into a comparable Date.
+function parseFlexDate(input: string | null | undefined): Date | null {
+    if (!input) return null;
+    const str = input.trim();
+    if (!str) return null;
+    const monthIdx = FEE_MONTHS.findIndex(m => new RegExp(`\\b${m.slice(0, 3)}`, 'i').test(str));
+    if (monthIdx === -1) return null;
+    const nums = str.match(/\d+/g);
+    if (!nums || nums.length === 0) return null;
+    const day = parseInt(nums[0], 10);
+    if (Number.isNaN(day) || day < 1 || day > 31) return null;
+    let year = new Date().getFullYear();
+    if (nums.length > 1) {
+        const y = parseInt(nums[1], 10);
+        if (!Number.isNaN(y)) year = y < 100 ? 2000 + y : y;
+    }
+    const d = new Date(year, monthIdx, day);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Same "late fee stays applied" rule as the Fee Details screen: applies once
+// today is past the due date and either no paid date is set yet, or the
+// paid date entered is itself after the due date.
+function isLateFeeApplicable(dueDate: string | null | undefined, paidDate: string | null | undefined): boolean {
+    const due = parseFlexDate(dueDate);
+    if (!due) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+    if (today.getTime() <= due.getTime()) return false;
+    if (!paidDate || !paidDate.trim()) return true;
+    const paid = parseFlexDate(paidDate);
+    if (!paid) return true;
+    paid.setHours(0, 0, 0, 0);
+    return paid.getTime() > due.getTime();
+}
+
+function feeStructureTotal(s: FeeStructure) {
+    return s.items.reduce((n, item) => {
+        const sub = item.subItems.reduce((m, si) => m + si.amount, 0);
+        return n + (sub > 0 ? sub : item.amount);
+    }, 0);
+}
+
+const TERM1_MONTHS = ['June', 'July', 'August', 'September', 'October'];
+const TERM2_MONTHS = ['November', 'December', 'January', 'February', 'March', 'April', 'May'];
+
 // ─── Attendance Bar ───────────────────────────────────────────────────────────
 // Same Safe/Condonation/Defaulter thresholds as the web app: >=75 green,
 // 65-74 amber, <65 red.
@@ -394,6 +453,13 @@ export default function Profile() {
     const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; classSize: number | null } | null>(null);
     const [flags, setFlags] = useState<FlagItem[]>([]);
 
+    // ── Fees overview — same derivation as the Fee Details screen ──
+    const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+    const [feeMonths, setFeeMonths] = useState<FeeMonth[]>([]);
+    const [feePayments, setFeePayments] = useState<FeePayment[]>([]);
+    const [studentFields, setStudentFields] = useState<StudentDetailField[]>([]);
+    const [extraDetailFields, setExtraDetailFields] = useState<Record<string, string> | null>(null);
+
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useFocusEffect(
@@ -407,6 +473,16 @@ export default function Profile() {
                 .catch(() => {});
             api.get('/student/remarks')
                 .then(r => setFlags(r.data.data))
+                .catch(() => {});
+            api.get('/student/fees')
+                .then(r => {
+                    const structure = r.data?.data?.structure;
+                    setFeeStructures(structure?.feeStructures ?? []);
+                    setFeeMonths(structure?.feeMonths ?? []);
+                    setStudentFields(structure?.studentFields ?? []);
+                    setExtraDetailFields(r.data?.data?.extraDetailFields ?? null);
+                    setFeePayments(r.data?.data?.payments ?? []);
+                })
                 .catch(() => {});
             setAttendanceVisible(false);
             fadeAnim.setValue(0);
@@ -431,6 +507,70 @@ export default function Profile() {
         institutionName: profile?.institutionName ?? '',
         admissionYear: profile?.admissionYear ?? '',
     };
+
+    const getFeePayment = (feeMonthId: string): FeePayment =>
+        feePayments.find(p => p.feeMonthId === feeMonthId) ?? { feeMonthId, status: 'PENDING', paidDate: null, remark: null, extraFields: null, extraStructureIds: null };
+
+    const feeMonthTotal = (m: FeeMonth) =>
+        feeStructures.filter(s => m.assignedStructureIds.includes(s.id)).reduce((n, s) => n + feeStructureTotal(s), 0);
+
+    const getAutoLateFee = (m: FeeMonth): FeeStructure | null => {
+        const payment = getFeePayment(m.id);
+        if (!isLateFeeApplicable(m.dueDate, payment.paidDate)) return null;
+        const lateFee = feeStructures.find(s => s.type === 'LATE_FEE');
+        if (!lateFee) return null;
+        if (m.assignedStructureIds.includes(lateFee.id)) return null;
+        if ((payment.extraStructureIds ?? []).includes(lateFee.id)) return null;
+        return lateFee;
+    };
+
+    const getAutoBusFee = (m: FeeMonth): { structure: FeeStructure; amount: number } | null => {
+        const busField = studentFields.find(f => f.kind === 'default' && f.defaultKey === 'bus');
+        if (!busField) return null;
+        if (extraDetailFields?.[`${busField.id}-enabled`] !== 'true') return null;
+        const rawMonths = extraDetailFields?.[`${busField.id}-months`];
+        let monthIds: string[] = [];
+        if (rawMonths) {
+            try {
+                const parsed = JSON.parse(rawMonths);
+                if (Array.isArray(parsed)) monthIds = parsed.filter((x): x is string => typeof x === 'string');
+            } catch { /* ignore malformed value */ }
+        }
+        if (!monthIds.includes(m.id)) return null;
+        const busStructure = feeStructures.find(s => s.type === 'BUS');
+        if (!busStructure) return null;
+        if (m.assignedStructureIds.includes(busStructure.id)) return null;
+        const amount = Number(extraDetailFields?.[`${busField.id}-fee`]) || 0;
+        return { structure: busStructure, amount };
+    };
+
+    const studentFeeMonthTotal = (m: FeeMonth) => {
+        const extraIds = (getFeePayment(m.id).extraStructureIds ?? []).filter(id => !m.assignedStructureIds.includes(id));
+        const extra = feeStructures.filter(s => extraIds.includes(s.id)).reduce((n, s) => n + feeStructureTotal(s), 0);
+        const autoLateFee = getAutoLateFee(m);
+        const autoBusFee = getAutoBusFee(m);
+        return feeMonthTotal(m) + extra + (autoLateFee ? feeStructureTotal(autoLateFee) : 0) + (autoBusFee ? autoBusFee.amount : 0);
+    };
+
+    // No re-sorting — keep the exact same order as configured in the fee
+    // card (e.g. starting from the academic year's first month), same as
+    // the Fee Details screen's Monthly Payment Schedule table.
+    const feeMonthsProfile = feeMonths.map(m => {
+        const payment = getFeePayment(m.id);
+        return {
+            month: m.month,
+            dueDate: m.dueDate,
+            amount: studentFeeMonthTotal(m),
+            status: payment.status,
+            paidDate: payment.paidDate ?? undefined,
+        };
+    });
+    const feeTerm1 = feeMonthsProfile.filter(m => TERM1_MONTHS.includes(m.month));
+    const feeTerm2 = feeMonthsProfile.filter(m => TERM2_MONTHS.includes(m.month));
+    const feeTermData = [
+        { label: 'Term 1', range: 'June – October', months: feeTerm1 },
+        { label: 'Term 2', range: 'November – May', months: feeTerm2 },
+    ];
 
     const subjectChartData = (marksheetData?.subjects ?? []).map((s, i) => {
         const offline = s.pct ?? 0;
@@ -866,12 +1006,11 @@ export default function Profile() {
                         </View>
 
                         {/* Term progress bars */}
-                        {[
-                            { label: 'Term 1', range: 'June – October',  paidMonths: 5, totalMonths: 5  },
-                            { label: 'Term 2', range: 'November – May',   paidMonths: 2, totalMonths: 7  },
-                        ].map((term, i) => {
-                            const pct = Math.round((term.paidMonths / term.totalMonths) * 100);
-                            const cleared = term.paidMonths === term.totalMonths;
+                        {feeTermData.map((term, i) => {
+                            const paidMonths = term.months.filter(m => m.status === 'PAID').length;
+                            const totalMonths = term.months.length;
+                            const pct = totalMonths > 0 ? Math.round((paidMonths / totalMonths) * 100) : 0;
+                            const cleared = totalMonths > 0 && paidMonths === totalMonths;
                             return (
                                 <View key={i} style={{ padding: 10, backgroundColor: theme.bg, borderRadius: 14, marginBottom: 8, gap: 6 }}>
                                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -879,9 +1018,9 @@ export default function Profile() {
                                             <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{term.label}</Text>
                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{term.range}</Text>
                                         </View>
-                                        <View style={{ backgroundColor: cleared ? theme.greenLight : term.paidMonths === 0 ? theme.redLight : theme.amberLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 }}>
-                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: cleared ? theme.green : term.paidMonths === 0 ? theme.red : theme.amber }}>
-                                                {cleared ? '✅ Paid' : `${term.paidMonths}/${term.totalMonths} paid`}
+                                        <View style={{ backgroundColor: cleared ? theme.greenLight : paidMonths === 0 ? theme.redLight : theme.amberLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 }}>
+                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: cleared ? theme.green : paidMonths === 0 ? theme.red : theme.amber }}>
+                                                {cleared ? '✅ Paid' : `${paidMonths}/${totalMonths} paid`}
                                             </Text>
                                         </View>
                                     </View>
@@ -904,20 +1043,11 @@ export default function Profile() {
                                     </View>
                                     {/* Body — fixed height vertical scroll */}
                                     <ScrollView style={{ height: 280 }} showsVerticalScrollIndicator nestedScrollEnabled bounces={false}>
-                                        {[
-                                            { month: 'June',      dueDate: '10 Jun 2025', amount: 6700, status: 'PAID',    paidDate: '8 Jun 2025'  },
-                                            { month: 'July',      dueDate: '10 Jul 2025', amount: 6700, status: 'PAID',    paidDate: '9 Jul 2025'  },
-                                            { month: 'August',    dueDate: '10 Aug 2025', amount: 6700, status: 'PAID',    paidDate: '7 Aug 2025'  },
-                                            { month: 'September', dueDate: '10 Sep 2025', amount: 6700, status: 'PAID',    paidDate: '9 Sep 2025'  },
-                                            { month: 'October',   dueDate: '10 Oct 2025', amount: 6700, status: 'PAID',    paidDate: '8 Oct 2025'  },
-                                            { month: 'November',  dueDate: '10 Nov 2025', amount: 6700, status: 'PAID',    paidDate: '10 Nov 2025' },
-                                            { month: 'December',  dueDate: '10 Dec 2025', amount: 6700, status: 'PAID',    paidDate: '9 Dec 2025'  },
-                                            { month: 'January',   dueDate: '10 Jan 2026', amount: 6700, status: 'PENDING', paidDate: undefined      },
-                                            { month: 'February',  dueDate: '10 Feb 2026', amount: 6700, status: 'PENDING', paidDate: undefined      },
-                                            { month: 'March',     dueDate: '10 Mar 2026', amount: 6700, status: 'PENDING', paidDate: undefined      },
-                                            { month: 'April',     dueDate: '10 Apr 2026', amount: 6700, status: 'PENDING', paidDate: undefined      },
-                                            { month: 'May',       dueDate: '10 May 2026', amount: 6700, status: 'PENDING', paidDate: undefined      },
-                                        ].map((m, i, arr) => (
+                                        {feeMonthsProfile.length === 0 ? (
+                                            <View style={{ paddingVertical: 28, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted }}>No fee months configured yet</Text>
+                                            </View>
+                                        ) : feeMonthsProfile.map((m, i, arr) => (
                                             <View key={i} style={{ flexDirection: 'row', borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: theme.cardBorder }}>
                                                 <Text style={{ width: 75,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{m.month}</Text>
                                                 <Text style={{ width: 75,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_400Regular',  color: theme.text }}>₹{m.amount.toLocaleString()}</Text>
