@@ -1,5 +1,6 @@
 export type CardType = 'yellow' | 'red';
 export type Status = 'active' | 'resolved' | 'appealed';
+export interface FlagAttachment { url: string; name: string; type: string; }
 
 export interface Flag {
     id: number;
@@ -13,6 +14,7 @@ export interface Flag {
     role: string;
     status: Status;
     actionTaken?: string;
+    attachments: FlagAttachment[];
 }
 export const FLAGS: Flag[] = [
     {
@@ -27,6 +29,7 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'active',
         actionTaken: 'Marks deducted — 20% penalty applied on assignment score.',
+        attachments: [],
     },
     {
         id: 2,
@@ -40,6 +43,7 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'resolved',
         actionTaken: 'Verbal warning issued. Student was counselled by class mentor.',
+        attachments: [],
     },
     {
         id: 3,
@@ -53,6 +57,7 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'active',
         actionTaken: 'Parents notified. Student must maintain 90%+ attendance hereafter.',
+        attachments: [],
     },
     {
         id: 4,
@@ -66,6 +71,7 @@ export const FLAGS: Flag[] = [
         role: 'Admin',
         status: 'resolved',
         actionTaken: 'Warning noted in record. Student was allowed entry after parent confirmation.',
+        attachments: [],
     },
     {
         id: 5,
@@ -79,6 +85,7 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'active',
         actionTaken: 'Lab session marks withheld. Formal warning issued.',
+        attachments: [],
     },
     {
         id: 6,
@@ -92,6 +99,7 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'active',
         actionTaken: 'Test marked as 0. Case escalated to HOD for review.',
+        attachments: [],
     },
     {
         id: 7,
@@ -105,6 +113,7 @@ export const FLAGS: Flag[] = [
         role: 'Invigilator',
         status: 'appealed',
         actionTaken: 'Paper cancelled. Disciplinary committee hearing scheduled.',
+        attachments: [],
     },
     {
         id: 8,
@@ -118,6 +127,7 @@ export const FLAGS: Flag[] = [
         role: 'Admin',
         status: 'resolved',
         actionTaken: 'Attendance marked absent. Both students issued red card warning.',
+        attachments: [],
     },
     {
         id: 9,
@@ -131,5 +141,6 @@ export const FLAGS: Flag[] = [
         role: 'Faculty',
         status: 'active',
         actionTaken: 'Test invalidated. Student barred from makeup exam.',
+        attachments: [],
     },
 ];

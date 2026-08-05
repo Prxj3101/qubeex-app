@@ -108,6 +108,24 @@ function feeStructureTotal(s: FeeStructure) {
 const TERM1_MONTHS = ['June', 'July', 'August', 'September', 'October'];
 const TERM2_MONTHS = ['November', 'December', 'January', 'February', 'March', 'April', 'May'];
 
+// Backend sends remark dates like "5 Aug 2026, 10:15 AM" — Hermes (React
+// Native's JS engine) doesn't reliably parse this free-form format the way
+// a browser's V8 engine does (new Date(str) can come back Invalid Date),
+// which silently broke "most recent" selection below. Parse it explicitly
+// (same helper as app/flags.tsx).
+const REMARK_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function parseRemarkDate(input: string): number {
+    const m = input.trim().match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return 0;
+    const [, dayStr, monStr, yearStr, hourStr, minStr, ampm] = m;
+    const monthIdx = REMARK_MONTHS.findIndex(mo => mo.toLowerCase() === monStr.slice(0, 3).toLowerCase());
+    if (monthIdx === -1) return 0;
+    let hour = parseInt(hourStr, 10) % 12;
+    if (ampm.toUpperCase() === 'PM') hour += 12;
+    const d = new Date(parseInt(yearStr, 10), monthIdx, parseInt(dayStr, 10), hour, parseInt(minStr, 10));
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
 // ─── Attendance Bar ───────────────────────────────────────────────────────────
 // Same Safe/Condonation/Defaulter thresholds as the web app: >=75 green,
 // 65-74 amber, <65 red.
@@ -961,8 +979,8 @@ export default function Profile() {
                         ) : (
                             <View style={{ gap: 8 }}>
                                 {[
-                                    [...flags].filter(f => f.type === 'yellow').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
-                                    [...flags].filter(f => f.type === 'red').sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1)[0],
+                                    [...flags].filter(f => f.type === 'yellow').sort((a, b) => parseRemarkDate(b.date) - parseRemarkDate(a.date))[0],
+                                    [...flags].filter(f => f.type === 'red').sort((a, b) => parseRemarkDate(b.date) - parseRemarkDate(a.date))[0],
                                 ].filter((f): f is FlagItem => f !== undefined).map((flag, i) => (
                                     <View key={i} style={{ flexDirection: 'row', gap: 10, padding: 10, backgroundColor: flag.type === 'yellow' ? theme.amberLight : theme.redLight, borderRadius: 12, borderLeftWidth: 3, borderLeftColor: flag.type === 'yellow' ? theme.amber : theme.red }}>
                                         <View style={{

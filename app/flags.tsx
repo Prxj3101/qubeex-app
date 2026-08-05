@@ -1,8 +1,10 @@
+import { AttachmentPreview } from '@/components/AttachmentPreview';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { CardType, Flag } from '@/data/flags';
 import api from '@/lib/api';
-import { BookOpen, Calendar, ChevronDown, ChevronUp, ShieldAlert, User } from 'lucide-react-native';
+import { BookOpen, Calendar, ChevronDown, ChevronUp, GraduationCap, ShieldAlert, User } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     Animated,
@@ -66,7 +68,24 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 
-function FlagCard({ flag, theme, isDark }: { flag: Flag; theme: typeof LIGHT; isDark: boolean }) {
+// Backend sends dates like "5 Aug 2026, 10:15 AM" — Hermes (React Native's JS
+// engine) doesn't reliably parse this free-form format the way a browser's
+// V8 engine does (new Date(str) can come back Invalid Date), which silently
+// broke the newest-first sort below. Parse it explicitly instead.
+const REMARK_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function parseRemarkDate(input: string): number {
+    const m = input.trim().match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return 0;
+    const [, dayStr, monStr, yearStr, hourStr, minStr, ampm] = m;
+    const monthIdx = REMARK_MONTHS.findIndex(mo => mo.toLowerCase() === monStr.slice(0, 3).toLowerCase());
+    if (monthIdx === -1) return 0;
+    let hour = parseInt(hourStr, 10) % 12;
+    if (ampm.toUpperCase() === 'PM') hour += 12;
+    const d = new Date(parseInt(yearStr, 10), monthIdx, parseInt(dayStr, 10), hour, parseInt(minStr, 10));
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function FlagCard({ flag, theme, isDark, classLabel }: { flag: Flag; theme: typeof LIGHT; isDark: boolean; classLabel?: string }) {
     const [expanded, setExpanded] = useState(false);
     const cfg = flag.type === 'yellow' ? YELLOW : RED;
     const mode = isDark ? 'dark' : 'light';
@@ -122,6 +141,12 @@ function FlagCard({ flag, theme, isDark }: { flag: Flag; theme: typeof LIGHT; is
                     <Calendar size={11} color={cfg.icon[mode]} />
                     <Text style={[styles.metaText, { color: cfg.text[mode] }]}>{flag.date}</Text>
                 </View>
+                {classLabel && (
+                    <View style={styles.metaItem}>
+                        <GraduationCap size={11} color={cfg.icon[mode]} />
+                        <Text style={[styles.metaText, { color: cfg.text[mode] }]}>{classLabel}</Text>
+                    </View>
+                )}
                 {flag.subject && (
                     <View style={styles.metaItem}>
                         <BookOpen size={11} color={cfg.icon[mode]} />
@@ -140,6 +165,14 @@ function FlagCard({ flag, theme, isDark }: { flag: Flag; theme: typeof LIGHT; is
                         <Text style={[styles.detailLabel, { color: cfg.icon[mode] }]}>📝 Incident Detail</Text>
                         <Text style={[styles.detailText, { color: cfg.text[mode] }]}>{flag.detail}</Text>
                     </View>
+
+                    {flag.attachments.length > 0 && (
+                        <View style={{ gap: 8 }}>
+                            {flag.attachments.map((att, i) => (
+                                <AttachmentPreview key={i} url={att.url} name={att.name} type={att.type} />
+                            ))}
+                        </View>
+                    )}
 
                     {flag.actionTaken && (
                         <View style={[styles.detailBox, {
@@ -166,6 +199,12 @@ export default function Flags() {
     const theme = isDark ? DARK : LIGHT;
     const [activeTab, setActiveTab] = useState<CardType>('yellow');
     const [flags, setFlags] = useState<Flag[]>([]);
+    const { profile, fetchProfile } = useStudent();
+
+    useEffect(() => {
+        if (!profile) fetchProfile();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         api.get('/student/remarks')
@@ -174,7 +213,7 @@ export default function Flags() {
     }, []);
 
     const sortByDateDesc = (arr: Flag[]) =>
-        [...arr].sort((a, b) => new Date(a.date).getTime() < new Date(b.date).getTime() ? 1 : -1);
+        [...arr].sort((a, b) => parseRemarkDate(b.date) - parseRemarkDate(a.date));
 
     const yellowFlags = sortByDateDesc(flags.filter(f => f.type === 'yellow'));
     const redFlags = sortByDateDesc(flags.filter(f => f.type === 'red'));
@@ -276,7 +315,7 @@ export default function Flags() {
                     {/* ── Flags List ── */}
                     <View style={{ gap: 10 }}>
                         {activeFlags.map(flag => (
-                            <FlagCard key={flag.id} flag={flag} theme={theme} isDark={isDark} />
+                            <FlagCard key={flag.id} flag={flag} theme={theme} isDark={isDark} classLabel={profile?.division || undefined} />
                         ))}
                         {activeFlags.length === 0 && (
                             <View style={{ alignItems: 'center', padding: 30, gap: 8 }}>
