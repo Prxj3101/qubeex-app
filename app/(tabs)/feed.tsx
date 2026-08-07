@@ -4,6 +4,7 @@ import { useFeedBadge } from '@/context/FeedBadgeContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
+import { formatDisplayName, resolveDisplayTitle } from '@/lib/displayName';
 import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
@@ -60,7 +61,7 @@ interface FeedPost {
     id: string;
     type: PostType;
     source: FeedSource;
-    author: { id: string; name: string; role: string; avatarUrl?: string | null };
+    author: { id: string; name: string; role: string; avatarUrl?: string | null; title?: string | null; prefix?: string | null };
     subject?: string | null;
     title: string;
     body: string;
@@ -325,10 +326,10 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
                         : <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
-                    <Text style={[styles.authorName, { color: theme.text }]}>{post.author.name}</Text>
+                    <Text style={[styles.authorName, { color: theme.text }]}>{formatDisplayName(post.author.name, post.author.prefix)}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Platform.OS === 'ios' ? 0.5 : -4 }}>
                         <Text style={[styles.authorMeta, { color: theme.muted }]} numberOfLines={1}>
-                            {post.author.role.charAt(0) + post.author.role.slice(1).toLowerCase()}
+                            {resolveDisplayTitle(post.author.role, post.author.title)}
                         </Text>
                         <View style={{ marginTop: -2 }}>
                             <VerifiedBadge />
