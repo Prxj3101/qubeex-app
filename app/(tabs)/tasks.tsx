@@ -6,14 +6,16 @@ import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
 import {
     AlertCircle,
-    BookOpen,
+    BarChart2,
     Calendar,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
     Clock,
     FileText,
+    Layers,
     Radio,
+    Timer,
     Upload,
     Zap,
 } from 'lucide-react-native';
@@ -21,6 +23,7 @@ import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -61,13 +64,19 @@ interface TestItem {
     title: string;
     type: 'test' | 'exam';
     status: TestStatus;
-    date: string;
-    time: string;
-    duration: string;
+    // Kept as separate raw ISO values (not merged into one "date") so the card can
+    // show Started AND Ends/Ended at once, matching the web Tests & Exams card.
+    startDateIso: string | null;
+    validUntilIso: string | null;
+    durationMinutes: number;
     topics: string[];
     marks: number;
-    scored?: number;
-    daysLeft?: number | null;
+    numberOfQuestions: number;
+    maxAttempts: number;
+    attemptsUsed: number;
+    scored?: number | null;
+    scoredPercentage?: number | null;
+    lastAttemptId?: string | null;
     color: string;
 }
 
@@ -97,11 +106,16 @@ interface ApiTest {
     subjectName: string;
     durationMinutes: number;
     totalMarks: number;
+    numberOfQuestions: number;
+    maxAttempts: number;
     startDate: string | null;
     validUntil: string | null;
     daysLeft: number | null;
     studentStatus: 'LIVE' | 'UPCOMING' | 'DONE';
+    attemptsUsed: number;
     bestScore: number | null;
+    bestPercentage: number | null;
+    lastAttemptId: string | null;
 }
 
 interface ApiAssignment {
@@ -147,15 +161,15 @@ function fmtTime(iso: string | null): string {
     return `${h}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
+// Matches the web Tests & Exams card exactly: "30mins", "1hr 30mins", "1hr".
 function fmtDuration(mins: number): string {
-    if (mins < 60) return `${mins} mins`;
+    if (mins < 60) return `${mins}mins`;
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return m > 0 ? `${h} hr ${m} mins` : `${h} hr${h > 1 ? 's' : ''}`;
+    return `${h}hr${m ? ` ${m}mins` : ''}`;
 }
 
 function mapTest(t: ApiTest): TestItem {
-    const dateIso = t.startDate ?? t.validUntil;
     return {
         id: t.id,
         subject: t.subjectName,
@@ -163,13 +177,17 @@ function mapTest(t: ApiTest): TestItem {
         title: t.title,
         type: 'test',
         status: t.studentStatus === 'LIVE' ? 'live' : t.studentStatus === 'UPCOMING' ? 'upcoming' : 'completed',
-        date: fmtDate(dateIso),
-        time: fmtTime(dateIso),
-        duration: fmtDuration(t.durationMinutes ?? 45),
+        startDateIso: t.startDate,
+        validUntilIso: t.validUntil,
+        durationMinutes: t.durationMinutes ?? 45,
         topics: (t.description ?? '').split('\n').map(l => l.trim()).filter(Boolean),
         marks: t.totalMarks,
-        scored: t.bestScore ?? undefined,
-        daysLeft: t.daysLeft,
+        numberOfQuestions: t.numberOfQuestions,
+        maxAttempts: t.maxAttempts,
+        attemptsUsed: t.attemptsUsed,
+        scored: t.bestScore,
+        scoredPercentage: t.bestPercentage,
+        lastAttemptId: t.lastAttemptId,
         color: subjectColor(t.subjectName),
     };
 }
@@ -217,120 +235,148 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 }
 
 // ─── Test Card ────────────────────────────────────────────────────────────────
+// Mirrors the web Tests & Exams card exactly: same labels, same info chips
+// (Started/Ends both shown when present, duration, marks, questions, attempts),
+// same Score+percentage placement, same buttons — kept in sync intentionally.
 function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT; isDark: boolean }) {
-    const [expanded, setExpanded] = useState(item.status === 'live');
+    const [expanded, setExpanded] = useState(false);
 
     const statusConfig = {
-        live: { bg: '#FEE2E2', darkBg: '#2B0D0D', text: '#DC2626', darkText: '#F87171', label: '🔴 Live Now', pulse: true },
-        upcoming: { bg: theme.blueLight, darkBg: '#0D1F3C', text: theme.blue, darkText: theme.blue, label: '⏰ Upcoming', pulse: false },
-        completed: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, darkText: theme.green, label: '✅ Completed', pulse: false },
+        live: { bg: '#FEE2E2', darkBg: '#2B0D0D', emoji: '🔴', text: '#DC2626', darkText: '#F87171', label: 'Live Now' },
+        upcoming: { bg: theme.amberLight, darkBg: '#2D2010', emoji: '⏰', text: theme.amber, darkText: theme.amber, label: 'Upcoming' },
+        completed: { bg: theme.greenLight, darkBg: '#0D2B20', emoji: '✅', text: theme.green, darkText: theme.green, label: 'Completed' },
     };
 
     const s = statusConfig[item.status];
+    const startLabel = item.status === 'upcoming' ? 'Starts' : 'Started';
+    const endLabel = item.status === 'completed' ? 'Ended' : 'Ends';
 
     function handleStartTest() {
         router.push({ pathname: '/test-webview', params: { testId: item.id } });
     }
+    function handleViewResult() {
+        router.push({ pathname: '/test-webview', params: { testId: item.id, attemptId: item.lastAttemptId ?? '' } });
+    }
 
     return (
-        <Card theme={theme}>
+        // padding: 0 + overflow: hidden here so the syllabus toggle below can be a
+        // full-bleed footer strip (border-top spanning the whole card, no side
+        // padding) exactly like the web card — everything else moves into the
+        // padded inner View instead of relying on the shared Card's padding.
+        <Card theme={theme} style={{ padding: 0, overflow: 'hidden' }}>
+            <View style={{ padding: 16 }}>
             {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
                 <View style={{
-                    width: 42, height: 42, borderRadius: 12,
-                    backgroundColor: item.color + '20',
+                    width: 40, height: 40, borderRadius: 12,
+                    backgroundColor: item.status === 'live' ? '#ef44441a' : item.status === 'upcoming' ? theme.amber + '20' : '#22c55e1a',
                     alignItems: 'center', justifyContent: 'center',
                 }}>
-                    {item.type === 'exam'
-                        ? <BookOpen size={20} color={item.color} />
-                        : <FileText size={20} color={item.color} />
-                    }
+                    <FileText size={20} color={item.status === 'live' ? '#F87171' : item.status === 'upcoming' ? theme.amber : '#10B981'} />
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>{item.title}</Text>
                     <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>{item.subject}</Text>
                 </View>
-                <View style={[styles.chip, { backgroundColor: isDark ? s.darkBg : s.bg }]}>
-                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: isDark ? s.darkText : s.text }}>{s.label}</Text>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <View style={[styles.chip, { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? s.darkBg : s.bg }]}>
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: isDark ? s.darkText : s.text }}>{s.emoji} {s.label}</Text>
+                    </View>
+                    {item.status === 'completed' && item.scored != null && (
+                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
+                            Score: {item.scored}/{item.marks}{item.scoredPercentage != null ? ` (${item.scoredPercentage}%)` : ''}
+                        </Text>
+                    )}
                 </View>
             </View>
 
             {/* Info row */}
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Calendar size={11} color={theme.muted} />
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.date}</Text>
-                </View>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Clock size={11} color={theme.muted} />
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.time}</Text>
-                </View>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Zap size={11} color={theme.muted} />
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.duration}</Text>
-                </View>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>📊 {item.marks} marks</Text>
-                </View>
-                {item.status === 'upcoming' && item.daysLeft != null && (
-                    <View style={[styles.infoChip, { backgroundColor: item.daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
-                        <Text style={[styles.infoChipText, { color: item.daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
-                            {item.daysLeft === 0 ? 'Today!' : `${item.daysLeft}d left`}
+                {item.startDateIso && (
+                    <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>{startLabel}: </Text>
+                            {fmtDate(item.startDateIso)}, {fmtTime(item.startDateIso)}
                         </Text>
                     </View>
                 )}
-                {item.status === 'completed' && item.scored !== undefined && (
-                    <View style={[styles.infoChip, { backgroundColor: theme.greenLight }]}>
-                        <Text style={[styles.infoChipText, { color: theme.green, fontFamily: 'Poppins_700Bold' }]}>
-                            {item.scored}/{item.marks}
+                {item.validUntilIso && (
+                    <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>{endLabel}: </Text>
+                            {fmtDate(item.validUntilIso)}, {fmtTime(item.validUntilIso)}
                         </Text>
                     </View>
                 )}
+                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                    <Timer size={11} color={theme.muted} />
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{fmtDuration(item.durationMinutes)}</Text>
+                </View>
+                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                    <BarChart2 size={11} color={theme.muted} />
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.marks} marks</Text>
+                </View>
+                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                    <Layers size={11} color={theme.muted} />
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.numberOfQuestions} Ques</Text>
+                </View>
+                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {item.attemptsUsed}/{item.maxAttempts}</Text>
+                </View>
             </View>
 
-            {/* Expanded content */}
-            {expanded && (
-                <View style={{ gap: 10 }}>
-                    {item.topics.length > 0 && (
-                        <View style={{ gap: 6 }}>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>SYLLABUS</Text>
-                            {item.topics.map((topic, i) => (
-                                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: item.color }} />
-                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, flex: 1 }}>{topic}</Text>
-                                </View>
-                            ))}
+            {/* Expanded content — syllabus only, matching web */}
+            {expanded && item.topics.length > 0 && (
+                <View style={{ gap: 6, marginBottom: 10 }}>
+                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>SYLLABUS</Text>
+                    {item.topics.map((topic, i) => (
+                        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: theme.purple }} />
+                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, flex: 1 }}>{topic}</Text>
                         </View>
-                    )}
-
-                    {item.status === 'live' && (
-                        <TouchableOpacity
-                            onPress={handleStartTest}
-                            style={[styles.ctaBtn, { backgroundColor: '#EF4444' }]}
-                            activeOpacity={0.85}
-                        >
-                            <Radio size={15} color="white" />
-                            <Text style={styles.ctaBtnText}>Start Test Now</Text>
-                        </TouchableOpacity>
-                    )}
-                    {item.status === 'upcoming' && (
-                        <TouchableOpacity
-                            onPress={handleStartTest}
-                            style={[styles.ctaBtn, { backgroundColor: item.color }]}
-                            activeOpacity={0.85}
-                        >
-                            <Clock size={15} color="white" />
-                            <Text style={styles.ctaBtnText}>Open Test Link</Text>
-                        </TouchableOpacity>
-                    )}
+                    ))}
                 </View>
             )}
 
-            {/* Expand toggle */}
-            <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-                {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
-                <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'View details'}</Text>
-            </TouchableOpacity>
+            {item.status === 'live' && (
+                <TouchableOpacity
+                    onPress={handleStartTest}
+                    style={[styles.ctaBtn, { backgroundColor: '#EF4444' }]}
+                    activeOpacity={0.85}
+                >
+                    <Radio size={15} color="white" />
+                    <Text style={styles.ctaBtnText}>Start Test Now</Text>
+                </TouchableOpacity>
+            )}
+            {item.status === 'completed' && item.lastAttemptId && (
+                <TouchableOpacity
+                    onPress={handleViewResult}
+                    style={[styles.ctaBtnOutline, { borderColor: theme.cardBorder }]}
+                    activeOpacity={0.85}
+                >
+                    <Text style={[styles.ctaBtnOutlineText, { color: theme.text }]}>View Result</Text>
+                </TouchableOpacity>
+            )}
+
+            </View>
+
+            {/* Expand toggle — full-bleed footer strip with a top border, matching
+                the web card exactly, instead of sitting inline with the padding. */}
+            {item.topics.length > 0 && (
+                <TouchableOpacity
+                    onPress={() => setExpanded(!expanded)}
+                    activeOpacity={0.7}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                        paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.cardBorder,
+                    }}
+                >
+                    {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
+                    <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Hide syllabus/instructions' : 'View syllabus/instructions'}</Text>
+                </TouchableOpacity>
+            )}
         </Card>
     );
 }
@@ -511,6 +557,7 @@ export default function Tasks() {
     const [loadingTests, setLoadingTests] = useState(true);
     const [loadingSubmissions, setLoadingSubmissions] = useState(false);
     const [submissionsLoaded, setSubmissionsLoaded] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     async function fetchTests() {
         try {
@@ -541,6 +588,23 @@ export default function Tasks() {
         fetchTests();
         if (submissionsLoaded) fetchSubmissions();
     }, [submissionsLoaded]));
+
+    async function onRefresh() {
+        setRefreshing(true);
+        try {
+            const tasks = [
+                api.get('/student/tasks/tests').then(res => setTests((res.data.data ?? []).map(mapTest))),
+            ];
+            if (submissionsLoaded) {
+                tasks.push(api.get('/student/tasks/assignments').then(res => setSubmissions((res.data.data ?? []).map(mapAssignment))));
+            }
+            await Promise.all(tasks);
+        } catch {
+            // leave existing data
+        } finally {
+            setRefreshing(false);
+        }
+    }
 
     function handleSwitchToSubmissions() {
         setMainTab('submissions');
@@ -575,7 +639,13 @@ export default function Tasks() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Tasks" />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 30 }}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.purple} colors={[theme.purple]} />
+                }
+            >
                 <View style={[styles.body, { paddingTop: 6 }]}>
 
                     {/* ── Summary Banner ── */}
@@ -598,7 +668,7 @@ export default function Tasks() {
                     </View>
 
                     {/* ── Main Tabs ── */}
-                    <View style={[styles.mainTabRow, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                    <View style={[styles.mainTabRow, { backgroundColor: isDark ? 'rgba(100,116,139,0.15)' : 'rgba(148,163,184,0.12)', borderColor: theme.cardBorder }]}>
                         <TouchableOpacity
                             onPress={() => setMainTab('tests')}
                             style={[styles.mainTab, mainTab === 'tests' && { backgroundColor: theme.purple }]}
@@ -716,11 +786,11 @@ const styles = StyleSheet.create({
 
     mainTabRow: {
         flexDirection: 'row',
-        borderRadius: 14, borderWidth: 1,
-        padding: 4, gap: 4,
+        borderRadius: 999, borderWidth: 1,
+        padding: 3, gap: 4,
     },
     mainTab: {
-        flex: 1, paddingVertical: 8, borderRadius: 10,
+        flex: 1, paddingVertical: 8, borderRadius: 999,
         alignItems: 'center', flexDirection: 'row',
         justifyContent: 'center', gap: 6,
     },
@@ -755,6 +825,12 @@ const styles = StyleSheet.create({
         gap: 8, paddingVertical: 12, borderRadius: 14,
     },
     ctaBtnText: { fontSize: 13, fontFamily: 'Poppins_700Bold', color: 'white' },
+
+    ctaBtnOutline: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
+    },
+    ctaBtnOutlineText: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
 
     expandRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
     expandText: { fontSize: 11, fontFamily: 'Poppins_400Regular' },

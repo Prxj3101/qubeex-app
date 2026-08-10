@@ -9,7 +9,7 @@ import { WebView } from 'react-native-webview';
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://qubeex.in';
 
 export default function TestWebViewScreen() {
-    const { testId } = useLocalSearchParams<{ testId: string }>();
+    const { testId, attemptId } = useLocalSearchParams<{ testId: string; attemptId?: string }>();
     const [token, setToken] = useState<string | null>(null);
     const webViewRef = useRef<WebView>(null);
     const canGoBackRef = useRef(false);
@@ -32,6 +32,8 @@ export default function TestWebViewScreen() {
     }, []);
 
     function confirmExit() {
+        // Viewing a past result has nothing to lose by leaving — skip the warning.
+        if (attemptId) { router.back(); return; }
         Alert.alert(
             'Leave test?',
             'Going back will not submit your test. Are you sure?',
@@ -65,12 +67,12 @@ export default function TestWebViewScreen() {
                 <TouchableOpacity onPress={confirmExit} style={styles.backBtn}>
                     <ArrowLeft size={22} color="white" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Test</Text>
+                <Text style={styles.headerTitle}>{attemptId ? 'Result' : 'Test'}</Text>
                 <View style={{ width: 38 }} />
             </View>
             <WebView
                 ref={webViewRef}
-                source={{ uri: `${WEB_URL}/student/tasks/tests/${testId}` }}
+                source={{ uri: attemptId ? `${WEB_URL}/student/tasks/tests/${testId}/result/${attemptId}` : `${WEB_URL}/student/tasks/tests/${testId}` }}
                 injectedJavaScriptBeforeContentLoaded={injectedJS}
                 javaScriptEnabled
                 domStorageEnabled
