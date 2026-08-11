@@ -77,6 +77,7 @@ interface TestItem {
     scored?: number | null;
     scoredPercentage?: number | null;
     lastAttemptId?: string | null;
+    lastAttemptEndTime?: string | null;
     color: string;
 }
 
@@ -116,6 +117,7 @@ interface ApiTest {
     bestScore: number | null;
     bestPercentage: number | null;
     lastAttemptId: string | null;
+    lastAttemptEndTime: string | null;
 }
 
 interface ApiAssignment {
@@ -188,6 +190,7 @@ function mapTest(t: ApiTest): TestItem {
         scored: t.bestScore,
         scoredPercentage: t.bestPercentage,
         lastAttemptId: t.lastAttemptId,
+        lastAttemptEndTime: t.lastAttemptEndTime,
         color: subjectColor(t.subjectName),
     };
 }
@@ -241,13 +244,17 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT; isDark: boolean }) {
     const [expanded, setExpanded] = useState(false);
 
+    const missed = item.status === 'completed' && item.attemptsUsed === 0;
+
     const statusConfig = {
         live: { bg: '#FEE2E2', darkBg: '#2B0D0D', emoji: '🔴', text: '#DC2626', darkText: '#F87171', label: 'Live Now' },
         upcoming: { bg: theme.amberLight, darkBg: '#2D2010', emoji: '⏰', text: theme.amber, darkText: theme.amber, label: 'Upcoming' },
         completed: { bg: theme.greenLight, darkBg: '#0D2B20', emoji: '✅', text: theme.green, darkText: theme.green, label: 'Completed' },
     };
 
-    const s = statusConfig[item.status];
+    const s = missed
+        ? { bg: theme.redLight, darkBg: '#2B0D0D', emoji: '❌', text: theme.red, darkText: '#F87171', label: 'Missed' }
+        : statusConfig[item.status];
     const startLabel = item.status === 'upcoming' ? 'Starts' : 'Started';
     const endLabel = item.status === 'completed' ? 'Ended' : 'Ends';
 
@@ -269,10 +276,10 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
                 <View style={{
                     width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: item.status === 'live' ? '#ef44441a' : item.status === 'upcoming' ? theme.amber + '20' : '#22c55e1a',
+                    backgroundColor: item.status === 'live' ? '#ef44441a' : item.status === 'upcoming' ? theme.amber + '20' : missed ? '#ef44441a' : '#22c55e1a',
                     alignItems: 'center', justifyContent: 'center',
                 }}>
-                    <FileText size={20} color={item.status === 'live' ? '#F87171' : item.status === 'upcoming' ? theme.amber : '#10B981'} />
+                    <FileText size={20} color={item.status === 'live' ? '#F87171' : item.status === 'upcoming' ? theme.amber : missed ? '#F87171' : '#10B981'} />
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>{item.title}</Text>
@@ -285,6 +292,11 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     {item.status === 'completed' && item.scored != null && (
                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
                             Score: {item.scored}/{item.marks}{item.scoredPercentage != null ? ` (${item.scoredPercentage}%)` : ''}
+                        </Text>
+                    )}
+                    {missed && (
+                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
+                            Score: 0/{item.marks} (0%)
                         </Text>
                     )}
                 </View>
@@ -325,6 +337,15 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                 <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
                     <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {item.attemptsUsed}/{item.maxAttempts}</Text>
                 </View>
+                {item.status === 'completed' && item.lastAttemptEndTime && (
+                    <View style={[styles.infoChip, { backgroundColor: 'rgba(192,96,64,0.12)' }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>Given at : </Text>
+                            {fmtDate(item.lastAttemptEndTime)}, {fmtTime(item.lastAttemptEndTime)}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {/* Expanded content — syllabus only, matching web */}
@@ -541,7 +562,7 @@ function SubmissionCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 type MainTab = 'tests' | 'submissions';
-type TestFilter = 'all' | 'live' | 'upcoming' | 'completed';
+type TestFilter = 'all' | 'live' | 'upcoming' | 'completed' | 'missed';
 type SubFilter = 'all' | 'pending' | 'submitted' | 'late' | 'missed';
 
 export default function Tasks() {
@@ -615,7 +636,11 @@ export default function Tasks() {
     const upcomingCount = tests.filter(t => t.status === 'upcoming').length;
     const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'write_again').length;
 
-    const filteredTests = testFilter === 'all' ? tests : tests.filter(t => t.status === testFilter);
+    const filteredTests = testFilter === 'all'
+        ? tests
+        : testFilter === 'missed'
+            ? tests.filter(t => t.status === 'completed' && t.attemptsUsed === 0)
+            : tests.filter(t => t.status === testFilter);
     const filteredSubs = subFilter === 'all' ? submissions
         : subFilter === 'submitted' ? submissions.filter(s => s.status === 'submitted' || s.status === 'correct')
         : subFilter === 'late' ? submissions.filter(s => s.status === 'late' || s.status === 'write_again')
@@ -626,6 +651,7 @@ export default function Tasks() {
         { key: 'live', label: '🔴 Live' },
         { key: 'upcoming', label: '⏰ Upcoming' },
         { key: 'completed', label: '✅ Done' },
+        { key: 'missed', label: '❌ Missed' },
     ];
 
     const SUB_FILTERS: { key: SubFilter; label: string }[] = [
