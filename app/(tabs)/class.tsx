@@ -84,7 +84,7 @@ interface MaterialFile {
     postedBy: string; createdAt: string;
 }
 interface ClassData {
-    division: { id: string; name: string; standardName: string; classTeacherName: string | null; classTeacherAvatarUrl: string | null; totalStudents: number; subjects: Subject[] } | null;
+    division: { id: string; name: string; standardName: string; classTeacherName: string | null; classTeacherAvatarUrl: string | null; totalStudents: number; subjects: Subject[]; timetableUrl: string | null } | null;
     resultFiles: ResultFile[];
     subjectMaterials: Record<string, MaterialFile[]>;
     generalMaterials?: MaterialFile[];
@@ -185,18 +185,19 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 const LB_MODE_OPTIONS = ['combined', 'offline', 'online'];
 
 // ── Timetable Card ────────────────────────────────────────────────────────────
-const TIMETABLE_IMAGE = require('../../assets/images/timetable.jpeg');
-function TimetableImageCard({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean }) {
+// Shows the class teacher's uploaded timetable (division.timetableUrl from the
+// backend). Nothing uploaded yet → empty state, not a shared placeholder image.
+function TimetableImageCard({ theme, isDark, timetableUrl }: { theme: typeof LIGHT; isDark: boolean; timetableUrl: string | null }) {
     const [fullscreen, setFullscreen] = useState(false);
     const [downloadMsg, setDownloadMsg] = useState('');
 
     const handleDownload = async () => {
+        if (!timetableUrl) return;
         try {
             const { status } = await MediaLibrary.requestPermissionsAsync();
             if (status !== 'granted') { setDownloadMsg('Permission denied'); setTimeout(() => setDownloadMsg(''), 2500); return; }
-            const asset = Image.resolveAssetSource(TIMETABLE_IMAGE);
-            const fileUri = FileSystem.documentDirectory + 'timetable.jpeg';
-            await FileSystem.downloadAsync(asset.uri, fileUri);
+            const fileUri = FileSystem.documentDirectory + 'timetable.jpg';
+            await FileSystem.downloadAsync(timetableUrl, fileUri);
             await MediaLibrary.saveToLibraryAsync(fileUri);
             setDownloadMsg('Saved to gallery! ✅');
             setTimeout(() => setDownloadMsg(''), 2500);
@@ -209,26 +210,37 @@ function TimetableImageCard({ theme, isDark }: { theme: typeof LIGHT; isDark: bo
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, paddingBottom: 10 }}>
                     <Calendar size={16} color={theme.purple} />
                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, flex: 1 }}>Timetable</Text>
-                    <TouchableOpacity onPress={handleDownload} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.purpleLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99 }} activeOpacity={0.75}>
-                        <Download size={13} color={theme.purple} />
-                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.purple }}>Save</Text>
-                    </TouchableOpacity>
+                    {timetableUrl && (
+                        <TouchableOpacity onPress={handleDownload} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.purpleLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99 }} activeOpacity={0.75}>
+                            <Download size={13} color={theme.purple} />
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.purple }}>Save</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
                 {downloadMsg ? (
                     <View style={{ marginHorizontal: 14, marginBottom: 8, backgroundColor: isDark ? '#0D2B20' : '#D1FAE5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}>
                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: isDark ? '#34D399' : '#065F46' }}>{downloadMsg}</Text>
                     </View>
                 ) : null}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 14, marginBottom: 8 }}>
-                    <Eye size={12} color={theme.muted} />
-                    <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Tap image to view full screen</Text>
-                </View>
-                <TouchableOpacity onPress={() => setFullscreen(true)} activeOpacity={0.9} style={{ marginHorizontal: 14, marginBottom: 14 }}>
-                    <Image source={TIMETABLE_IMAGE} style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 14 }} resizeMode="contain" />
-                    <View style={{ position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: 6 }}>
-                        <Eye size={16} color="white" />
+                {timetableUrl ? (
+                    <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 14, marginBottom: 8 }}>
+                            <Eye size={12} color={theme.muted} />
+                            <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Tap image to view full screen</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setFullscreen(true)} activeOpacity={0.9} style={{ marginHorizontal: 14, marginBottom: 14 }}>
+                            <Image source={{ uri: timetableUrl }} style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 14 }} resizeMode="contain" />
+                            <View style={{ position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: 6 }}>
+                                <Eye size={16} color="white" />
+                            </View>
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <View style={{ paddingVertical: 28, alignItems: 'center', gap: 6 }}>
+                        <Calendar size={22} color={theme.muted} />
+                        <Text style={{ fontSize: 12, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Timetable not uploaded yet</Text>
                     </View>
-                </TouchableOpacity>
+                )}
             </View>
 
             <Modal visible={fullscreen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setFullscreen(false)}>
@@ -238,7 +250,7 @@ function TimetableImageCard({ theme, isDark }: { theme: typeof LIGHT; isDark: bo
                         <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>✕</Text>
                     </TouchableOpacity>
                     <ScrollView maximumZoomScale={4} minimumZoomScale={1} style={{ width, flex: 1 }} contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-                        <Image source={TIMETABLE_IMAGE} style={{ width: width - 16, height: undefined, aspectRatio: 1 }} resizeMode="contain" />
+                        {timetableUrl && <Image source={{ uri: timetableUrl }} style={{ width: width - 16, height: undefined, aspectRatio: 1 }} resizeMode="contain" />}
                     </ScrollView>
                 </View>
             </Modal>
@@ -516,7 +528,7 @@ export default function Courses() {
                             {/* ══ BATCH TAB ══ (always mounted — it's the default tab) */}
                             <View style={{ gap: 14, marginTop: -8, display: activeTab === 'batch' ? 'flex' : 'none' }}>
                                     {/* Timetable */}
-                                    <TimetableImageCard theme={theme} isDark={isDark} />
+                                    <TimetableImageCard theme={theme} isDark={isDark} timetableUrl={division?.timetableUrl ?? null} />
 
                                     {/* Subject teachers */}
                                     <Card theme={theme}>
