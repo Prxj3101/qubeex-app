@@ -10,11 +10,14 @@ import {
     Calendar,
     CheckCircle2,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     ChevronUp,
     Clock,
     FileText,
     Layers,
     Radio,
+    ShieldAlert,
     Timer,
     Upload,
     Zap,
@@ -77,7 +80,10 @@ interface TestItem {
     scored?: number | null;
     scoredPercentage?: number | null;
     lastAttemptId?: string | null;
+    lastAttemptStartTime?: string | null;
     lastAttemptEndTime?: string | null;
+    lastAttemptMalpracticeFlag?: boolean;
+    attempts: { id: string; attemptNumber: number; totalScore: number; maxScore: number; percentage: number; startTime: string | null; endTime: string | null; malpracticeFlag: boolean }[];
     color: string;
 }
 
@@ -117,7 +123,10 @@ interface ApiTest {
     bestScore: number | null;
     bestPercentage: number | null;
     lastAttemptId: string | null;
+    lastAttemptStartTime: string | null;
     lastAttemptEndTime: string | null;
+    lastAttemptMalpracticeFlag: boolean;
+    attempts: { id: string; attemptNumber: number; totalScore: number; maxScore: number; percentage: number; startTime: string | null; endTime: string | null; malpracticeFlag: boolean }[];
 }
 
 interface ApiAssignment {
@@ -190,7 +199,10 @@ function mapTest(t: ApiTest): TestItem {
         scored: t.bestScore,
         scoredPercentage: t.bestPercentage,
         lastAttemptId: t.lastAttemptId,
+        lastAttemptStartTime: t.lastAttemptStartTime,
         lastAttemptEndTime: t.lastAttemptEndTime,
+        lastAttemptMalpracticeFlag: t.lastAttemptMalpracticeFlag,
+        attempts: t.attempts,
         color: subjectColor(t.subjectName),
     };
 }
@@ -243,6 +255,17 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
 // same Score+percentage placement, same buttons — kept in sync intentionally.
 function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT; isDark: boolean }) {
     const [expanded, setExpanded] = useState(false);
+    // Which attempt's result the View Result button points to — defaults to
+    // the best-scoring attempt (matches the "highest counts" scoring rule),
+    // chevrons let the student flip to any other attempt's result.
+    const [viewedIdx, setViewedIdx] = useState(() => {
+        if (item.attempts.length === 0) return -1;
+        let bestI = 0;
+        for (let i = 1; i < item.attempts.length; i++) {
+            if (item.attempts[i].totalScore > item.attempts[bestI].totalScore) bestI = i;
+        }
+        return bestI;
+    });
 
     const missed = item.status === 'completed' && item.attemptsUsed === 0;
 
@@ -261,8 +284,10 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
     function handleStartTest() {
         router.push({ pathname: '/test-webview', params: { testId: item.id } });
     }
+    const viewedAttempt = item.attempts[viewedIdx] ?? item.attempts[item.attempts.length - 1] ?? null;
     function handleViewResult() {
-        router.push({ pathname: '/test-webview', params: { testId: item.id, attemptId: item.lastAttemptId ?? '' } });
+        const attemptId = viewedAttempt?.id ?? item.lastAttemptId ?? '';
+        router.push({ pathname: '/test-webview', params: { testId: item.id, attemptId } });
     }
 
     return (
@@ -289,7 +314,11 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     <View style={[styles.chip, { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? s.darkBg : s.bg }]}>
                         <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: isDark ? s.darkText : s.text }}>{s.emoji} {s.label}</Text>
                     </View>
-                    {item.status === 'completed' && item.scored != null && (
+                    {viewedAttempt ? (
+                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
+                            Score: {viewedAttempt.totalScore}/{item.marks} ({viewedAttempt.percentage}%)
+                        </Text>
+                    ) : item.scored != null && (
                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
                             Score: {item.scored}/{item.marks}{item.scoredPercentage != null ? ` (${item.scoredPercentage}%)` : ''}
                         </Text>
@@ -335,14 +364,31 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.numberOfQuestions} Ques</Text>
                 </View>
                 <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {item.attemptsUsed}/{item.maxAttempts}</Text>
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {viewedAttempt?.attemptNumber ?? item.attemptsUsed}/{item.maxAttempts}</Text>
                 </View>
-                {item.status === 'completed' && item.lastAttemptEndTime && (
+                {(viewedAttempt?.startTime ?? item.lastAttemptStartTime) && (
                     <View style={[styles.infoChip, { backgroundColor: 'rgba(192,96,64,0.12)' }]}>
                         <Calendar size={11} color={theme.muted} />
                         <Text style={[styles.infoChipText, { color: theme.subText }]}>
                             <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>Given at : </Text>
-                            {fmtDate(item.lastAttemptEndTime)}, {fmtTime(item.lastAttemptEndTime)}
+                            {fmtDate((viewedAttempt?.startTime ?? item.lastAttemptStartTime)!)}, {fmtTime((viewedAttempt?.startTime ?? item.lastAttemptStartTime)!)}
+                        </Text>
+                    </View>
+                )}
+                {(viewedAttempt?.endTime ?? item.lastAttemptEndTime) && (
+                    <View style={[styles.infoChip, { backgroundColor: 'rgba(192,96,64,0.12)' }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>Submitted at : </Text>
+                            {fmtDate((viewedAttempt?.endTime ?? item.lastAttemptEndTime)!)}, {fmtTime((viewedAttempt?.endTime ?? item.lastAttemptEndTime)!)}
+                        </Text>
+                    </View>
+                )}
+                {(viewedAttempt ? viewedAttempt.malpracticeFlag : item.lastAttemptMalpracticeFlag) && (
+                    <View style={[styles.infoChip, { backgroundColor: 'rgba(239,68,68,0.12)' }]}>
+                        <ShieldAlert size={11} color="#DC2626" />
+                        <Text style={[styles.infoChipText, { color: '#DC2626', fontFamily: 'Poppins_600SemiBold' }]}>
+                            Flagged for malpractice
                         </Text>
                     </View>
                 )}
@@ -361,6 +407,39 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                 </View>
             )}
 
+            {item.lastAttemptId && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: item.status === 'live' ? 8 : 0 }}>
+                    {item.attempts.length > 1 && (
+                        <TouchableOpacity
+                            onPress={() => setViewedIdx((i) => Math.max(0, i - 1))}
+                            disabled={viewedIdx <= 0}
+                            style={[styles.ctaBtnOutline, { width: 40, paddingVertical: 12, borderColor: theme.cardBorder, opacity: viewedIdx <= 0 ? 0.3 : 1 }]}
+                            activeOpacity={0.85}
+                        >
+                            <ChevronLeft size={16} color={theme.text} />
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                        onPress={handleViewResult}
+                        style={[styles.ctaBtnOutline, { flex: 1, borderColor: theme.cardBorder }]}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={[styles.ctaBtnOutlineText, { color: theme.text }]}>
+                            View Result{item.attempts.length > 1 && viewedAttempt ? ` (Attempt ${viewedAttempt.attemptNumber}/${item.maxAttempts})` : ''}
+                        </Text>
+                    </TouchableOpacity>
+                    {item.attempts.length > 1 && (
+                        <TouchableOpacity
+                            onPress={() => setViewedIdx((i) => Math.min(item.attempts.length - 1, i + 1))}
+                            disabled={viewedIdx >= item.attempts.length - 1}
+                            style={[styles.ctaBtnOutline, { width: 40, paddingVertical: 12, borderColor: theme.cardBorder, opacity: viewedIdx >= item.attempts.length - 1 ? 0.3 : 1 }]}
+                            activeOpacity={0.85}
+                        >
+                            <ChevronRight size={16} color={theme.text} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
             {item.status === 'live' && (
                 <TouchableOpacity
                     onPress={handleStartTest}
@@ -368,16 +447,9 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     activeOpacity={0.85}
                 >
                     <Radio size={15} color="white" />
-                    <Text style={styles.ctaBtnText}>Start Test Now</Text>
-                </TouchableOpacity>
-            )}
-            {item.status === 'completed' && item.lastAttemptId && (
-                <TouchableOpacity
-                    onPress={handleViewResult}
-                    style={[styles.ctaBtnOutline, { borderColor: theme.cardBorder }]}
-                    activeOpacity={0.85}
-                >
-                    <Text style={[styles.ctaBtnOutlineText, { color: theme.text }]}>View Result</Text>
+                    <Text style={styles.ctaBtnText}>
+                        Start Test Now{item.attemptsUsed > 0 ? ` (Attempt ${item.attemptsUsed + 1}/${item.maxAttempts})` : ''}
+                    </Text>
                 </TouchableOpacity>
             )}
 

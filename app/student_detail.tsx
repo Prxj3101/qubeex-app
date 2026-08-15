@@ -780,6 +780,7 @@ export default function StudentDetail() {
     const saveEdit = async () => {
         await saveProfile({
             name: draft.name,
+            email: draft.email,
             gender: draft.gender,
             dob: draft.dob,
             phone: draft.contactNo,
@@ -815,9 +816,10 @@ export default function StudentDetail() {
     };
 
     // Computed
-    const dobDate = new Date(data.dob);
-    const age = new Date().getFullYear() - dobDate.getFullYear();
-    const dobDisplay = dobDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dobDate = data.dob ? new Date(data.dob) : null;
+    const dobValid = !!dobDate && !isNaN(dobDate.getTime());
+    const age = dobValid ? new Date().getFullYear() - dobDate!.getFullYear() : null;
+    const dobDisplay = dobValid ? dobDate!.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
     const initials = data.name.split(' ').map(n => n[0]).join('');
 
     return (
@@ -928,7 +930,7 @@ export default function StudentDetail() {
                             theme={theme} isEditing={isEditing('basic')} editable
                             placeholder="Full Name"
                             onChangeText={t => setDraft(d => ({ ...d, name: t }))} />
-                        <InfoRow label="Date of Birth" value={isEditing('basic') ? draft.dob : `${dobDisplay} (${age} yrs)`}
+                        <InfoRow label="Date of Birth" value={isEditing('basic') ? draft.dob : (dobValid ? `${dobDisplay} (${age} yrs)` : '—')}
                             theme={theme} isEditing={isEditing('basic')} editable
                             placeholder="YYYY-MM-DD"
                             onChangeText={t => setDraft(d => ({ ...d, dob: formatDob(t) }))} />

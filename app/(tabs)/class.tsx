@@ -65,10 +65,13 @@ interface Classmate {
     marksPct: number | null; offlinePct: number | null; onlinePct: number | null;
     isMe: boolean; avatarUrl: string | null;
 }
+interface ScoreCol { name: string; scored: number | null; max: number; isAbsent: boolean }
 interface SubjectScore {
     subjectId: string; subjectName: string; subjectCode: string; subjectColor: string;
-    columns: { name: string; scored: number | null; max: number; isAbsent: boolean }[];
+    columns: ScoreCol[];
     totalScored: number; totalMax: number; pct: number | null;
+    offlineColumns: ScoreCol[]; offlineTotalScored: number; offlineTotalMax: number; offlinePct: number | null;
+    onlineColumns: ScoreCol[]; onlineTotalScored: number; onlineTotalMax: number; onlinePct: number | null;
 }
 interface LbEntry {
     name: string; avatarUrl: string | null; combinedPct: number; offlinePct: number | null; onlinePct: number | null; isMe: boolean;
@@ -461,9 +464,15 @@ export default function Courses() {
     const activeSubjLeaderboard = activeSubject ? (subjectLeaderboards[activeSubject.id] ?? []) : [];
     const activeSubjMaterials = activeSubject ? (subjectMaterials[activeSubject.id] ?? []) : [];
 
-    const chartLabels = (activeScore?.columns ?? []).map(c => c.name.replace('Unit Test', 'UT').replace('Online Test', 'OT').replace('Term Test', 'Term'));
-    const chartValues = (activeScore?.columns ?? []).map(c => c.isAbsent ? 0 : c.scored != null ? Math.round((c.scored / c.max) * 100) : 0);
-    const hasChart = chartValues.length >= 2;
+    // Trend chart + "My Results" list follow the same offline/online/combined
+    // toggle the subject leaderboard uses (subjLbMode), instead of always
+    // showing the merged list.
+    const activeModeColumns: ScoreCol[] = activeScore
+        ? (subjLbMode === 'offline' ? activeScore.offlineColumns : subjLbMode === 'online' ? activeScore.onlineColumns : activeScore.columns)
+        : [];
+    const chartLabels = activeModeColumns.map(c => c.name.replace('Unit Test', 'UT').replace('Online Test', 'OT').replace('Term Test', 'Term'));
+    const chartValues = activeModeColumns.map(c => c.isAbsent ? 0 : c.scored != null ? Math.round((c.scored / c.max) * 100) : 0);
+    const hasChart = chartValues.length >= 1;
 
     const divLabel = division ? `${division.standardName} · ${formatDivision(division.name)}` : '—';
 
@@ -882,12 +891,12 @@ export default function Courses() {
                                                                             </>
                                                                         )}
 
-                                                                        {activeScore.columns.length > 0 && (
+                                                                        {activeModeColumns.length > 0 && (
                                                                             <View style={{ marginTop: hasChart ? 16 : 0 }}>
                                                                                 <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginBottom: 12 }}>My Results</Text>
                                                                                 <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                                                                                 <View style={{ gap: 10 }}>
-                                                                                    {activeScore.columns.map((col, i) => {
+                                                                                    {activeModeColumns.map((col, i) => {
                                                                                         const pct = col.isAbsent ? null : col.scored != null ? Math.round((col.scored / col.max) * 100) : null;
                                                                                         const color = pct == null ? theme.muted : pct >= 75 ? theme.green : pct >= 40 ? theme.amber : theme.red;
                                                                                         return (
@@ -915,6 +924,11 @@ export default function Courses() {
                                                                                 </View>
                                                                                 </ScrollView>
                                                                             </View>
+                                                                        )}
+                                                                        {activeModeColumns.length === 0 && (
+                                                                            <Text style={{ fontSize: 12, color: theme.muted, textAlign: 'center', paddingVertical: 16 }}>
+                                                                                {subjLbMode === 'online' ? 'No completed tests yet' : subjLbMode === 'offline' ? 'No offline marks yet' : 'No results yet'}
+                                                                            </Text>
                                                                         )}
                                                                     </>
                                                                 )

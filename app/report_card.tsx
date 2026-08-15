@@ -77,6 +77,9 @@ interface MarksheetSubject {
     columns: ExamCol[];
     total: { scored: number; max: number };
     pct: number | null; grade: string;
+    onlineColumns: ExamCol[];
+    onlineTotal: { scored: number; max: number };
+    onlinePct: number | null; onlineGrade: string;
 }
 interface GradedSubject { id: string; name: string; term1Grade: string | null; term2Grade: string | null; }
 interface MarksheetData {
@@ -86,9 +89,14 @@ interface MarksheetData {
     grandTotal: { scored: number; max: number };
     grandPct: number | null;
     grade: string;
+    onlineGrandTotal: { scored: number; max: number };
+    onlineGrandPct: number | null;
+    onlineGrade: string;
     classRank: number | null;
     classSize: number | null;
     gradedSubjects: GradedSubject[];
+    conduct: string | null;
+    remarks: string | null;
 }
 
 // Sheet layout constants
@@ -98,6 +106,7 @@ const EXAM_COL_W = 56;
 const TOTAL_COL_W = 64;
 const PCT_COL_W = 46;
 const GRADE_COL_W = 48;
+const TESTS_COL_W = 56;
 const GRADED_NAME_W = 100;
 const GRADED_TERM_W = 64;
 
@@ -334,6 +343,24 @@ export default function ReportCard() {
                                 </View>
                             </ScrollView>
 
+                            {/* Conduct & Remarks — set by the class teacher */}
+                            {(data.conduct || data.remarks) && (
+                                <View style={{ borderTopWidth: 1, borderTopColor: SHEET_BORDER, marginTop: 12, backgroundColor: SHEET_HEADER_BG, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 6 }}>
+                                    {data.conduct ? (
+                                        <View style={{ flexDirection: 'row', marginBottom: data.remarks ? 4 : 0 }}>
+                                            <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold', width: 70 }]}>Conduct</Text>
+                                            <Text style={sheetStyles.subjText}>{data.conduct}</Text>
+                                        </View>
+                                    ) : null}
+                                    {data.remarks ? (
+                                        <View style={{ flexDirection: 'row' }}>
+                                            <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold', width: 70 }]}>Remarks</Text>
+                                            <Text style={[sheetStyles.subjText, { fontStyle: 'italic', flex: 1 }]}>{data.remarks}</Text>
+                                        </View>
+                                    ) : null}
+                                </View>
+                            )}
+
                             {/* Graded subjects */}
                             {data.gradedSubjects.length > 0 && (
                                 <View style={{ borderTopWidth: 1, borderTopColor: SHEET_BORDER, marginTop: 12 }}>
@@ -364,11 +391,67 @@ export default function ReportCard() {
                                 </View>
                             )}
                         </View>
+                    ) : data.subjects.some(s => s.onlineTotal.max > 0) ? (
+                        /* Online: subject-wise totals only — different subjects can have very
+                           different numbers of completed tests, so there's no single shared
+                           per-test column grid like offline has. */
+                        <View style={{ backgroundColor: SHEET_BODY_BG }}>
+                            <View style={{ flexDirection: 'row', backgroundColor: SHEET_HEADER_BG }}>
+                                <View style={[sheetStyles.headerCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}>
+                                    <Text style={sheetStyles.headerText}>Subjects</Text>
+                                </View>
+                                <View style={[sheetStyles.headerCell, { width: TESTS_COL_W }]}><Text style={sheetStyles.headerText}>Tests</Text></View>
+                                <View style={[sheetStyles.headerCell, { width: TOTAL_COL_W }]}><Text style={sheetStyles.headerText}>Total</Text></View>
+                                <View style={[sheetStyles.headerCell, { width: PCT_COL_W }]}><Text style={sheetStyles.headerText}>%</Text></View>
+                                <View style={[sheetStyles.headerCell, { width: GRADE_COL_W }]}><Text style={sheetStyles.headerText}>Grade</Text></View>
+                            </View>
+                            {data.subjects.map(sub => (
+                                <View key={sub.id} style={{ flexDirection: 'row' }}>
+                                    <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colorForSubject(sub) }} />
+                                            <Text style={sheetStyles.subjText} numberOfLines={1}>{sub.name}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={[sheetStyles.dataCell, { width: TESTS_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                        <Text style={[sheetStyles.valText, { color: theme.muted }]}>{sub.onlineColumns.length}</Text>
+                                    </View>
+                                    <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                        <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
+                                            {sub.onlineTotal.max > 0 ? `${sub.onlineTotal.scored}/${sub.onlineTotal.max}` : '—'}
+                                        </Text>
+                                    </View>
+                                    <View style={[sheetStyles.dataCell, { width: PCT_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                        {sub.onlinePct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlinePct}%</Text>}
+                                    </View>
+                                    <View style={[sheetStyles.dataCell, { width: GRADE_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                        <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlineGrade}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                            {/* Grand Total row */}
+                            <View style={{ flexDirection: 'row' }}>
+                                <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_SUMMARY_BG }]}>
+                                    <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold' }]}>Grand Total</Text>
+                                </View>
+                                <View style={[sheetStyles.dataCell, { width: TESTS_COL_W, backgroundColor: SHEET_SUMMARY_BG }]} />
+                                <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
+                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
+                                        {data.onlineGrandTotal.max > 0 ? `${data.onlineGrandTotal.scored}/${data.onlineGrandTotal.max}` : '—'}
+                                    </Text>
+                                </View>
+                                <View style={[sheetStyles.dataCell, { width: PCT_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
+                                    {data.onlineGrandPct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(data.onlineGrandPct, theme) }]}>{data.onlineGrandPct}%</Text>}
+                                </View>
+                                <View style={[sheetStyles.dataCell, { width: GRADE_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
+                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(data.onlineGrandPct, theme) }]}>{data.onlineGrade}</Text>
+                                </View>
+                            </View>
+                        </View>
                     ) : (
-                        /* Online: placeholder */
                         <View style={{ alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 }}>
-                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_500Medium', color: theme.muted }}>Online results not yet available</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.7 }}>Online exam module is coming soon</Text>
+                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_500Medium', color: theme.muted }}>No completed tests yet</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.7 }}>Online results appear here once a test is completed</Text>
                         </View>
                     )}
 

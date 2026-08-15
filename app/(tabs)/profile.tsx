@@ -179,6 +179,7 @@ type MarksMode = 'offline' | 'online' | 'combined';
 interface MarksheetSubject {
     id: string; name: string; code: string; color: string | null;
     total: { scored: number; max: number }; pct: number | null; grade: string;
+    onlineTotal?: { scored: number; max: number }; onlinePct?: number | null;
 }
 
 // InlineWheel picker now lives in components/InlineWheel.tsx (shared with class.tsx).
@@ -302,9 +303,10 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
     const [copied, setCopied] = useState(false);
     const [photoExpanded, setPhotoExpanded] = useState(false);
     const { photo } = useStudent();
-    const dobDate = new Date(student.dob);
-    const age = new Date().getFullYear() - dobDate.getFullYear();
-    const dobDisplay = dobDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dobDate = student.dob ? new Date(student.dob) : null;
+    const dobValid = !!dobDate && !isNaN(dobDate.getTime());
+    const age = dobValid ? new Date().getFullYear() - dobDate!.getFullYear() : null;
+    const dobDisplay = dobValid ? dobDate!.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
     const classNum = student.standard.replace(/^Class\s*/i, '');
     const divLetter = student.div.replace(/^Division\s*/i, '');
     const classDiv = `${classNum}-${divLetter}`;
@@ -375,11 +377,11 @@ function IDCard({ student, theme, isDark, router }: { student: any; theme: typeo
                         </Text>
                         <View style={[idStyles.divider, { backgroundColor: theme.cardBorder }]} />
                         {[
-                            { label: 'Roll No', value: student.rollNo },
-                            { label: 'Class', value: classDiv },
-                            { label: 'Admission Year', value: student.admissionYear },
-                            { label: 'Date of Birth', value: `${dobDisplay} (${age} yrs)` },
-                            { label: 'Email', value: student.email },
+                            { label: 'Roll No', value: student.rollNo || '—' },
+                            { label: 'Class', value: classDiv || '—' },
+                            { label: 'Admission Year', value: student.admissionYear || '—' },
+                            { label: 'Date of Birth', value: dobValid ? `${dobDisplay} (${age} yrs)` : '—' },
+                            { label: 'Email', value: student.email || '—' },
                         ].map((item) => (
                             <View key={item.label} style={idStyles.infoRow}>
                                 <Text style={[idStyles.infoLabel, { color: theme.muted }]}>{item.label}</Text>
@@ -468,7 +470,7 @@ export default function Profile() {
     const [attendanceVisible, setAttendanceVisible] = useState(false);
     const [activeTrendPoint, setActiveTrendPoint] = useState<number | null>(null);
     const [attendanceApiData, setAttendanceApiData] = useState<AttendanceData | null>(null);
-    const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; classSize: number | null } | null>(null);
+    const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; offlineClassRank?: number | null; onlineClassRank?: number | null; combinedClassRank?: number | null; classSize: number | null } | null>(null);
     const [flags, setFlags] = useState<FlagItem[]>([]);
 
     // ── Fees overview — same derivation as the Fee Details screen ──
@@ -592,15 +594,41 @@ export default function Profile() {
 
     const subjectChartData = (marksheetData?.subjects ?? []).map((s, i) => {
         const offline = s.pct ?? 0;
-        const online = 0; // online marks not yet implemented
-        const combinedPct = online > 0 ? Math.round((offline + online) / 2) : offline;
+        const online = s.onlinePct ?? 0;
+        const offMax = s.total?.max ?? 0;
+        const onMax = s.onlineTotal?.max ?? 0;
+        const combMax = offMax + onMax;
+        const combinedPct = combMax > 0
+            ? Math.round((((s.total?.scored ?? 0) + (s.onlineTotal?.scored ?? 0)) / combMax) * 100)
+            : offline;
         const pct = marksMode === 'offline' ? offline : marksMode === 'online' ? online : combinedPct;
         return { code: s.code, name: s.name, color: s.color ?? assignSubjectColor(i), pct };
     });
-    const overallScore = subjectChartData.length > 0
-        ? Math.round(subjectChartData.reduce((a, b) => a + b.pct, 0) / subjectChartData.length)
-        : 0;
-    const overallRank: number | null = marksheetData?.classRank ?? null;
+    // "Overall Score" — pooled scored/max across every subject for the active
+    // mode, not a naive average of each subject's own %. A plain average
+    // weighs a subject with 1 recorded mark the same as one with a full
+    // published set, which skews it badly (e.g. mostly-empty subjects
+    // dragging a real ~75% down to something like 7%).
+    const overallScore = (() => {
+        const subjects = marksheetData?.subjects ?? [];
+        let scored = 0, max = 0;
+        for (const s of subjects) {
+            if (marksMode === 'offline' || marksMode === 'combined') {
+                scored += s.total?.scored ?? 0;
+                max += s.total?.max ?? 0;
+            }
+            if (marksMode === 'online' || marksMode === 'combined') {
+                scored += s.onlineTotal?.scored ?? 0;
+                max += s.onlineTotal?.max ?? 0;
+            }
+        }
+        return max > 0 ? Math.round((scored / max) * 100) : 0;
+    })();
+    const overallRank: number | null = marksMode === 'offline'
+        ? (marksheetData?.offlineClassRank ?? marksheetData?.classRank ?? null)
+        : marksMode === 'online'
+            ? (marksheetData?.onlineClassRank ?? null)
+            : (marksheetData?.combinedClassRank ?? null);
 
     // Full school-year attendance trend derived from real API data.
     // Future months (no records yet) show 0 so the graph maintains its shape.

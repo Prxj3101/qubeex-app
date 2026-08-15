@@ -135,7 +135,7 @@ export default function Home() {
                                 </View>
                                 <Text style={[styles.lbSub, { color: theme.muted }]}>
                                     {overview?.student.divisionName
-                                        ? (() => { const p = overview.student.divisionName.split('-'); return p.length > 1 ? `Division ${p.slice(1).join('-')}` : overview.student.divisionName; })()
+                                        ? (() => { const p = overview.student.divisionName.split('-'); const label = p.length > 1 ? `Division ${p.slice(1).join('-')}` : overview.student.divisionName; return `${label} · Offline`; })()
                                         : 'Top 5'}
                                 </Text>
                             </View>
