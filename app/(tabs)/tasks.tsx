@@ -13,7 +13,6 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronUp,
-    Clock,
     FileText,
     Layers,
     Radio,
@@ -706,6 +705,7 @@ export default function Tasks() {
 
     const liveCount = tests.filter(t => t.status === 'live').length;
     const upcomingCount = tests.filter(t => t.status === 'upcoming').length;
+    const doneCount = tests.filter(t => t.status === 'completed').length;
     const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'write_again').length;
 
     const filteredTests = testFilter === 'all'
@@ -737,137 +737,134 @@ export default function Tasks() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Tasks" />
+
+            {/* ── Sticky header: summary banner + main tabs + filter chips stay
+                pinned above the list while it scrolls underneath — mirrors the
+                web page's `sticky top-0` header (summary strip + tab bar +
+                filter chips). Lives outside the ScrollView so it never moves. ── */}
+            <View style={[styles.body, { paddingTop: 6, paddingBottom: 10, gap: 10 }]}>
+
+                {/* ── Summary Banner — Live/Upcoming/Done, mirrors the web
+                    Tests & Exams card exactly. Only meaningful for the
+                    Tests tab, so (like web) it's hidden on Submissions. ── */}
+                {mainTab === 'tests' && (
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.red }}>{liveCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>Live</Text>
+                        </View>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{upcomingCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Upcoming</Text>
+                        </View>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#0D2B20' : theme.greenLight, flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>{doneCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.green }}>Done</Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* ── Main Tabs ── */}
+                <View style={[styles.mainTabRow, { backgroundColor: isDark ? 'rgba(100,116,139,0.15)' : 'rgba(148,163,184,0.12)', borderColor: theme.cardBorder }]}>
+                    <TouchableOpacity
+                        onPress={() => setMainTab('tests')}
+                        style={[styles.mainTab, mainTab === 'tests' && { backgroundColor: theme.purple }]}
+                    >
+                        <Text style={[styles.mainTabText, { color: mainTab === 'tests' ? 'white' : theme.subText }]}>
+                            📝 Tests & Exams
+                        </Text>
+                        {liveCount > 0 && (
+                            <View style={styles.liveBadge}>
+                                <Text style={styles.liveBadgeText}>{liveCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={handleSwitchToSubmissions}
+                        style={[styles.mainTab, mainTab === 'submissions' && { backgroundColor: theme.purple }]}
+                    >
+                        <Text style={[styles.mainTabText, { color: mainTab === 'submissions' ? 'white' : theme.subText }]}>
+                            📤 Submissions
+                        </Text>
+                        {pendingCount > 0 && (
+                            <View style={styles.liveBadge}>
+                                <Text style={styles.liveBadgeText}>{pendingCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                {/* ── Filter chips — depends on which tab is active ── */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {mainTab === 'tests'
+                            ? TEST_FILTERS.map(f => (
+                                <TouchableOpacity
+                                    key={f.key}
+                                    onPress={() => setTestFilter(f.key)}
+                                    style={[styles.filterChip, {
+                                        backgroundColor: testFilter === f.key ? theme.purple : theme.card,
+                                        borderColor: testFilter === f.key ? theme.purple : theme.cardBorder,
+                                    }]}
+                                >
+                                    <Text style={[styles.filterChipText, { color: testFilter === f.key ? 'white' : theme.subText }]}>
+                                        {f.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))
+                            : SUB_FILTERS.map(f => (
+                                <TouchableOpacity
+                                    key={f.key}
+                                    onPress={() => setSubFilter(f.key)}
+                                    style={[styles.filterChip, {
+                                        backgroundColor: subFilter === f.key ? theme.purple : theme.card,
+                                        borderColor: subFilter === f.key ? theme.purple : theme.cardBorder,
+                                    }]}
+                                >
+                                    <Text style={[styles.filterChipText, { color: subFilter === f.key ? 'white' : theme.subText }]}>
+                                        {f.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))
+                        }
+                    </View>
+                </ScrollView>
+            </View>
+
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 30 }}
+                contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 30, gap: 12 }}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.purple} colors={[theme.purple]} />
                 }
             >
-                <View style={[styles.body, { paddingTop: 6 }]}>
+                {/* ══ TESTS TAB ══ */}
+                {mainTab === 'tests' && (
+                    loadingTests
+                        ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
+                        : filteredTests.length === 0
+                            ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No tests found</Text>
+                            : filteredTests.map(item => (
+                                <TestCard key={item.id} item={item} theme={theme} isDark={isDark} />
+                            ))
+                )}
 
-                    {/* ── Summary Banner ── */}
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', flex: 1 }]}>
-                            <Radio size={18} color={theme.red} />
-                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.red }}>{liveCount}</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>Live Now</Text>
-                        </View>
-                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
-                            <Clock size={18} color={theme.amber} />
-                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{upcomingCount}</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Upcoming</Text>
-                        </View>
-                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : theme.amberLight, flex: 1 }]}>
-                            <Upload size={18} color={theme.amber} />
-                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{pendingCount}</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Pending</Text>
-                        </View>
-                    </View>
-
-                    {/* ── Main Tabs ── */}
-                    <View style={[styles.mainTabRow, { backgroundColor: isDark ? 'rgba(100,116,139,0.15)' : 'rgba(148,163,184,0.12)', borderColor: theme.cardBorder }]}>
-                        <TouchableOpacity
-                            onPress={() => setMainTab('tests')}
-                            style={[styles.mainTab, mainTab === 'tests' && { backgroundColor: theme.purple }]}
-                        >
-                            <Text style={[styles.mainTabText, { color: mainTab === 'tests' ? 'white' : theme.subText }]}>
-                                📝 Tests & Exams
-                            </Text>
-                            {liveCount > 0 && (
-                                <View style={styles.liveBadge}>
-                                    <Text style={styles.liveBadgeText}>{liveCount}</Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={handleSwitchToSubmissions}
-                            style={[styles.mainTab, mainTab === 'submissions' && { backgroundColor: theme.purple }]}
-                        >
-                            <Text style={[styles.mainTabText, { color: mainTab === 'submissions' ? 'white' : theme.subText }]}>
-                                📤 Submissions
-                            </Text>
-                            {pendingCount > 0 && (
-                                <View style={styles.liveBadge}>
-                                    <Text style={styles.liveBadgeText}>{pendingCount}</Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* ══ TESTS TAB ══ */}
-                    {mainTab === 'tests' && (
-                        <View style={{ gap: 12 }}>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    {TEST_FILTERS.map(f => (
-                                        <TouchableOpacity
-                                            key={f.key}
-                                            onPress={() => setTestFilter(f.key)}
-                                            style={[styles.filterChip, {
-                                                backgroundColor: testFilter === f.key ? theme.purple : theme.card,
-                                                borderColor: testFilter === f.key ? theme.purple : theme.cardBorder,
-                                            }]}
-                                        >
-                                            <Text style={[styles.filterChipText, { color: testFilter === f.key ? 'white' : theme.subText }]}>
-                                                {f.label}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </ScrollView>
-
-                            {loadingTests
-                                ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
-                                : filteredTests.length === 0
-                                    ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No tests found</Text>
-                                    : filteredTests.map(item => (
-                                        <TestCard key={item.id} item={item} theme={theme} isDark={isDark} />
-                                    ))
-                            }
-                        </View>
-                    )}
-
-                    {/* ══ SUBMISSIONS TAB ══ */}
-                    {mainTab === 'submissions' && (
-                        <View style={{ gap: 12 }}>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    {SUB_FILTERS.map(f => (
-                                        <TouchableOpacity
-                                            key={f.key}
-                                            onPress={() => setSubFilter(f.key)}
-                                            style={[styles.filterChip, {
-                                                backgroundColor: subFilter === f.key ? theme.purple : theme.card,
-                                                borderColor: subFilter === f.key ? theme.purple : theme.cardBorder,
-                                            }]}
-                                        >
-                                            <Text style={[styles.filterChipText, { color: subFilter === f.key ? 'white' : theme.subText }]}>
-                                                {f.label}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </ScrollView>
-
-                            {loadingSubmissions
-                                ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
-                                : filteredSubs.length === 0
-                                    ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No assignments found</Text>
-                                    : filteredSubs.map(item => (
-                                        <SubmissionCard
-                                            key={item.id}
-                                            item={item}
-                                            theme={theme}
-                                            isDark={isDark}
-                                            onSubmitted={fetchSubmissions}
-                                        />
-                                    ))
-                            }
-                        </View>
-                    )}
-
-                </View>
+                {/* ══ SUBMISSIONS TAB ══ */}
+                {mainTab === 'submissions' && (
+                    loadingSubmissions
+                        ? <ActivityIndicator color={theme.purple} style={{ marginTop: 20 }} />
+                        : filteredSubs.length === 0
+                            ? <Text style={{ textAlign: 'center', color: theme.muted, fontFamily: 'Poppins_400Regular', marginTop: 20 }}>No assignments found</Text>
+                            : filteredSubs.map(item => (
+                                <SubmissionCard
+                                    key={item.id}
+                                    item={item}
+                                    theme={theme}
+                                    isDark={isDark}
+                                    onSubmitted={fetchSubmissions}
+                                />
+                            ))
+                )}
             </ScrollView>
         </SafeAreaView>
     );
@@ -878,8 +875,8 @@ const styles = StyleSheet.create({
     body: { padding: 14, gap: 14 },
 
     summaryCard: {
-        borderRadius: 16, padding: 14,
-        alignItems: 'center', gap: 4,
+        borderRadius: 16, paddingVertical: 8, paddingHorizontal: 14,
+        alignItems: 'center', gap: 2,
     },
 
     mainTabRow: {
