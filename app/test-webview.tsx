@@ -6,11 +6,17 @@ import { Alert, BackHandler, Platform, StyleSheet, Text, TouchableOpacity, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
-const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://qubeex.in';
+// Apex domain (qubeex.in, no www) redirects to www.qubeex.in but drops the
+// path/query in the process (a hosting/DNS-level "forward to www" rule, not
+// something in this app's code) — landing straight on /login and losing the
+// wvToken param entirely. Point at www directly so the redirect never
+// happens in the first place.
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://www.qubeex.in';
 
 export default function TestWebViewScreen() {
     const { testId, attemptId } = useLocalSearchParams<{ testId: string; attemptId?: string }>();
     const [token, setToken] = useState<string | null>(null);
+    const [debugUrl, setDebugUrl] = useState<string>('');
     const webViewRef = useRef<WebView>(null);
     const canGoBackRef = useRef(false);
 
@@ -82,6 +88,17 @@ export default function TestWebViewScreen() {
                 <Text style={styles.headerTitle}>{attemptId ? 'Result' : 'Test'}</Text>
                 <View style={{ width: 38 }} />
             </View>
+            <View style={{ backgroundColor: '#000', padding: 6 }}>
+                <Text style={{ color: '#0F0', fontSize: 9 }} selectable>
+                    token: {token ? `yes (${token.slice(0, 12)}...)` : 'NONE'}
+                </Text>
+                <Text style={{ color: '#0F0', fontSize: 9 }} selectable>
+                    requested: {url}
+                </Text>
+                <Text style={{ color: '#FF0', fontSize: 9 }} selectable>
+                    actual: {debugUrl || '(waiting...)'}
+                </Text>
+            </View>
             <WebView
                 ref={webViewRef}
                 source={{ uri: url }}
@@ -89,7 +106,10 @@ export default function TestWebViewScreen() {
                 javaScriptEnabled
                 domStorageEnabled
                 style={{ flex: 1 }}
-                onNavigationStateChange={state => { canGoBackRef.current = state.canGoBack; }}
+                onNavigationStateChange={state => {
+                    canGoBackRef.current = state.canGoBack;
+                    setDebugUrl(state.url);
+                }}
             />
         </SafeAreaView>
     );
