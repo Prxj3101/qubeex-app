@@ -84,7 +84,7 @@ interface AttendanceApiData {
 export default function AttendanceDetail() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
-    const [activeHoliday, setActiveHoliday] = useState<{ name: string; label: string } | null>(null);
+    const [activeHoliday, setActiveHoliday] = useState<{ name: string; month: string; day: number } | null>(null);
     const [data, setData] = useState<AttendanceApiData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -262,18 +262,6 @@ export default function AttendanceDetail() {
                             </View>
                         </View>
 
-                        {activeHoliday && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.redLight, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
-                                <Text style={{ fontSize: 12 }}>📅</Text>
-                                <Text style={{ flex: 1, fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>
-                                    {activeHoliday.name} · {activeHoliday.label}
-                                </Text>
-                                <TouchableOpacity onPress={() => setActiveHoliday(null)} activeOpacity={0.7}>
-                                    <Text style={{ fontSize: 13, color: theme.red, fontFamily: 'Poppins_700Bold' }}>✕</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-
                         <View style={{ flexDirection: 'row', backgroundColor: SHEET_BODY_BG }}>
                             {/* Sticky left — Month */}
                             <View>
@@ -297,8 +285,8 @@ export default function AttendanceDetail() {
                                             </View>
                                         ))}
                                     </View>
-                                    {monthData.map(m => (
-                                        <View key={m.month} style={{ flexDirection: 'row' }}>
+                                    {monthData.map((m, mi) => (
+                                        <View key={m.month} style={{ flexDirection: 'row', position: 'relative' }}>
                                             {DATE_COLS.map(d => {
                                                 const isOutOfMonth = d > m.daysInMonth;
                                                 const isSunday = !isOutOfMonth && new Date(m.year, m.key, d).getDay() === 0;
@@ -329,8 +317,11 @@ export default function AttendanceDetail() {
                                                     return (
                                                         <TouchableOpacity key={d} activeOpacity={0.7}
                                                             onPress={() => {
-                                                                const label = `${m.month} ${d}`;
-                                                                setActiveHoliday(prev => prev?.label === label ? null : { name: holName ?? 'Holiday', label });
+                                                                setActiveHoliday(prev =>
+                                                                    prev?.month === m.month && prev?.day === d
+                                                                        ? null
+                                                                        : { name: holName ?? 'Holiday', month: m.month, day: d }
+                                                                );
                                                             }}
                                                             style={[sheetStyles.dataCell, { width: DATE_COL_W, backgroundColor: cellBg }]}>
                                                             {content}
@@ -343,6 +334,43 @@ export default function AttendanceDetail() {
                                                     </View>
                                                 );
                                             })}
+
+                                            {/* Floating tooltip — anchored to the tapped holiday cell
+                                                itself (inside the same scrollable row) instead of a
+                                                banner pinned to the top of the card, which went out of
+                                                view whenever the sheet was scrolled past the tapped row. */}
+                                            {activeHoliday?.month === m.month && (
+                                                <TouchableOpacity
+                                                    activeOpacity={1}
+                                                    onPress={() => setActiveHoliday(null)}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        // First row has no room above it, so its tooltip
+                                                        // opens downward; every other row opens upward.
+                                                        [mi === 0 ? 'top' : 'bottom']: SHEET_ROW_H + 4,
+                                                        left: Math.max(0, (activeHoliday.day - 1) * DATE_COL_W + DATE_COL_W / 2 - 55),
+                                                        zIndex: 20,
+                                                        backgroundColor: theme.text,
+                                                        borderRadius: 8,
+                                                        paddingHorizontal: 10,
+                                                        paddingVertical: 6,
+                                                        minWidth: 110,
+                                                        maxWidth: 160,
+                                                        shadowColor: '#000',
+                                                        shadowOpacity: 0.25,
+                                                        shadowRadius: 6,
+                                                        shadowOffset: { width: 0, height: 2 },
+                                                        elevation: 6,
+                                                    }}
+                                                >
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.card }}>
+                                                        {activeHoliday.name}
+                                                    </Text>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.card, opacity: 0.8, marginTop: 1 }}>
+                                                        {m.month} {activeHoliday.day}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                     ))}
                                 </View>

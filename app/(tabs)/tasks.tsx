@@ -1,6 +1,7 @@
 import api from '@/lib/api';
 import { SUBJECT_PALETTE } from '@/lib/subjectColors';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useTheme } from '@/context/ThemeContext';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
@@ -639,6 +640,7 @@ type SubFilter = 'all' | 'pending' | 'submitted' | 'late' | 'missed';
 export default function Tasks() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const showEntryCover = useTabEntryCover();
 
     const [mainTab, setMainTab] = useState<MainTab>('tests');
     const [testFilter, setTestFilter] = useState<TestFilter>('all');
@@ -737,6 +739,7 @@ export default function Tasks() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Tasks" />
+            <View style={{ flex: 1, position: 'relative' }}>
 
             {/* ── Sticky header: summary banner + main tabs + filter chips stay
                 pinned above the list while it scrolls underneath — mirrors the
@@ -866,6 +869,8 @@ export default function Tasks() {
                             ))
                 )}
             </ScrollView>
+            <TabEntryCover visible={showEntryCover} />
+            </View>
         </SafeAreaView>
     );
 }

@@ -1,4 +1,3 @@
-import PencilLoader from '@/components/Pencilloader';
 import { FeedBadgeProvider, useFeedBadge } from '@/context/FeedBadgeContext';
 import { InstitutionProvider } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
@@ -8,9 +7,8 @@ import { RobotoMono_600SemiBold } from '@expo-google-fonts/roboto-mono';
 import { Tabs } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { BookOpen, FileText, Home, Rss, User } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Image, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function ProfileTabIcon({ color, size }: { color: string; size: number }) {
   const { photo } = useStudent();
@@ -49,29 +47,9 @@ function FeedTabIcon({ color }: { color: string }) {
 
 function TabLayout() {
   const { isDark } = useTheme();
-  const [loading, setLoading] = useState(false);
-  const insets = useSafeAreaInsets(); // 👈 yeh add karo
-  const [topBarHeight, setTopBarHeight] = useState(64);
 
   return (
     <>
-      <View
-        pointerEvents={loading ? 'auto' : 'none'}
-        style={{
-          position: 'absolute',
-          top: insets.top + topBarHeight,
-          left: 0,
-          right: 0,
-          bottom: 60,
-          backgroundColor: isDark ? '#0F0A1E' : '#FAF8FF',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 999,
-          opacity: loading ? 1 : 0,
-        }}>
-        <PencilLoader size={85} />
-      </View>
-
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -86,12 +64,6 @@ function TabLayout() {
           tabBarLabelStyle: {
             fontFamily: 'Poppins_600SemiBold',
             fontSize: 10,
-          },
-        }}
-        screenListeners={{
-          tabPress: () => {
-            setLoading(true);
-            setTimeout(() => setLoading(false), 2000);
           },
         }}
         initialRouteName="index"

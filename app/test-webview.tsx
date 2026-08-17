@@ -61,6 +61,18 @@ export default function TestWebViewScreen() {
         })();
     `;
 
+    // Belt-and-suspenders: injectedJavaScriptBeforeContentLoaded isn't
+    // consistently honored across RN WebView versions/platforms, which was
+    // letting the page's own auth check fire before the token landed in
+    // localStorage and bounce to /login. Also pass the token as a URL param
+    // — the web app's student layout picks this up synchronously on render
+    // (before its own data-fetching effects) and writes it to localStorage
+    // itself, independent of native JS injection working at all.
+    const baseUrl = attemptId
+        ? `${WEB_URL}/student/tasks/tests/${testId}/result/${attemptId}`
+        : `${WEB_URL}/student/tasks/tests/${testId}`;
+    const url = `${baseUrl}?wvToken=${encodeURIComponent(token)}`;
+
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
@@ -72,7 +84,7 @@ export default function TestWebViewScreen() {
             </View>
             <WebView
                 ref={webViewRef}
-                source={{ uri: attemptId ? `${WEB_URL}/student/tasks/tests/${testId}/result/${attemptId}` : `${WEB_URL}/student/tasks/tests/${testId}` }}
+                source={{ uri: url }}
                 injectedJavaScriptBeforeContentLoaded={injectedJS}
                 javaScriptEnabled
                 domStorageEnabled

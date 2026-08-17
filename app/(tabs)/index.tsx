@@ -4,6 +4,7 @@ import { Header } from '@/components/Header';
 import { QuickStats } from '@/components/QuickStats';
 import { ThoughtOfTheDay } from '@/components/ThoughtOfTheDay';
 import { TopBar } from '@/components/TopBar';
+import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
@@ -63,6 +64,7 @@ export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const showEntryCover = useTabEntryCover();
     const { fetchProfile, profile } = useStudent();
 
     const [overview, setOverview] = useState<OverviewData | null>(null);
@@ -105,6 +107,7 @@ export default function Home() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
+            <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />}
@@ -204,6 +207,8 @@ export default function Home() {
 
                 </View>
             </ScrollView>
+            <TabEntryCover visible={showEntryCover} />
+            </View>
         </SafeAreaView>
     );
 }

@@ -1,6 +1,7 @@
 import { InlineWheel } from '@/components/InlineWheel';
 import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -463,6 +464,7 @@ interface AttendanceData {
 export default function Profile() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const showEntryCover = useTabEntryCover();
     const [marksMode, setMarksMode] = useState<MarksMode>('combined');
     const router = useRouter();
     const { clearInstitution } = useInstitution();
@@ -630,15 +632,30 @@ export default function Profile() {
             ? (marksheetData?.onlineClassRank ?? null)
             : (marksheetData?.combinedClassRank ?? null);
 
-    // Full school-year attendance trend derived from real API data.
-    // Future months (no records yet) show 0 so the graph maintains its shape.
+    // Full school-year attendance trend derived from real API data. A month
+    // with no records yet comes back as pct: null from the backend.
     const attendanceTrend = React.useMemo(() => {
         const MONTHS = ['Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
         return MONTHS.map(m => {
             const found = attendanceApiData?.monthly.find(x => x.month === m);
-            return { month: m, value: found?.pct ?? 0 };
+            return { month: m, value: found?.pct ?? null as number | null };
         });
     }, [attendanceApiData]);
+    // react-native-chart-kit needs a single continuous numeric array (no
+    // null/gap support like recharts), so the actual line only gets fed
+    // months up to the last one with real data — but every month name still
+    // needs to stay visible on the x-axis, so the remaining future months
+    // are appended after the chart as plain (non-plotted) labels, keeping
+    // the full Jun–May sequence visible while scrolling.
+    const lastDataIdx = (() => {
+        let last = -1;
+        attendanceTrend.forEach((d, i) => { if (d.value != null) last = i; });
+        return last;
+    })();
+    const attendanceTrendPlotted = attendanceTrend
+        .slice(0, lastDataIdx + 1)
+        .map(d => ({ month: d.month, value: d.value ?? 0 }));
+    const attendanceTrendFuture = attendanceTrend.slice(lastDataIdx + 1);
 
     const overallAttendancePct = attendanceApiData?.overall.pct ?? null;
 
@@ -666,6 +683,7 @@ export default function Profile() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Profile" />
+            <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
 
                 <IDCard student={student} theme={theme} isDark={isDark} router={router} />
@@ -770,14 +788,24 @@ export default function Profile() {
                             <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: 16, marginBottom: 4 }}>
                                 Overall Attendance Trend
                             </Text>
+                            {attendanceTrendPlotted.length === 0 ? (
+                                // No attendance marked at all yet this year — chart-kit throws on
+                                // an empty dataset (divides by data.length internally), so skip
+                                // the chart entirely rather than feeding it a 0-length array.
+                                <View style={{ height: 180, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText }}>
+                                        No attendance marked yet
+                                    </Text>
+                                </View>
+                            ) : (
                             <Animated.View style={{ opacity: fadeAnim, flexDirection: 'row' }}>
                                 {/* Fixed Y axis — a ghost chart-kit chart with an invisible line,
                                     clipped to just its label gutter, so the numbers never move. */}
                                 <View style={{ width: 34, height: 180, overflow: 'hidden' }}>
                                     <LineChart
                                         data={{
-                                            labels: attendanceTrend.map(d => d.month),
-                                            datasets: [{ data: attendanceTrend.map(d => d.value), color: () => 'transparent', strokeWidth: 0 }],
+                                            labels: attendanceTrendPlotted.map(d => d.month),
+                                            datasets: [{ data: attendanceTrendPlotted.map(d => d.value), color: () => 'transparent', strokeWidth: 0 }],
                                         }}
                                         width={120}
                                         height={180}
@@ -808,7 +836,8 @@ export default function Profile() {
                                     chart in Class > Subjects, just hiding its own y-axis since
                                     the ghost chart above already provides it. */}
                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginLeft: -11 }}>
-                                <View style={{ width: attendanceTrend.length * 56 }}>
+                                <View style={{ flexDirection: 'row' }}>
+                                <View style={{ width: attendanceTrendPlotted.length * 56 }}>
                                     <LineChart
                                         onDataPointClick={({ index }) => {
                                             setActiveTrendPoint(prev => prev === index ? null : index);
@@ -817,7 +846,7 @@ export default function Profile() {
                                             // Tapped point — like hovering a point on the web graph,
                                             // shows that month's exact detail.
                                             if (activeTrendPoint === index) {
-                                                const chartWidth = attendanceTrend.length * 56;
+                                                const chartWidth = attendanceTrendPlotted.length * 56;
                                                 const tooltipW = 60;
                                                 const clampedLeft = Math.max(2, Math.min(x - tooltipW / 2, chartWidth - tooltipW - 2));
                                                 const showBelow = y - 38 < 4;
@@ -837,7 +866,7 @@ export default function Profile() {
                                                         }}
                                                     >
                                                         <Text style={{ fontSize: 9, color: theme.card, fontFamily: 'Poppins_600SemiBold' }}>
-                                                            {attendanceTrend[index].month}
+                                                            {attendanceTrendPlotted[index].month}
                                                         </Text>
                                                         <Text style={{ fontSize: 11, color: theme.card, fontFamily: 'Poppins_700Bold' }}>
                                                             {indexData}%
@@ -846,7 +875,7 @@ export default function Profile() {
                                                 );
                                             }
 
-                                            const data = attendanceTrend.map(d => d.value);
+                                            const data = attendanceTrendPlotted.map(d => d.value);
                                             const max = Math.max(...data);
                                             const min = Math.min(...data);
                                             if (indexData !== max && indexData !== min) return null;
@@ -875,14 +904,14 @@ export default function Profile() {
                                             );
                                         }}
                                         data={{
-                                            labels: attendanceTrend.map(d => d.month),
+                                            labels: attendanceTrendPlotted.map(d => d.month),
                                             datasets: [{
-                                                data: attendanceTrend.map(d => d.value),
+                                                data: attendanceTrendPlotted.map(d => d.value),
                                                 color: () => theme.green,
                                                 strokeWidth: 2,
                                             }],
                                         }}
-                                        width={attendanceTrend.length * 56}
+                                        width={attendanceTrendPlotted.length * 56}
                                         height={180}
                                         yAxisSuffix="%"
                                         chartConfig={{
@@ -926,7 +955,7 @@ export default function Profile() {
                                         swallowed by the horizontal ScrollView's gesture handling,
                                         so we detect taps ourselves, one column per month. */}
                                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' }}>
-                                        {attendanceTrend.map((d, i) => (
+                                        {attendanceTrendPlotted.map((d, i) => (
                                             <TouchableOpacity
                                                 key={i}
                                                 activeOpacity={1}
@@ -936,8 +965,23 @@ export default function Profile() {
                                         ))}
                                     </View>
                                 </View>
+                                {/* Remaining months with no attendance marked yet — kept visible
+                                    in the same Jun–May sequence (matches the request that all
+                                    months stay on the axis), just without a plotted line since
+                                    chart-kit can't render a partial/broken line like recharts. */}
+                                {attendanceTrendFuture.length > 0 && (
+                                    <View style={{ width: attendanceTrendFuture.length * 56, flexDirection: 'row', height: 180, alignItems: 'flex-end', paddingBottom: 4 }}>
+                                        {attendanceTrendFuture.map((d) => (
+                                            <View key={d.month} style={{ width: 56, alignItems: 'center' }}>
+                                                <Text style={{ fontSize: 9, fontFamily: 'Poppins_400Regular', color: theme.subText, opacity: 0.5 }}>{d.month}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                                </View>
                                 </ScrollView>
                             </Animated.View>
+                            )}
 
                             {/* Legend — same Good/Condonation/Defaulter thresholds as the web app */}
                             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
@@ -1246,6 +1290,8 @@ export default function Profile() {
                     </View>
                 </View>
             </ScrollView>
+            <TabEntryCover visible={showEntryCover} />
+            </View>
 
         </SafeAreaView>
     );

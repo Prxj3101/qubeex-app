@@ -1,5 +1,6 @@
 import { InlineWheel } from '@/components/InlineWheel';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -388,6 +389,7 @@ function SubjectChipSelector({ subjects, activeSubjectIdx, setActiveSubjectIdx, 
 export default function Courses() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const showEntryCover = useTabEntryCover();
 
     const [classData, setClassData] = useState<ClassData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -470,8 +472,17 @@ export default function Courses() {
     const activeModeColumns: ScoreCol[] = activeScore
         ? (subjLbMode === 'offline' ? activeScore.offlineColumns : subjLbMode === 'online' ? activeScore.onlineColumns : activeScore.columns)
         : [];
-    const chartLabels = activeModeColumns.map(c => c.name.replace('Unit Test', 'UT').replace('Online Test', 'OT').replace('Term Test', 'Term'));
-    const chartValues = activeModeColumns.map(c => c.isAbsent ? 0 : c.scored != null ? Math.round((c.scored / c.max) * 100) : 0);
+    // A column with no marks entered yet isn't a real data point — it must
+    // not appear on the graph at all (not even as a 0%), unlike "My Results"
+    // below which still lists it with a dash. Matches web's chartData filter.
+    const chartCols = activeModeColumns.filter(c => !c.isAbsent && c.scored != null);
+    const chartLabels = chartCols.map(c => c.name.replace('Unit Test', 'UT').replace('Online Test', 'OT').replace('Term Test', 'Term'));
+    // X-axis labels must stay short — online test titles are free-typed by
+    // teachers and can be long, which overlaps neighbouring labels on a
+    // narrow mobile chart. Axis shows a clipped version; the tap tooltip
+    // still shows the full label via chartLabels.
+    const axisLabels = chartLabels.map(l => (l.length > 6 ? `${l.slice(0, 5)}…` : l));
+    const chartValues = chartCols.map(c => Math.round(((c.scored ?? 0) / c.max) * 100));
     const hasChart = chartValues.length >= 1;
 
     const divLabel = division ? `${division.standardName} · ${formatDivision(division.name)}` : '—';
@@ -481,7 +492,7 @@ export default function Courses() {
             <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
             <ScreenHeader title="Class" />
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, position: 'relative' }}>
             <Animated.ScrollView
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
@@ -850,7 +861,7 @@ export default function Courses() {
                                                                                     onDataPointClick={({ index }) => {
                                                                                         setChartTooltip(prev => prev === index ? null : index);
                                                                                     }}
-                                                                                    data={{ labels: chartLabels, datasets: [{ data: chartValues, color: () => activeSubject.color, strokeWidth: 2 }] }}
+                                                                                    data={{ labels: axisLabels, datasets: [{ data: chartValues, color: () => activeSubject.color, strokeWidth: 2 }] }}
                                                                                     width={width - 80}
                                                                                     height={180}
                                                                                     yAxisSuffix="%"
@@ -877,15 +888,32 @@ export default function Courses() {
                                                                                 {/* Explicit tap targets — chart-kit's own SVG onPress only
                                                                                     registers on an exact dot hit, so we detect column taps
                                                                                     ourselves (same fix as the attendance chart on Profile). */}
-                                                                                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' }}>
-                                                                                    {chartLabels.map((_, i) => (
-                                                                                        <TouchableOpacity
-                                                                                            key={i}
-                                                                                            activeOpacity={1}
-                                                                                            style={{ flex: 1, height: '100%' }}
-                                                                                            onPress={() => setChartTooltip(prev => prev === i ? null : i)}
-                                                                                        />
-                                                                                    ))}
+                                                                                {/* Tap zones are centered on chart-kit's actual x-axis label
+                                                                                    positions (paddingRight gutter + i * binWidth, chart-kit's
+                                                                                    own formula) rather than a naive equal split of the full
+                                                                                    width — the y-axis number gutter on the left otherwise
+                                                                                    throws off a plain flex division, so taps landed on the
+                                                                                    wrong (truncated) label. This is what makes tapping a
+                                                                                    clipped title reliably reveal its full name below. */}
+                                                                                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                                                                                    {(() => {
+                                                                                        const chartAreaWidth = width - 80;
+                                                                                        const gutter = 64; // chart-kit's default y-axis label gutter (paddingRight)
+                                                                                        const n = axisLabels.length;
+                                                                                        const binWidth = n > 0 ? (chartAreaWidth - gutter) / n : 0;
+                                                                                        const tapWidth = Math.max(28, Math.min(binWidth, 56));
+                                                                                        return axisLabels.map((_, i) => {
+                                                                                            const cx = gutter + i * binWidth;
+                                                                                            return (
+                                                                                                <TouchableOpacity
+                                                                                                    key={i}
+                                                                                                    activeOpacity={1}
+                                                                                                    style={{ position: 'absolute', top: 0, bottom: 0, left: cx - tapWidth / 2, width: tapWidth }}
+                                                                                                    onPress={() => setChartTooltip(prev => prev === i ? null : i)}
+                                                                                                />
+                                                                                            );
+                                                                                        });
+                                                                                    })()}
                                                                                 </View>
                                                                                 </View>
                                                                             </>
@@ -991,6 +1019,7 @@ export default function Courses() {
                     )}
                 </Animated.View>
             )}
+            <TabEntryCover visible={showEntryCover} />
             </View>
         </SafeAreaView>
     );

@@ -1,5 +1,6 @@
 import { AttachmentPreview } from '@/components/AttachmentPreview';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useFeedBadge } from '@/context/FeedBadgeContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -412,6 +413,7 @@ const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
 export default function Feed() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
+    const showEntryCover = useTabEntryCover();
     const { profile } = useStudent();
     const { setFeedHasNew } = useFeedBadge();
     const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
@@ -506,6 +508,7 @@ export default function Feed() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Feed" />
+            <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 2 }}>
                 <View style={[styles.body, { paddingTop: 6 }]}>
 
@@ -590,6 +593,8 @@ export default function Feed() {
 
                 </View>
             </ScrollView>
+            <TabEntryCover visible={showEntryCover} />
+            </View>
         </SafeAreaView>
     );
 }
