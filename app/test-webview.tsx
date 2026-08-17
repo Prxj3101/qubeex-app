@@ -16,7 +16,6 @@ const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://www.qubeex.in';
 export default function TestWebViewScreen() {
     const { testId, attemptId } = useLocalSearchParams<{ testId: string; attemptId?: string }>();
     const [token, setToken] = useState<string | null>(null);
-    const [debugUrl, setDebugUrl] = useState<string>('');
     const webViewRef = useRef<WebView>(null);
     const canGoBackRef = useRef(false);
 
@@ -88,17 +87,6 @@ export default function TestWebViewScreen() {
                 <Text style={styles.headerTitle}>{attemptId ? 'Result' : 'Test'}</Text>
                 <View style={{ width: 38 }} />
             </View>
-            <View style={{ backgroundColor: '#000', padding: 6 }}>
-                <Text style={{ color: '#0F0', fontSize: 9 }} selectable>
-                    token: {token ? `yes (${token.slice(0, 12)}...)` : 'NONE'}
-                </Text>
-                <Text style={{ color: '#0F0', fontSize: 9 }} selectable>
-                    requested: {url}
-                </Text>
-                <Text style={{ color: '#FF0', fontSize: 9 }} selectable>
-                    actual: {debugUrl || '(waiting...)'}
-                </Text>
-            </View>
             <WebView
                 ref={webViewRef}
                 source={{ uri: url }}
@@ -108,7 +96,6 @@ export default function TestWebViewScreen() {
                 style={{ flex: 1 }}
                 onNavigationStateChange={state => {
                     canGoBackRef.current = state.canGoBack;
-                    setDebugUrl(state.url);
                 }}
             />
         </SafeAreaView>
