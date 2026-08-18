@@ -25,7 +25,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 const { width } = Dimensions.get('window');
 
@@ -681,7 +681,7 @@ export default function Profile() {
     };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <ScreenHeader title="Profile" />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
@@ -1293,7 +1293,7 @@ export default function Profile() {
             <TabEntryCover visible={showEntryCover} />
             </View>
 
-        </SafeAreaView>
+        </View>
     );
 }
 

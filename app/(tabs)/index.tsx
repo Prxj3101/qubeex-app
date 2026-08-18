@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED' };
 const DARK  = { bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA' };
@@ -105,7 +105,7 @@ export default function Home() {
     const podiumColors  = ['#C0C0C0', '#F59E0B', '#CD7F32'];
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView
@@ -209,7 +209,7 @@ export default function Home() {
             </ScrollView>
             <TabEntryCover visible={showEntryCover} />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

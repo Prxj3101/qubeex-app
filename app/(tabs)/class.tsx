@@ -35,7 +35,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LineChart } from 'react-native-chart-kit';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 const { width } = Dimensions.get('window');
 
@@ -488,7 +488,7 @@ export default function Courses() {
     const divLabel = division ? `${division.standardName} · ${formatDivision(division.name)}` : '—';
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
             <ScreenHeader title="Class" />
 
@@ -1021,7 +1021,7 @@ export default function Courses() {
             )}
             <TabEntryCover visible={showEntryCover} />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

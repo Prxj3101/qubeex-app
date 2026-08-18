@@ -93,6 +93,7 @@ export default function TestWebViewScreen() {
                 injectedJavaScriptBeforeContentLoaded={injectedJS}
                 javaScriptEnabled
                 domStorageEnabled
+                bounces={false}
                 style={{ flex: 1 }}
                 onNavigationStateChange={state => {
                     canGoBackRef.current = state.canGoBack;

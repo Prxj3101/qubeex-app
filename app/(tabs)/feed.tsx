@@ -25,7 +25,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
@@ -506,7 +506,7 @@ export default function Feed() {
     );
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <ScreenHeader title="Feed" />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 2 }}>
@@ -595,7 +595,7 @@ export default function Feed() {
             </ScrollView>
             <TabEntryCover visible={showEntryCover} />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

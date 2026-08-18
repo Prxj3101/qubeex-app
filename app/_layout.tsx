@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,12 +56,14 @@ export default function RootLayout() {
     if (!fontsLoaded) return null;
 
     return (
-        <ThemeProvider>
-            <InstitutionProvider>
-                <StudentProvider>
-                    <AuthGate />
-                </StudentProvider>
-            </InstitutionProvider>
-        </ThemeProvider>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <ThemeProvider>
+                <InstitutionProvider>
+                    <StudentProvider>
+                        <AuthGate />
+                    </StudentProvider>
+                </InstitutionProvider>
+            </ThemeProvider>
+        </SafeAreaProvider>
     );
 }
