@@ -1,5 +1,5 @@
 import { useTheme } from '@/context/ThemeContext';
-import { X, Download } from 'lucide-react-native';
+import { X, Download, Expand } from 'lucide-react-native';
 import { useState } from 'react';
 import {
     ActivityIndicator,
@@ -137,8 +137,33 @@ export function AttachmentPreview({ url, name, type }: Props) {
     const img = isImage(type, name);
     const vid = isVideo(type, name);
 
-    const emoji = img ? '🖼️' : vid ? '🎬' : type === 'link' ? '🔗' : '📄';
-    const label = img ? 'Image' : vid ? 'Video' : type === 'link' ? 'Link' : 'File';
+    // Images render as an actual inline thumbnail (like the web feed) that
+    // expands to fullscreen on tap, instead of a generic "tap to preview"
+    // chip — the chip is kept only for non-image attachments.
+    if (img) {
+        return (
+            <>
+                <TouchableOpacity
+                    onPress={() => setOpen(true)}
+                    activeOpacity={0.9}
+                    style={[styles.imageThumbWrap, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : theme.border }]}>
+                    <Image source={{ uri: url }} style={styles.imageThumb} resizeMode="cover" />
+                    <View style={styles.imageExpandBadge}>
+                        <Expand size={11} color="#fff" />
+                    </View>
+                </TouchableOpacity>
+
+                <Modal visible={open} animationType="slide" statusBarTranslucent onRequestClose={() => setOpen(false)}>
+                    <View style={[styles.fullscreen, { backgroundColor: '#000' }]}>
+                        <ImagePreview url={url} name={name} onClose={() => setOpen(false)} theme={theme} />
+                    </View>
+                </Modal>
+            </>
+        );
+    }
+
+    const emoji = vid ? '🎬' : type === 'link' ? '🔗' : '📄';
+    const label = vid ? 'Video' : type === 'link' ? 'Link' : 'File';
 
     return (
         <>
@@ -154,11 +179,8 @@ export function AttachmentPreview({ url, name, type }: Props) {
             </TouchableOpacity>
 
             <Modal visible={open} animationType="slide" statusBarTranslucent onRequestClose={() => setOpen(false)}>
-                <View style={[styles.fullscreen, { backgroundColor: img ? '#000' : theme.bg }]}>
-                    {img
-                        ? <ImagePreview url={url} name={name} onClose={() => setOpen(false)} theme={theme} />
-                        : <WebPreview  url={url} name={name} onClose={() => setOpen(false)} theme={theme} />
-                    }
+                <View style={[styles.fullscreen, { backgroundColor: theme.bg }]}>
+                    <WebPreview url={url} name={name} onClose={() => setOpen(false)} theme={theme} />
                 </View>
             </Modal>
         </>
@@ -167,6 +189,17 @@ export function AttachmentPreview({ url, name, type }: Props) {
 
 const styles = StyleSheet.create({
     fullscreen: { flex: 1 },
+    imageThumbWrap: {
+        borderRadius: 14, borderWidth: 1, overflow: 'hidden',
+        maxHeight: 220, alignSelf: 'flex-start', width: '100%',
+    },
+    imageThumb: { width: '100%', height: 200 },
+    imageExpandBadge: {
+        position: 'absolute', bottom: 8, right: 8,
+        width: 24, height: 24, borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        alignItems: 'center', justifyContent: 'center',
+    },
     toolbar: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         paddingHorizontal: 16, paddingVertical: 12, paddingTop: 52,

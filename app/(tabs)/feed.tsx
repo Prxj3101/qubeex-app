@@ -341,7 +341,13 @@ function FeedCard({ post, theme, isDark, divisionName }: { post: FeedPost; theme
 
             <Text style={[styles.postTitle, { color: theme.text }]}>{post.title}</Text>
             {post.body ? (
-                <Text style={[styles.postBody, { color: theme.subText }]} numberOfLines={!isLongBody || expanded ? undefined : 2}>{post.body}</Text>
+                <Text
+                    style={[styles.postBody, { color: theme.subText }]}
+                    numberOfLines={!isLongBody || expanded ? undefined : 2}
+                    onPress={isLongBody ? () => setExpanded(!expanded) : undefined}
+                    suppressHighlighting>
+                    {post.body}
+                </Text>
             ) : null}
 
             {post.attachmentUrl && post.attachmentName && post.attachmentType && (
@@ -515,7 +521,7 @@ export default function Feed() {
                     <MiniCalendar theme={theme} isDark={isDark} />
 
                     {/* Feed — fixed-height card, header/filters stay put, posts scroll inside */}
-                    <View style={{ position: 'relative' }}>
+                    <View style={[styles.feedPanelWrap, { position: 'relative' }]}>
                     <View style={[styles.feedPanel, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                         <View style={[styles.feedPanelHeader, { borderBottomColor: theme.cardBorder }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -603,7 +609,7 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     body: { padding: 14, gap: 14 },
 
-    card: { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+    card: { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 10 },
 
     calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     navBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1 },
@@ -631,7 +637,11 @@ const styles = StyleSheet.create({
     modalEventLabel: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
     modalCloseBtn: { alignItems: 'center', paddingVertical: 12, borderRadius: 14, marginTop: 4 },
 
-    feedPanel: { height: 600, borderRadius: 20, borderWidth: 1, overflow: 'hidden', shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+    // Shadow lives on a non-clipping wrapper (see feedPanelWrap below) — a
+    // View with overflow:'hidden' (needed here to round the scrolling feed
+    // content) also clips iOS shadows, so the shadow has to sit one level up.
+    feedPanelWrap: { borderRadius: 20, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 10 },
+    feedPanel: { height: 600, borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
     feedPanelHeader: { padding: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 
     filterRow: { gap: 8, paddingBottom: 2 },

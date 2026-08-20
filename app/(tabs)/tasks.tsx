@@ -14,6 +14,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronUp,
+    Eye,
+    FileEdit,
     FileText,
     Layers,
     Radio,
@@ -26,6 +28,7 @@ import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Linking,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -94,15 +97,22 @@ interface SubmissionItem {
     type: SubmissionType;
     status: SubmissionStatus;
     dueDate: string;
+    dueDateIso: string | null;
     dueTime: string;
     marks: number;
     description: string;
     submittedFile?: string | null;
+    submittedAt?: string | null;
+    lateSubmission?: boolean;
     color: string;
     submissionType: 'OFFLINE' | 'ONLINE';
     reviewNote?: string | null;
     offlineReceived?: boolean;
+    offlineSubmittedAt?: string | null;
+    offlineMarkedLate?: boolean;
     daysLeft?: number | null;
+    // Newest first — attempts[0] mirrors submittedFile above.
+    attempts?: { id: string; attemptNumber: number; fileUrl: string | null; submittedAt: string; reviewStatus: string | null; reviewNote: string | null }[];
 }
 
 // ─── API Response Types ───────────────────────────────────────────────────────
@@ -139,11 +149,16 @@ interface ApiAssignment {
     daysLeft: number | null;
     submissionType: 'OFFLINE' | 'ONLINE';
     studentStatus: 'PENDING' | 'SUBMITTED' | 'WRITE_AGAIN' | 'CORRECT' | 'MISSED' | 'OVERDUE';
+    lateSubmission: boolean;
     submission: {
         fileUrl: string | null;
+        submittedAt: string | null;
         reviewNote: string | null;
         offlineSubmittedAt: string | null;
+        offlineMarkedLate: boolean;
     } | null;
+    // Newest first — attempts[0] mirrors `submission` above.
+    attempts: { id: string; attemptNumber: number; fileUrl: string | null; submittedAt: string; reviewStatus: string | null; reviewNote: string | null }[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -210,7 +225,11 @@ function mapTest(t: ApiTest): TestItem {
 function mapAssignment(a: ApiAssignment): SubmissionItem {
     const statusMap: Record<string, SubmissionStatus> = {
         PENDING: 'pending',
-        SUBMITTED: 'submitted',
+        // SUBMITTED means "awaiting teacher action" for both types, but only
+        // ONLINE submissions go through an actual review — OFFLINE ones are
+        // just marked received by the teacher, so they read as "Submitted"
+        // (reusing the same green style as CORRECT) instead of "In Review".
+        SUBMITTED: a.submissionType === 'OFFLINE' ? 'correct' : 'submitted',
         WRITE_AGAIN: 'write_again',
         CORRECT: 'correct',
         MISSED: 'missed',
@@ -223,15 +242,21 @@ function mapAssignment(a: ApiAssignment): SubmissionItem {
         type: 'assignment',
         status: statusMap[a.studentStatus] ?? 'pending',
         dueDate: fmtDate(a.dueDate),
-        dueTime: '11:59 PM',
+        dueDateIso: a.dueDate,
+        dueTime: fmtTime(a.dueDate),
         marks: a.totalMarks,
         description: a.description ?? '',
         submittedFile: a.submission?.fileUrl ?? null,
+        submittedAt: a.submission?.submittedAt ?? null,
+        lateSubmission: a.lateSubmission,
         color: subjectColor(a.subjectName),
         submissionType: a.submissionType,
         reviewNote: a.submission?.reviewNote ?? null,
         offlineReceived: !!a.submission?.offlineSubmittedAt,
+        offlineSubmittedAt: a.submission?.offlineSubmittedAt ?? null,
+        offlineMarkedLate: a.submission?.offlineMarkedLate ?? false,
         daysLeft: a.daysLeft,
+        attempts: a.attempts,
     };
 }
 
@@ -331,7 +356,9 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                 </View>
             </View>
 
-            {/* Info row */}
+            {/* Info row — collapsed by default for completed/missed tests, always
+                shown for live/upcoming (matches web's "View details" behavior) */}
+            {(item.status !== 'completed' || expanded) && (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                 {item.startDateIso && (
                     <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
@@ -393,6 +420,7 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     </View>
                 )}
             </View>
+            )}
 
             {/* Expanded content — syllabus only, matching web */}
             {expanded && item.topics.length > 0 && (
@@ -457,7 +485,7 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
 
             {/* Expand toggle — full-bleed footer strip with a top border, matching
                 the web card exactly, instead of sitting inline with the padding. */}
-            {item.topics.length > 0 && (
+            {(item.status === 'completed' || item.topics.length > 0) && (
                 <TouchableOpacity
                     onPress={() => setExpanded(!expanded)}
                     activeOpacity={0.7}
@@ -467,7 +495,11 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     }}
                 >
                     {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
-                    <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Hide syllabus/instructions' : 'View syllabus/instructions'}</Text>
+                    <Text style={[styles.expandText, { color: theme.muted }]}>
+                        {item.status === 'completed'
+                            ? (expanded ? 'Hide details' : 'View details')
+                            : (expanded ? 'Hide syllabus/instructions' : 'View syllabus/instructions')}
+                    </Text>
                 </TouchableOpacity>
             )}
         </Card>
@@ -482,18 +514,33 @@ function SubmissionCard({
 }) {
     const [expanded, setExpanded] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(false);
 
     const statusConfig: Record<SubmissionStatus, { bg: string; darkBg: string; text: string; label: string }> = {
         pending: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '⏳ Pending' },
-        submitted: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Submitted' },
+        submitted: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '👀 In Review' },
         late: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '⚠️ Late' },
         missed: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '❌ Missed' },
-        write_again: { bg: theme.amberLight, darkBg: '#2D2010', text: theme.amber, label: '✍️ Write Again' },
-        correct: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Correct' },
+        write_again: { bg: theme.redLight, darkBg: '#2B0D0D', text: theme.red, label: '✍️ Write Again' },
+        correct: { bg: theme.greenLight, darkBg: '#0D2B20', text: theme.green, label: '✅ Submitted' },
     };
 
-    const s = statusConfig[item.status];
+    const s = (item.status === 'correct' && item.lateSubmission) ? statusConfig.late : statusConfig[item.status];
     const canSubmit = (item.status === 'pending' || item.status === 'write_again') && item.submissionType === 'ONLINE';
+    const descLines = (item.description ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+
+    let daysHoursLeftLabel: string | null = null;
+    if (item.dueDateIso) {
+        const diffMs = new Date(item.dueDateIso).getTime() - Date.now();
+        if (diffMs <= 0) {
+            daysHoursLeftLabel = 'Overdue';
+        } else {
+            const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const days = Math.floor(totalHours / 24);
+            const hours = totalHours % 24;
+            daysHoursLeftLabel = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+        }
+    }
 
     async function handlePickAndUpload() {
         try {
@@ -529,60 +576,78 @@ function SubmissionCard({
     }
 
     return (
-        <Card theme={theme}>
+        // padding: 0 + overflow: hidden here so the toggle below can be a
+        // full-bleed footer strip (border-top spanning the whole card, no side
+        // padding) exactly like the test card / web card — everything else
+        // moves into the padded inner View instead of relying on the shared
+        // Card's padding.
+        <Card theme={theme} style={{ padding: 0, overflow: 'hidden' }}>
+            <View style={{ padding: 16 }}>
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
                 <View style={{
                     width: 42, height: 42, borderRadius: 12,
-                    backgroundColor: item.color + '20',
+                    backgroundColor: isDark ? s.darkBg : s.bg,
                     alignItems: 'center', justifyContent: 'center',
                     marginTop: 2,
                 }}>
                     {item.type === 'project'
-                        ? <Zap size={20} color={item.color} />
-                        : <FileText size={20} color={item.color} />
+                        ? <Zap size={20} color={s.text} />
+                        : <FileEdit size={20} color={s.text} />
                     }
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text, lineHeight: 18 }}>{item.title}</Text>
                     <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>{item.subject}</Text>
                 </View>
-                <View style={[styles.chip, { backgroundColor: isDark ? s.darkBg : s.bg }]}>
-                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: s.text }}>{s.label}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={[styles.chip, { backgroundColor: isDark ? s.darkBg : s.bg }]}>
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: s.text }}>{s.label}</Text>
+                    </View>
+                    {/* Manual "Mark Late" toggle (offline only) — only shown alongside Submitted, never on its own */}
+                    {item.status === 'correct' && item.submissionType === 'OFFLINE' && item.offlineMarkedLate && (
+                        <View style={[styles.chip, { backgroundColor: isDark ? '#2B0D0D' : theme.redLight }]}>
+                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: theme.red }}>⚠️ Late</Text>
+                        </View>
+                    )}
                 </View>
             </View>
 
             {/* Info row */}
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Text style={{ fontSize: 9 }}>{item.type === 'project' ? '🚀' : '📝'}</Text>
-                    <Text style={[styles.infoChipText, { color: theme.subText, textTransform: 'capitalize' }]}>{item.type}</Text>
+                <View style={[styles.infoChip, { backgroundColor: item.submissionType === 'ONLINE' ? (isDark ? '#132339' : '#DBEAFE') : theme.bg }]}>
+                    <Text style={[styles.infoChipText, { color: item.submissionType === 'ONLINE' ? '#3B82F6' : theme.subText, fontFamily: 'Poppins_700Bold' }]}>
+                        {item.submissionType === 'ONLINE' ? '📤 Online' : '📝 Offline'}
+                    </Text>
                 </View>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Calendar size={11} color={theme.muted} />
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Due: {item.dueDate}</Text>
-                </View>
-                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>📊 {item.marks} marks</Text>
-                </View>
-                {item.submissionType === 'OFFLINE' && (
-                    <View style={[styles.infoChip, { backgroundColor: item.offlineReceived ? theme.greenLight : theme.bg }]}>
-                        <Text style={[styles.infoChipText, { color: item.offlineReceived ? theme.green : theme.muted }]}>
-                            {item.offlineReceived ? '📋 Copy received' : '📋 Offline'}
+                {item.dueDateIso && (
+                    <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>Due: </Text>
+                            {fmtDate(item.dueDateIso)}, {fmtTime(item.dueDateIso)}
                         </Text>
                     </View>
                 )}
-                {item.status === 'pending' && item.daysLeft != null && (
-                    <View style={[styles.infoChip, { backgroundColor: item.daysLeft <= 2 ? theme.redLight : theme.amberLight }]}>
-                        <Text style={[styles.infoChipText, { color: item.daysLeft <= 2 ? theme.red : theme.amber, fontFamily: 'Poppins_700Bold' }]}>
-                            {item.daysLeft === 0 ? 'Due Today!' : item.daysLeft < 0 ? 'Overdue' : `${item.daysLeft}d left`}
+                <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
+                    <BarChart2 size={11} color={theme.muted} />
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.marks} marks</Text>
+                </View>
+                {!['correct', 'submitted', 'missed'].includes(item.status) && daysHoursLeftLabel && (
+                    <View style={[styles.infoChip, { backgroundColor: theme.redLight }]}>
+                        <Timer size={11} color={theme.red} />
+                        <Text style={[styles.infoChipText, { color: theme.red, fontFamily: 'Poppins_700Bold' }]}>
+                            {daysHoursLeftLabel}
                         </Text>
                     </View>
                 )}
-                {(item.status === 'submitted' || item.status === 'correct') && item.submittedFile && (
-                    <View style={[styles.infoChip, { backgroundColor: theme.greenLight }]}>
-                        <FileText size={11} color={theme.green} />
-                        <Text style={[styles.infoChipText, { color: theme.green }]} numberOfLines={1}>PDF submitted</Text>
+                {(item.attempts?.[0]?.submittedAt ?? item.submittedAt) && (
+                    <View style={[styles.infoChip, { backgroundColor: 'rgba(192,96,64,0.12)' }]}>
+                        <Calendar size={11} color={theme.muted} />
+                        <Text style={[styles.infoChipText, { color: theme.subText }]}>
+                            <Text style={{ fontFamily: 'Poppins_600SemiBold' }}>Submitted at : </Text>
+                            {fmtDate((item.attempts?.[0]?.submittedAt ?? item.submittedAt)!)}, {fmtTime((item.attempts?.[0]?.submittedAt ?? item.submittedAt)!)}
+                        </Text>
                     </View>
                 )}
             </View>
@@ -590,41 +655,196 @@ function SubmissionCard({
             {/* Expanded */}
             {expanded && (
                 <View style={{ gap: 10 }}>
-                    {item.description ? (
-                        <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12 }}>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 4 }}>DESCRIPTION</Text>
-                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.subText, lineHeight: 18 }}>{item.description}</Text>
-                        </View>
-                    ) : null}
-
-                    {item.status === 'write_again' && item.reviewNote && (
-                        <View style={{ padding: 12, backgroundColor: isDark ? '#2D2010' : theme.amberLight, borderRadius: 12 }}>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber, marginBottom: 4 }}>TEACHER FEEDBACK</Text>
-                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: isDark ? theme.text : '#92400E', lineHeight: 18 }}>{item.reviewNote}</Text>
+                    {descLines.length > 0 && (
+                        <View style={{ gap: 4 }}>
+                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted, letterSpacing: 0.4 }}>DESCRIPTION</Text>
+                            <View style={{ gap: 4 }}>
+                                {descLines.map((line, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                                        <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: theme.purple, marginTop: 5 }} />
+                                        <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, lineHeight: 17 }}>{line}</Text>
+                                    </View>
+                                ))}
+                            </View>
                         </View>
                     )}
 
-                    {canSubmit && (
-                        <TouchableOpacity
-                            onPress={handlePickAndUpload}
-                            disabled={uploading}
-                            style={[styles.ctaBtn, { backgroundColor: uploading ? theme.muted : item.color }]}
-                            activeOpacity={0.85}
-                        >
-                            {uploading
-                                ? <ActivityIndicator size="small" color="white" />
-                                : <Upload size={15} color="white" />
-                            }
-                            <Text style={styles.ctaBtnText}>
-                                {uploading ? 'Uploading…' : item.status === 'write_again' ? 'Resubmit PDF' : 'Submit PDF'}
-                            </Text>
-                        </TouchableOpacity>
+                    {/* Latest online submission — resubmitting never erases the earlier upload,
+                        it just pushes it into the collapsible history below. */}
+                    {item.submittedFile && (
+                        <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12, gap: 8 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>ONLINE SUBMISSION</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.text, flexShrink: 1 }} numberOfLines={1}>
+                                    {(() => {
+                                        const attemptNo = item.attempts?.[0]?.attemptNumber ?? 1;
+                                        return attemptNo > 1 ? `Submission #${attemptNo} · ` : `Submission · `;
+                                    })()}
+                                    {(() => {
+                                        const ts = item.attempts?.[0]?.submittedAt ?? item.submittedAt;
+                                        return ts ? new Date(ts).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+                                    })()}
+                                </Text>
+                                <TouchableOpacity
+                                    onPress={() => Linking.openURL(item.submittedFile!).catch(() => {})}
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? '#241a3a' : '#EDE9FE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                                    <FileText size={11} color="#8B5CF6" />
+                                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: '#8B5CF6' }}>View PDF</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Feedback for the latest/current submission — tied to this specific
+                                attempt's own review, not a global note that would vanish on resubmit. */}
+                            {(item.attempts?.[0]?.reviewStatus === 'CORRECT' || item.attempts?.[0]?.reviewStatus === 'WRITE_AGAIN') && (() => {
+                                const at0 = item.attempts![0];
+                                const isCorrect = at0.reviewStatus === 'CORRECT';
+                                return (
+                                    <View style={{ marginTop: -6 }}>
+                                        <View style={{
+                                            alignSelf: 'flex-start', marginBottom: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+                                            backgroundColor: isCorrect ? theme.greenLight : theme.redLight,
+                                        }}>
+                                            <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: isCorrect ? theme.green : theme.red }}>
+                                                {isCorrect ? 'Approved' : 'Write Again'}
+                                            </Text>
+                                        </View>
+                                        {at0.reviewNote && (
+                                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: theme.text, lineHeight: 18 }}>
+                                                {at0.reviewNote}
+                                            </Text>
+                                        )}
+                                    </View>
+                                );
+                            })()}
+
+                            {/* Earlier submissions — collapsed by default. */}
+                            {(item.attempts?.length ?? 0) > 1 && (
+                                <View style={{ borderTopWidth: 1, borderTopColor: isDark ? '#2A2440' : '#E5E7EB', paddingTop: 8, gap: 6 }}>
+                                    <TouchableOpacity onPress={() => setHistoryOpen(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        {historyOpen ? <ChevronUp size={11} color={theme.muted} /> : <ChevronDown size={11} color={theme.muted} />}
+                                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>
+                                            {item.attempts!.length - 1} earlier submission{item.attempts!.length - 1 > 1 ? 's' : ''}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    {historyOpen && (
+                                        <View style={{ gap: 6 }}>
+                                            {item.attempts!.slice(1).map(at => (
+                                                <View key={at.id} style={{ backgroundColor: isDark ? '#1A1530' : '#F3F4F6', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                                        <View style={{ flexShrink: 1 }}>
+                                                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.subText }}>
+                                                                #{at.attemptNumber} · {new Date(at.submittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                                                            </Text>
+                                                            {at.reviewStatus === 'CORRECT' && (
+                                                                <View style={{ alignSelf: 'flex-start', marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: theme.greenLight }}>
+                                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.green }}>Approved</Text>
+                                                                </View>
+                                                            )}
+                                                            {at.reviewStatus === 'WRITE_AGAIN' && (
+                                                                <View style={{ alignSelf: 'flex-start', marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: theme.redLight }}>
+                                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.red }}>Write Again</Text>
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                        {at.fileUrl && (
+                                                            <TouchableOpacity
+                                                                onPress={() => Linking.openURL(at.fileUrl!).catch(() => {})}
+                                                                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? '#241a3a' : '#EDE9FE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                                                                <FileText size={11} color="#8B5CF6" />
+                                                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: '#8B5CF6' }}>View PDF</Text>
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                    {at.reviewNote && (
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: theme.subText, marginTop: 4 }}>
+                                                            {at.reviewNote}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                            ))}
+                                        </View>
+                                    )}
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {item.submissionType === 'ONLINE' && item.submittedFile ? (
+                        <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 4 }}>OFFLINE COPY</Text>
+                            {item.offlineSubmittedAt ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, flexShrink: 1 }}>
+                                        {`Marked received on ${new Date(item.offlineSubmittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                                    </Text>
+                                    <CheckCircle2 size={13} color={theme.green} style={{ marginTop: -4 }} />
+                                </View>
+                            ) : (
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}>Not received</Text>
+                            )}
+                        </View>
+                    ) : (
+                        item.offlineSubmittedAt && (
+                            <View style={{ padding: 12, backgroundColor: theme.bg, borderRadius: 12 }}>
+                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 4 }}>OFFLINE COPY</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, flexShrink: 1 }}>
+                                        {`Marked received on ${new Date(item.offlineSubmittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                                    </Text>
+                                    <CheckCircle2 size={13} color={theme.green} style={{ marginTop: -4 }} />
+                                </View>
+                            </View>
+                        )
                     )}
                 </View>
             )}
 
-            {/* Expand toggle */}
-            <TouchableOpacity style={styles.expandRow} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+            <TouchableOpacity
+                onPress={() => router.push({ pathname: '/assignment-webview', params: { assignmentId: item.id } })}
+                style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder,
+                    marginTop: 12, marginBottom: 10,
+                }}
+            >
+                <Eye size={14} color={theme.subText} />
+                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>View</Text>
+            </TouchableOpacity>
+
+            {canSubmit && (
+                <TouchableOpacity
+                    onPress={handlePickAndUpload}
+                    disabled={uploading}
+                    style={[styles.ctaBtn, { backgroundColor: uploading ? theme.muted : '#7C3AED', marginBottom: 10 }]}
+                    activeOpacity={0.85}
+                >
+                    {uploading
+                        ? <ActivityIndicator size="small" color="white" />
+                        : <Upload size={15} color="white" />
+                    }
+                    <Text style={styles.ctaBtnText}>
+                        {uploading ? 'Uploading…' : item.status === 'write_again' ? 'Resubmit PDF' : 'Submit PDF'}
+                    </Text>
+                </TouchableOpacity>
+            )}
+            {canSubmit && (
+                <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted, textAlign: 'center', marginTop: -6, marginBottom: 4 }}>
+                    PDF only · max 25 MB
+                </Text>
+            )}
+            </View>
+
+            {/* Expand toggle — full-bleed footer strip with a top border, matching
+                the test card / web card exactly, instead of sitting inline with
+                the padding. */}
+            <TouchableOpacity
+                onPress={() => setExpanded(!expanded)}
+                activeOpacity={0.7}
+                style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.cardBorder,
+                }}
+            >
                 {expanded ? <ChevronUp size={13} color={theme.muted} /> : <ChevronDown size={13} color={theme.muted} />}
                 <Text style={[styles.expandText, { color: theme.muted }]}>{expanded ? 'Show less' : 'View details'}</Text>
             </TouchableOpacity>
@@ -635,7 +855,7 @@ function SubmissionCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 type MainTab = 'tests' | 'submissions';
 type TestFilter = 'all' | 'live' | 'upcoming' | 'completed' | 'missed';
-type SubFilter = 'all' | 'pending' | 'submitted' | 'late' | 'missed';
+type SubFilter = 'all' | 'pending' | 'submitted' | 'write_again' | 'correct' | 'late' | 'missed' | 'offline_type' | 'online_type';
 
 export default function Tasks() {
     const { isDark } = useTheme();
@@ -709,6 +929,9 @@ export default function Tasks() {
     const upcomingCount = tests.filter(t => t.status === 'upcoming').length;
     const doneCount = tests.filter(t => t.status === 'completed').length;
     const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'write_again').length;
+    const subPendingCount = submissions.filter(s => s.status === 'pending').length;
+    const subWriteAgainCount = submissions.filter(s => s.status === 'write_again').length;
+    const subSubmittedCount = submissions.filter(s => s.status === 'correct').length;
 
     const filteredTests = testFilter === 'all'
         ? tests
@@ -716,8 +939,8 @@ export default function Tasks() {
             ? tests.filter(t => t.status === 'completed' && t.attemptsUsed === 0)
             : tests.filter(t => t.status === testFilter);
     const filteredSubs = subFilter === 'all' ? submissions
-        : subFilter === 'submitted' ? submissions.filter(s => s.status === 'submitted' || s.status === 'correct')
-        : subFilter === 'late' ? submissions.filter(s => s.status === 'late' || s.status === 'write_again')
+        : subFilter === 'offline_type' ? submissions.filter(s => s.submissionType === 'OFFLINE')
+        : subFilter === 'online_type' ? submissions.filter(s => s.submissionType === 'ONLINE')
         : submissions.filter(s => s.status === subFilter);
 
     const TEST_FILTERS: { key: TestFilter; label: string }[] = [
@@ -731,9 +954,13 @@ export default function Tasks() {
     const SUB_FILTERS: { key: SubFilter; label: string }[] = [
         { key: 'all', label: 'All' },
         { key: 'pending', label: '⏳ Pending' },
-        { key: 'submitted', label: '✅ Submitted' },
+        { key: 'submitted', label: '👀 In Review' },
+        { key: 'write_again', label: '✍️ Write Again' },
+        { key: 'correct', label: '✅ Submitted' },
         { key: 'late', label: '⚠️ Late' },
         { key: 'missed', label: '❌ Missed' },
+        { key: 'offline_type', label: '📝 Offline' },
+        { key: 'online_type', label: '📤 Online' },
     ];
 
     return (
@@ -763,6 +990,26 @@ export default function Tasks() {
                         <View style={[styles.summaryCard, { backgroundColor: isDark ? '#0D2B20' : theme.greenLight, flex: 1 }]}>
                             <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>{doneCount}</Text>
                             <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.green }}>Done</Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* ── Summary Banner — Pending/Write Again/Submitted, mirrors the
+                    web Submissions card. Only meaningful for the Submissions
+                    tab, so (like web) it's hidden on Tests. ── */}
+                {mainTab === 'submissions' && (
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{subPendingCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Pending</Text>
+                        </View>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.red }}>{subWriteAgainCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>Write Again</Text>
+                        </View>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#0D2B20' : theme.greenLight, flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>{subSubmittedCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.green }}>Submitted</Text>
                         </View>
                     </View>
                 )}
