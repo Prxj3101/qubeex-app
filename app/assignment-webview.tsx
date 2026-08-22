@@ -63,7 +63,7 @@ export default function AssignmentWebViewScreen() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                     <ArrowLeft size={22} color="white" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Assignment</Text>
+                <Text style={styles.headerTitle}>Submission</Text>
                 <View style={{ width: 38 }} />
             </View>
             <WebView
@@ -73,10 +73,27 @@ export default function AssignmentWebViewScreen() {
                 javaScriptEnabled
                 domStorageEnabled
                 bounces={false}
-                style={{ flex: 1 }}
+                // Android compositing quirk: while scrolling, the fixed
+                // header layer and the scrolling page layer can repaint one
+                // frame apart, briefly exposing the WebView's own default
+                // white background as a thin line between them. Giving the
+                // WebView the same dark background as the screen means that
+                // momentary seam is invisible instead of a white flash.
+                style={{ flex: 1, backgroundColor: '#0F0A1E' }}
                 onNavigationStateChange={state => {
                     canGoBackRef.current = state.canGoBack;
                 }}
+                // The paper is a fixed A4-width document, much wider than the
+                // phone screen. iOS already fits correctly purely from the
+                // page's own dynamically-set viewport meta. `scalesPageToFit`
+                // is Android-only (no effect on iOS) — Android's WebView
+                // doesn't reliably rescale from a viewport meta tag changed
+                // via JS after load, so it needs this native "fit page
+                // content to the screen on load" flag turned on instead
+                // (maps to loadWithOverviewMode + useWideViewPort).
+                scalesPageToFit
+                setBuiltInZoomControls={false}
+                setDisplayZoomControls={false}
             />
         </SafeAreaView>
     );

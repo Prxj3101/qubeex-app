@@ -999,13 +999,13 @@ export default function Tasks() {
                     tab, so (like web) it's hidden on Tests. ── */}
                 {mainTab === 'submissions' && (
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
-                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{subPendingCount}</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Pending</Text>
-                        </View>
                         <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2B0D0D' : '#FEE2E2', flex: 1 }]}>
                             <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.red }}>{subWriteAgainCount}</Text>
                             <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.red }}>Write Again</Text>
+                        </View>
+                        <View style={[styles.summaryCard, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', flex: 1 }]}>
+                            <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.amber }}>{subPendingCount}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.amber }}>Pending</Text>
                         </View>
                         <View style={[styles.summaryCard, { backgroundColor: isDark ? '#0D2B20' : theme.greenLight, flex: 1 }]}>
                             <Text style={{ fontSize: 22, fontFamily: 'Poppins_800ExtraBold', color: theme.green }}>{subSubmittedCount}</Text>

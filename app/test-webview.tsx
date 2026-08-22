@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+// Only used for its action-object type; not constructed directly here.
+import type { NavigationAction } from '@react-navigation/native';
 
 // Apex domain (qubeex.in, no www) redirects to www.qubeex.in but drops the
 // path/query in the process (a hosting/DNS-level "forward to www" rule, not
@@ -18,20 +20,50 @@ export default function TestWebViewScreen() {
     const [token, setToken] = useState<string | null>(null);
     const webViewRef = useRef<WebView>(null);
     const canGoBackRef = useRef(false);
+    const navigation = useNavigation();
+    // Set right before we re-dispatch the original remove action once the
+    // user has confirmed — lets it through instead of showing the warning
+    // a second time.
+    const allowLeaveRef = useRef(false);
+    const pendingActionRef = useRef<NavigationAction | null>(null);
 
     useEffect(() => {
         AsyncStorage.getItem('userToken').then(t => setToken(t));
     }, []);
 
+    // Catches every way this screen can be removed — header back button,
+    // Android hardware back, AND iOS's edge-swipe-back gesture (which never
+    // touched the old BackHandler-only setup below, so swiping out used to
+    // leave without any warning or submit at all). `beforeRemove` fires for
+    // all of them uniformly since they all go through the navigator's own
+    // remove action.
+    useEffect(() => {
+        // Viewing a past result has nothing to lose by leaving — no guard needed.
+        if (attemptId) return;
+        const sub = navigation.addListener('beforeRemove', (e) => {
+            if (allowLeaveRef.current) return;
+            e.preventDefault();
+            pendingActionRef.current = e.data.action;
+            confirmExit();
+        });
+        return sub;
+    }, [navigation, attemptId]);
+
     useEffect(() => {
         if (Platform.OS !== 'android') return;
         const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            // The WebView itself has internal forward history (e.g. it
+            // navigated within the SPA) — unwind that first rather than
+            // treating this press as "leave the screen" at all.
             if (canGoBackRef.current) {
                 webViewRef.current?.goBack();
                 return true;
             }
-            confirmExit();
-            return true;
+            // Anything else: don't intercept — let the default Android back
+            // behavior run, which dispatches a normal goBack() and hits the
+            // `beforeRemove` guard above, same as the header button and the
+            // iOS swipe gesture.
+            return false;
         });
         return () => sub.remove();
     }, []);
@@ -41,17 +73,46 @@ export default function TestWebViewScreen() {
         if (attemptId) { router.back(); return; }
         Alert.alert(
             'Leave test?',
-            'Going back will not submit your test. Are you sure?',
+            'Going back will auto-submit your test as it currently stands. Are you sure?',
             [
                 { text: 'Stay', style: 'cancel' },
-                { text: 'Leave', style: 'destructive', onPress: () => router.back() },
+                {
+                    text: 'Leave & Submit', style: 'destructive', onPress: () => {
+                        // The web page's own back/unload guards (popstate,
+                        // beforeunload) never fire for this — this is a
+                        // native-side removal, not a WebView-internal
+                        // navigation. Call the page's exposed bridge hook
+                        // directly instead, then give its keepalive submit
+                        // request a moment to actually leave the device
+                        // before tearing the WebView (and its JS context) down.
+                        webViewRef.current?.injectJavaScript(
+                            `(function(){ if (window.__qubeexAppExitSubmit) { window.__qubeexAppExitSubmit(); } })(); true;`
+                        );
+                        setTimeout(() => {
+                            allowLeaveRef.current = true;
+                            if (pendingActionRef.current) navigation.dispatch(pendingActionRef.current);
+                            else router.back();
+                        }, 300);
+                    }
+                },
             ]
         );
     }
 
+    // iOS's edge-swipe-back gesture pops the screen natively before JS ever
+    // gets a chance to run the `beforeRemove` guard above — React Navigation
+    // doesn't support intercepting that after the fact on native-stack (the
+    // "removed natively but didn't get removed from JS state" warning).
+    // Disabling the gesture for the live test means the only way off this
+    // screen is the header button / Android hardware back, both of which
+    // dispatch a normal action that the guard above can actually intercept.
+    // Viewing a past result has nothing to lose, so the gesture stays on there.
+    const gestureEnabled = !!attemptId;
+
     if (!token) {
         return (
             <SafeAreaView style={styles.container} edges={['top']}>
+                <Stack.Screen options={{ gestureEnabled }} />
                 <View style={styles.loading}>
                     <Text style={styles.loadingText}>Loading...</Text>
                 </View>
@@ -80,6 +141,7 @@ export default function TestWebViewScreen() {
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
+            <Stack.Screen options={{ gestureEnabled }} />
             <View style={styles.header}>
                 <TouchableOpacity onPress={confirmExit} style={styles.backBtn}>
                     <ArrowLeft size={22} color="white" />
