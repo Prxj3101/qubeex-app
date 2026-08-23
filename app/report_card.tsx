@@ -92,7 +92,11 @@ interface MarksheetData {
     onlineGrandTotal: { scored: number; max: number };
     onlineGrandPct: number | null;
     onlineGrade: string;
+    combinedGrandTotal: { scored: number; max: number };
+    combinedGrandPct: number | null;
+    combinedGrade: string;
     classRank: number | null;
+    combinedClassRank: number | null;
     classSize: number | null;
     gradedSubjects: GradedSubject[];
     conduct: string | null;
@@ -106,7 +110,7 @@ const EXAM_COL_W = 56;
 const TOTAL_COL_W = 64;
 const PCT_COL_W = 46;
 const GRADE_COL_W = 48;
-const TESTS_COL_W = 56;
+const TESTS_MARKS_COL_W = 210;
 const GRADED_NAME_W = 100;
 const GRADED_TERM_W = 64;
 
@@ -119,7 +123,7 @@ const SHEET_TEXT = '#2A1F10';
 export default function ReportCard() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
-    const { student } = useStudent();
+    const { photo } = useStudent();
     const [tab, setTab] = useState<'offline' | 'online'>('offline');
     const [data, setData] = useState<MarksheetData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -176,8 +180,17 @@ export default function ReportCard() {
 
     const studentName = data.student.name;
     const rollNo = data.student.rollNo;
-    const rank = data.classRank;
-    const overallPct = data.grandPct ?? 0;
+    // Class Rank / Overall on the name card show the combined (offline +
+    // online pooled) figures — matching StudentProfileView's fixed "Overall"
+    // tile elsewhere, not the offline-only numbers.
+    const rank = data.combinedClassRank ?? null;
+    // Computed client-side from grandTotal + onlineGrandTotal (both already
+    // confirmed populated — they drive the offline/online tab totals) rather
+    // than trusting data.combinedGrandPct directly, since that field can be
+    // missing on older/cached API responses.
+    const combinedMax = data.grandTotal.max + data.onlineGrandTotal.max;
+    const combinedScored = data.grandTotal.scored + data.onlineGrandTotal.scored;
+    const overallPct = combinedMax > 0 ? Math.round((combinedScored / combinedMax) * 100) : null;
 
     // Offline scroll width
     const offlineScrollWidth = uniqueCols.length * EXAM_COL_W + TOTAL_COL_W + PCT_COL_W + GRADE_COL_W;
@@ -191,9 +204,9 @@ export default function ReportCard() {
 
                 {/* ── Name card ── */}
                 <View style={[styles.nameCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: student?.photo ? 'transparent' : getAvatarColor(studentName), overflow: 'hidden' }}>
-                        {student?.photo
-                            ? <RNImage source={{ uri: student.photo }} style={{ width: 56, height: 56, borderRadius: 28 }} />
+                    <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: photo ? 'transparent' : getAvatarColor(studentName), overflow: 'hidden' }}>
+                        {photo
+                            ? <RNImage source={{ uri: photo }} style={{ width: 56, height: 56, borderRadius: 28 }} />
                             : <Text style={{ fontSize: fs(16) + iosExtra, fontFamily: 'Poppins_700Bold', color: 'white' }}>{getInitials(studentName)}</Text>}
                     </View>
                     <View style={{ alignItems: 'center' }}>
@@ -206,7 +219,7 @@ export default function ReportCard() {
                             <Text style={{ fontSize: fs(8) + iosExtra, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Class Rank</Text>
                         </View>
                         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontSize: fs(13) + iosExtra, fontFamily: 'Poppins_800ExtraBold', color: scoreColor(overallPct, theme) }}>{overallPct > 0 ? `${overallPct}%` : '—'}</Text>
+                            <Text style={{ fontSize: fs(13) + iosExtra, fontFamily: 'Poppins_800ExtraBold', color: scoreColor(overallPct, theme) }}>{overallPct !== null ? `${overallPct}%` : '—'}</Text>
                             <Text style={{ fontSize: fs(8) + iosExtra, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Overall</Text>
                         </View>
                     </View>
@@ -392,39 +405,59 @@ export default function ReportCard() {
                             )}
                         </View>
                     ) : data.subjects.some(s => s.onlineTotal.max > 0) ? (
-                        /* Online: subject-wise totals only — different subjects can have very
-                           different numbers of completed tests, so there's no single shared
-                           per-test column grid like offline has. */
+                        /* Online: each subject lists every completed test by name with its
+                           own mark (as chips), since different subjects can have very
+                           different numbers/names of tests — there's no single shared column
+                           structure like offline's exam columns. Wrapped in a horizontal
+                           ScrollView since the wider "Tests & Marks" column can overflow
+                           narrow screens. */
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={{ backgroundColor: SHEET_BODY_BG }}>
                             <View style={{ flexDirection: 'row', backgroundColor: SHEET_HEADER_BG }}>
                                 <View style={[sheetStyles.headerCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}>
                                     <Text style={sheetStyles.headerText}>Subjects</Text>
                                 </View>
-                                <View style={[sheetStyles.headerCell, { width: TESTS_COL_W }]}><Text style={sheetStyles.headerText}>Tests</Text></View>
+                                <View style={[sheetStyles.headerCell, { width: TESTS_MARKS_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}><Text style={sheetStyles.headerText}>Tests & Marks</Text></View>
                                 <View style={[sheetStyles.headerCell, { width: TOTAL_COL_W }]}><Text style={sheetStyles.headerText}>Total</Text></View>
                                 <View style={[sheetStyles.headerCell, { width: PCT_COL_W }]}><Text style={sheetStyles.headerText}>%</Text></View>
                                 <View style={[sheetStyles.headerCell, { width: GRADE_COL_W }]}><Text style={sheetStyles.headerText}>Grade</Text></View>
                             </View>
                             {data.subjects.map(sub => (
                                 <View key={sub.id} style={{ flexDirection: 'row' }}>
-                                    <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
+                                    <View style={[sheetStyles.dataCellFlexTop, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                                             <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colorForSubject(sub) }} />
                                             <Text style={sheetStyles.subjText} numberOfLines={1}>{sub.name}</Text>
                                         </View>
                                     </View>
-                                    <View style={[sheetStyles.dataCell, { width: TESTS_COL_W, backgroundColor: SHEET_BODY_BG }]}>
-                                        <Text style={[sheetStyles.valText, { color: theme.muted }]}>{sub.onlineColumns.length}</Text>
+                                    {/* Tests & Marks — one chip per completed test, name + score/max
+                                        (or "Ab" if absent), matching the web report card exactly. */}
+                                    <View style={[sheetStyles.dataCellFlexTop, { width: TESTS_MARKS_COL_W, alignItems: 'flex-start', paddingLeft: 6, backgroundColor: SHEET_BODY_BG }]}>
+                                        {sub.onlineColumns.length > 0 ? (
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                                                {sub.onlineColumns.map(c => {
+                                                    const cPct = c.maxMarks > 0 && c.score !== null ? Math.round((c.score / c.maxMarks) * 100) : null;
+                                                    return (
+                                                        <View key={c.id} style={chipStyles.chip}>
+                                                            <Text style={chipStyles.chipLabel} numberOfLines={1}>{c.name}</Text>
+                                                            {c.isAbsent
+                                                                ? <Text style={[chipStyles.chipVal, { color: theme.red }]}>Ab</Text>
+                                                                : <Text style={[chipStyles.chipVal, { color: scoreColor(cPct, theme) }]}>{c.score}/{c.maxMarks}</Text>}
+                                                        </View>
+                                                    );
+                                                })}
+                                            </View>
+                                        ) : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
                                     </View>
-                                    <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                    <View style={[sheetStyles.dataCellFlexTop, { width: TOTAL_COL_W, backgroundColor: SHEET_BODY_BG }]}>
                                         <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
                                             {sub.onlineTotal.max > 0 ? `${sub.onlineTotal.scored}/${sub.onlineTotal.max}` : '—'}
                                         </Text>
                                     </View>
-                                    <View style={[sheetStyles.dataCell, { width: PCT_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                    <View style={[sheetStyles.dataCellFlexTop, { width: PCT_COL_W, backgroundColor: SHEET_BODY_BG }]}>
                                         {sub.onlinePct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlinePct}%</Text>}
                                     </View>
-                                    <View style={[sheetStyles.dataCell, { width: GRADE_COL_W, backgroundColor: SHEET_BODY_BG }]}>
+                                    <View style={[sheetStyles.dataCellFlexTop, { width: GRADE_COL_W, backgroundColor: SHEET_BODY_BG }]}>
                                         <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlineGrade}</Text>
                                     </View>
                                 </View>
@@ -434,7 +467,7 @@ export default function ReportCard() {
                                 <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_SUMMARY_BG }]}>
                                     <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold' }]}>Grand Total</Text>
                                 </View>
-                                <View style={[sheetStyles.dataCell, { width: TESTS_COL_W, backgroundColor: SHEET_SUMMARY_BG }]} />
+                                <View style={[sheetStyles.dataCell, { width: TESTS_MARKS_COL_W, backgroundColor: SHEET_SUMMARY_BG }]} />
                                 <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
                                     <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
                                         {data.onlineGrandTotal.max > 0 ? `${data.onlineGrandTotal.scored}/${data.onlineGrandTotal.max}` : '—'}
@@ -448,6 +481,7 @@ export default function ReportCard() {
                                 </View>
                             </View>
                         </View>
+                        </ScrollView>
                     ) : (
                         <View style={{ alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 }}>
                             <Text style={{ fontSize: 13, fontFamily: 'Poppins_500Medium', color: theme.muted }}>No completed tests yet</Text>
@@ -491,6 +525,24 @@ const sheetStyles = StyleSheet.create({
         height: ROW_H, alignItems: 'center', justifyContent: 'center',
         borderRightWidth: 1, borderBottomWidth: 1, borderColor: SHEET_BORDER,
     },
+    // Same as dataCell but with no fixed height and top-aligned content — used
+    // for the online tab's "Tests & Marks" row, whose height varies with how
+    // many test chips a subject has, so every cell in that row must grow to
+    // match instead of clipping at a fixed 32px.
+    dataCellFlexTop: {
+        minHeight: ROW_H, alignItems: 'center', justifyContent: 'center', paddingVertical: 6,
+        borderRightWidth: 1, borderBottomWidth: 1, borderColor: SHEET_BORDER,
+    },
     subjText: { fontSize: fs(11), fontFamily: 'Poppins_600SemiBold', color: SHEET_TEXT },
     valText: { fontSize: fs(11), fontFamily: 'Poppins_600SemiBold', color: SHEET_TEXT },
+});
+
+const chipStyles = StyleSheet.create({
+    chip: {
+        flexDirection: 'row', alignItems: 'center', gap: 3,
+        backgroundColor: '#EDE4D6', borderWidth: 1, borderColor: SHEET_BORDER,
+        borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2,
+    },
+    chipLabel: { fontSize: fs(9), fontFamily: 'Poppins_500Medium', color: '#7A6A55' },
+    chipVal: { fontSize: fs(9), fontFamily: 'Poppins_700Bold' },
 });

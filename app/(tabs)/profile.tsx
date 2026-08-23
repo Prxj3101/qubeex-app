@@ -17,7 +17,7 @@ import {
     BarChart2, Bell, CalendarDays,
     ChevronRight, Copy,
     Flag, Hash, IndianRupee, LogOut,
-    Settings, Star,
+    Star,
     Trophy,
     User
 } from 'lucide-react-native';
@@ -1208,33 +1208,27 @@ export default function Profile() {
                             Settings
                         </Text>
 
-
-                        {[
-                            { icon: <Bell size={16} color={theme.blue} />, label: 'Notifications', color: theme.blue },
-                            { icon: <Settings size={16} color={theme.purple} />, label: 'App Settings', color: theme.purple },
-                        ].map((item) => (
-                            <TouchableOpacity key={item.label} style={{
-                                flexDirection: 'row',
+                        <TouchableOpacity style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: 4,
+                        }}>
+                            <View style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 10,
+                                backgroundColor: theme.blue + '20',
                                 alignItems: 'center',
-                                gap: 12,
-                                padding: 4,
+                                justifyContent: 'center',
                             }}>
-                                <View style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 10,
-                                    backgroundColor: item.color + '20',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                }}>
-                                    {item.icon}
-                                </View>
-                                <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
-                                    {item.label}
-                                </Text>
-                                <ChevronRight size={16} color={theme.muted} />
-                            </TouchableOpacity>
-                        ))}
+                                <Bell size={16} color={theme.blue} />
+                            </View>
+                            <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
+                                Notifications
+                            </Text>
+                            <ChevronRight size={16} color={theme.muted} />
+                        </TouchableOpacity>
 
                         {/* Logout */}
                         <TouchableOpacity

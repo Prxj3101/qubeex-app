@@ -317,6 +317,14 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
         router.push({ pathname: '/test-webview', params: { testId: item.id } });
     }
     const viewedAttempt = item.attempts[viewedIdx] ?? item.attempts[item.attempts.length - 1] ?? null;
+    // Derived from position in the (ascending-sorted, completed-only) attempts
+    // array rather than trusting the stored attemptNumber field directly — so
+    // the "Attempt X/Y" label is always self-consistent with what the chevrons
+    // are actually stepping through, even if a row's stored attemptNumber were
+    // ever wrong/stale for any reason.
+    const viewedAttemptOrdinal = viewedAttempt
+        ? item.attempts.findIndex((a) => a.id === viewedAttempt.id) + 1
+        : null;
     function handleViewResult() {
         const attemptId = viewedAttempt?.id ?? item.lastAttemptId ?? '';
         router.push({ pathname: '/test-webview', params: { testId: item.id, attemptId } });
@@ -398,7 +406,7 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     <Text style={[styles.infoChipText, { color: theme.subText }]}>{item.numberOfQuestions} Ques</Text>
                 </View>
                 <View style={[styles.infoChip, { backgroundColor: theme.bg }]}>
-                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {viewedAttempt?.attemptNumber ?? item.attemptsUsed}/{item.maxAttempts}</Text>
+                    <Text style={[styles.infoChipText, { color: theme.subText }]}>Attempt {viewedAttemptOrdinal ?? item.attemptsUsed}/{item.maxAttempts}</Text>
                 </View>
                 {(viewedAttempt?.startTime ?? item.lastAttemptStartTime) && (
                     <View style={[styles.infoChip, { backgroundColor: 'rgba(192,96,64,0.12)' }]}>
@@ -460,7 +468,7 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                         activeOpacity={0.85}
                     >
                         <Text style={[styles.ctaBtnOutlineText, { color: theme.text }]}>
-                            View Result{item.attempts.length > 1 && viewedAttempt ? ` (Attempt ${viewedAttempt.attemptNumber}/${item.maxAttempts})` : ''}
+                            View Result{item.attempts.length > 1 && viewedAttemptOrdinal ? ` (Attempt ${viewedAttemptOrdinal}/${item.maxAttempts})` : ''}
                         </Text>
                     </TouchableOpacity>
                     {item.attempts.length > 1 && (
