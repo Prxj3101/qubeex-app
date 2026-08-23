@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { getDeviceClientId } from '@/lib/deviceClientId';
 import { SUBJECT_PALETTE } from '@/lib/subjectColors';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
@@ -88,6 +89,10 @@ interface TestItem {
     lastAttemptMalpracticeFlag?: boolean;
     attempts: { id: string; attemptNumber: number; totalScore: number; maxScore: number; percentage: number; startTime: string | null; endTime: string | null; malpracticeFlag: boolean }[];
     color: string;
+    // True when another device is actively in the middle of this test right
+    // now (single-device lock) — shown instead of "Start Test Now" so the
+    // same test can't be opened simultaneously on two screens.
+    lockedByOtherDevice: boolean;
 }
 
 interface SubmissionItem {
@@ -137,6 +142,7 @@ interface ApiTest {
     lastAttemptEndTime: string | null;
     lastAttemptMalpracticeFlag: boolean;
     attempts: { id: string; attemptNumber: number; totalScore: number; maxScore: number; percentage: number; startTime: string | null; endTime: string | null; malpracticeFlag: boolean }[];
+    lockedByOtherDevice: boolean;
 }
 
 interface ApiAssignment {
@@ -219,6 +225,7 @@ function mapTest(t: ApiTest): TestItem {
         lastAttemptMalpracticeFlag: t.lastAttemptMalpracticeFlag,
         attempts: t.attempts,
         color: subjectColor(t.subjectName),
+        lockedByOtherDevice: t.lockedByOtherDevice,
     };
 }
 
@@ -468,7 +475,15 @@ function TestCard({ item, theme, isDark }: { item: TestItem; theme: typeof LIGHT
                     )}
                 </View>
             )}
-            {item.status === 'live' && (
+            {item.status === 'live' && item.lockedByOtherDevice && (
+                <View style={[styles.ctaBtn, { backgroundColor: theme.cardBorder + '40' }]}>
+                    <ShieldAlert size={15} color={theme.subText} />
+                    <Text style={[styles.ctaBtnText, { color: theme.subText }]}>
+                        Test in progress on another device
+                    </Text>
+                </View>
+            )}
+            {item.status === 'live' && !item.lockedByOtherDevice && (
                 <TouchableOpacity
                     onPress={handleStartTest}
                     style={[styles.ctaBtn, { backgroundColor: '#EF4444' }]}
@@ -876,7 +891,8 @@ export default function Tasks() {
     async function fetchTests() {
         try {
             setLoadingTests(true);
-            const res = await api.get('/student/tasks/tests');
+            const clientId = await getDeviceClientId();
+            const res = await api.get('/student/tasks/tests', { params: { clientId } });
             setTests((res.data.data ?? []).map(mapTest));
         } catch {
             // leave empty
@@ -906,8 +922,9 @@ export default function Tasks() {
     async function onRefresh() {
         setRefreshing(true);
         try {
+            const clientId = await getDeviceClientId();
             const tasks = [
-                api.get('/student/tasks/tests').then(res => setTests((res.data.data ?? []).map(mapTest))),
+                api.get('/student/tasks/tests', { params: { clientId } }).then(res => setTests((res.data.data ?? []).map(mapTest))),
             ];
             if (submissionsLoaded) {
                 tasks.push(api.get('/student/tasks/assignments').then(res => setSubmissions((res.data.data ?? []).map(mapAssignment))));

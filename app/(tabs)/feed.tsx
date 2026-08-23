@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AttachmentPreview } from '@/components/AttachmentPreview';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
@@ -44,6 +45,12 @@ const DARK = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type EventType = 'holiday' | 'event' | 'sports' | 'trip' | 'meeting' | 'test' | 'termtest' | 'exam' | 'submission';
+
+// Disk-persisted cache of the mini calendar's per-month events (see
+// MiniCalendar below) — lets last session's dots show instantly on the very
+// first time the Feed tab is opened, instead of always waiting on a fresh
+// network round trip.
+const EVENTS_CACHE_STORAGE_KEY = 'feedEventsCache';
 
 interface CalEvent {
     id: string;
@@ -125,7 +132,6 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth());
-    const [events, setEvents] = useState<CalEvent[]>([]);
     const [selectedDate, setSelectedDate] = useState<number | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
 
@@ -138,14 +144,63 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
     const MONTHS_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-    const fetchEvents = useCallback(async () => {
-        try {
-            const res = await api.get('/student/feed/events', { params: { year, month } });
-            setEvents(res.data.data);
-        } catch { /* silent */ }
-    }, [year, month]);
+    // The previous fix (clear `events` state, then fetch) still flashed the
+    // wrong month's dots for a moment: state updates from an effect only
+    // apply AFTER the new month has already painted once, so there's one
+    // render where the grid shows the NEW month but `events` still holds the
+    // OLD month's data — that single stale frame is exactly the "half
+    // second flash" reported. Fixing it for real means `events` can't be its
+    // own state at all; it has to be derived synchronously, during render,
+    // from a per-month cache keyed on the month actually being rendered —
+    // that way there's no window where month and events can disagree.
+    // `cacheVersion` only exists to force a re-render once a network
+    // response lands and updates the cache (mutating a ref alone doesn't
+    // trigger React to re-read it).
+    const eventsCacheRef = useRef<Map<string, CalEvent[]>>(new Map());
+    const fetchedKeysRef = useRef<Set<string>>(new Set());
+    const requestIdRef = useRef(0);
+    const hydratedRef = useRef(false);
+    const [cacheVersion, setCacheVersion] = useState(0);
+    const cacheKey = `${year}-${month}`;
+    const events = eventsCacheRef.current.get(cacheKey) ?? [];
 
-    useEffect(() => { fetchEvents(); }, [fetchEvents]);
+    // A true first-ever open still has to wait on the network once — there's
+    // no data to show yet. But loading last session's events from disk
+    // (near-instant, no round trip) and showing them immediately while a
+    // fresh fetch quietly runs in the background makes every OTHER "first
+    // time opening the Feed tab this session" feel instant too, instead of
+    // the same ~2s network wait every single app open.
+    useEffect(() => {
+        if (hydratedRef.current) return;
+        hydratedRef.current = true;
+        (async () => {
+            try {
+                const raw = await AsyncStorage.getItem(EVENTS_CACHE_STORAGE_KEY);
+                if (!raw) return;
+                const obj: Record<string, CalEvent[]> = JSON.parse(raw);
+                for (const [k, v] of Object.entries(obj)) eventsCacheRef.current.set(k, v);
+                setCacheVersion(v => v + 1);
+            } catch { /* no persisted cache yet, or storage unavailable */ }
+        })();
+    }, []);
+
+    useEffect(() => {
+        if (fetchedKeysRef.current.has(cacheKey)) return; // already fetched fresh this session
+        const requestId = ++requestIdRef.current;
+        (async () => {
+            try {
+                const res = await api.get('/student/feed/events', { params: { year, month } });
+                if (requestIdRef.current !== requestId) return; // a newer request has since started
+                fetchedKeysRef.current.add(cacheKey);
+                eventsCacheRef.current.set(cacheKey, res.data.data);
+                setCacheVersion(v => v + 1);
+                // Persist the whole (small) cache so the NEXT time the app
+                // opens, this month's dots show instantly too.
+                AsyncStorage.setItem(EVENTS_CACHE_STORAGE_KEY, JSON.stringify(Object.fromEntries(eventsCacheRef.current))).catch(() => {});
+            } catch { /* silent */ }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [year, month]);
 
     const eventsOn = (d: number) => events.filter(e => e.date === d);
 

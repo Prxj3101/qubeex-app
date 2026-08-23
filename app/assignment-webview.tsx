@@ -73,6 +73,11 @@ export default function AssignmentWebViewScreen() {
                 javaScriptEnabled
                 domStorageEnabled
                 bounces={false}
+                // Android's WebView blocks ALL mixed content (even passive
+                // content like <img> tags) by default, unlike desktop
+                // browsers which allow it — this is why question images
+                // rendered fine on web but silently failed to load here.
+                mixedContentMode="compatibility"
                 // Android compositing quirk: while scrolling, the fixed
                 // header layer and the scrolling page layer can repaint one
                 // frame apart, briefly exposing the WebView's own default

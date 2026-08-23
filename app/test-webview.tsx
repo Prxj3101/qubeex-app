@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDeviceClientId } from '@/lib/deviceClientId';
 import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://www.qubeex.in';
 export default function TestWebViewScreen() {
     const { testId, attemptId } = useLocalSearchParams<{ testId: string; attemptId?: string }>();
     const [token, setToken] = useState<string | null>(null);
+    const [deviceClientId, setDeviceClientId] = useState<string | null>(null);
     const webViewRef = useRef<WebView>(null);
     const canGoBackRef = useRef(false);
     const navigation = useNavigation();
@@ -29,6 +31,7 @@ export default function TestWebViewScreen() {
 
     useEffect(() => {
         AsyncStorage.getItem('userToken').then(t => setToken(t));
+        getDeviceClientId().then(setDeviceClientId);
     }, []);
 
     // Catches every way this screen can be removed — header back button,
@@ -109,7 +112,7 @@ export default function TestWebViewScreen() {
     // Viewing a past result has nothing to lose, so the gesture stays on there.
     const gestureEnabled = !!attemptId;
 
-    if (!token) {
+    if (!token || !deviceClientId) {
         return (
             <SafeAreaView style={styles.container} edges={['top']}>
                 <Stack.Screen options={{ gestureEnabled }} />
@@ -123,6 +126,12 @@ export default function TestWebViewScreen() {
     const injectedJS = `
         (function() {
             try { window.localStorage.setItem('token', '${token}'); } catch(e) {}
+            // Same device-lock id the app's native tasks list already uses
+            // (see lib/deviceClientId.ts) — injected here so this WebView's
+            // copy of the web page doesn't generate its own different random
+            // id, which would make the app wrongly think a second device had
+            // taken over its own test.
+            try { window.localStorage.setItem('qubeexDeviceClientId', '${deviceClientId}'); } catch(e) {}
             true;
         })();
     `;
@@ -156,6 +165,11 @@ export default function TestWebViewScreen() {
                 javaScriptEnabled
                 domStorageEnabled
                 bounces={false}
+                // Android's WebView blocks ALL mixed content (even passive
+                // content like <img> tags) by default, unlike desktop
+                // browsers which allow it — this is why question images
+                // rendered fine on web but silently failed to load here.
+                mixedContentMode="compatibility"
                 style={{ flex: 1 }}
                 onNavigationStateChange={state => {
                     canGoBackRef.current = state.canGoBack;
