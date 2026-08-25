@@ -1,3 +1,4 @@
+import { useBranding } from '@/context/BrandingContext';
 import { useTheme } from '@/context/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { Bell, Moon, Sun } from 'lucide-react-native';
@@ -13,6 +14,7 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
     const translateX = useRef(new Animated.Value(isParentView ? 31 : 0)).current;
     const shadowAnim = useRef(new Animated.Value(isParentView ? 1 : 0)).current;
     const { isDark, toggleTheme } = useTheme();
+    const { branding } = useBranding();
 
     const brandAnim = useRef(new Animated.Value(0)).current;
     const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,7 +126,11 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                         style={{ zIndex: 2 }}
                     >
                         <Animated.Image
-                            source={require('../assets/images/QubeEx_darkmode_DA7756.png')}
+                            source={
+                                branding.enabled && branding.logoUrl
+                                    ? { uri: branding.logoUrl }
+                                    : require('../assets/images/QubeEx_darkmode_DA7756.png')
+                            }
                             style={[styles.logo, { transform: [{ rotate }] }]}
                             resizeMode="contain"
                         />
@@ -132,8 +138,12 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
 
                     {/* Animated BrandName */}
                     <Animated.Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.5}
                         style={[
                             styles.brandName,
+                            branding.enabled && styles.brandNameShrinkable,
                             {
                                 color: brandColor,
                                 transform: [{ translateX: brandAnim }],
@@ -145,7 +155,7 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                             },
                         ]}
                     >
-                        QubeEx
+                        {branding.enabled ? branding.brandName : 'QubeEx'}
                     </Animated.Text>
 
                 </View>
@@ -217,6 +227,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 6,
         overflow: 'hidden',
+        flexShrink: 1,
+        minWidth: 0,
     },
     logo: {
         width: 38,
@@ -233,9 +245,16 @@ const styles = StyleSheet.create({
         marginLeft: -4,
         paddingTop: Platform.OS === 'android' ? 4 : 0,
     },
+    // Only white-labeled institution names need to shrink to fit — the
+    // "QubeEx" wordmark is a fixed short string and never needs this.
+    brandNameShrinkable: {
+        flexShrink: 1,
+        minWidth: 0,
+    },
     rightRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 0,
         gap: 10,
     },
     switch: {
