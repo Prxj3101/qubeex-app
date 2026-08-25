@@ -1,3 +1,4 @@
+import { BrandingProvider, useBranding } from '@/context/BrandingContext';
 import { InstitutionProvider } from '@/context/InstitutionContext';
 import { StudentProvider } from '@/context/StudentContext';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -17,6 +18,7 @@ function AuthGate() {
     const [ready, setReady] = useState(false);
     const router = useRouter();
     const segments = useSegments();
+    const { refreshBranding } = useBranding();
 
     useEffect(() => {
         (async () => {
@@ -33,6 +35,10 @@ function AuthGate() {
             if (!loggedIn && (inAuthenticatedScreen || inSetup)) { router.replace('/login'); }
             else if (loggedIn && mustChangePassword && !inSetup) { router.replace('/setup-required'); }
             else if (loggedIn && !mustChangePassword && !inAuthenticatedScreen) { router.replace('/(tabs)'); }
+
+            // Institution branding is only meaningful once authenticated
+            // (the /branding endpoint derives it from the JWT's institutionId).
+            if (loggedIn) refreshBranding();
 
             setReady(true);
         })();
@@ -58,11 +64,13 @@ export default function RootLayout() {
     return (
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <ThemeProvider>
-                <InstitutionProvider>
-                    <StudentProvider>
-                        <AuthGate />
-                    </StudentProvider>
-                </InstitutionProvider>
+                <BrandingProvider>
+                    <InstitutionProvider>
+                        <StudentProvider>
+                            <AuthGate />
+                        </StudentProvider>
+                    </InstitutionProvider>
+                </BrandingProvider>
             </ThemeProvider>
         </SafeAreaProvider>
     );

@@ -2,6 +2,7 @@ import { InlineWheel } from '@/components/InlineWheel';
 import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
+import { useBranding } from '@/context/BrandingContext';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -468,6 +469,7 @@ export default function Profile() {
     const [marksMode, setMarksMode] = useState<MarksMode>('combined');
     const router = useRouter();
     const { clearInstitution } = useInstitution();
+    const { branding, clearBranding } = useBranding();
     const { profile, fetchProfile } = useStudent();
     const [attendanceVisible, setAttendanceVisible] = useState(false);
     const [activeTrendPoint, setActiveTrendPoint] = useState<number | null>(null);
@@ -1236,6 +1238,7 @@ export default function Profile() {
                                 await AsyncStorage.removeItem('userToken');
                                 await AsyncStorage.removeItem('institutionType');
                                 clearInstitution();
+                                clearBranding();
                                 router.replace('/login');
                             }}
                             style={{
@@ -1271,7 +1274,7 @@ export default function Profile() {
                             opacity: 0.7,
                             letterSpacing: 0.5,
                         }}>
-                            QubeEx v1.0
+                            {branding.enabled ? branding.brandName : 'QubeEx v1.0'}
                         </Text>
                         <Text style={{
                             fontSize: 11,
@@ -1281,6 +1284,17 @@ export default function Profile() {
                         }}>
                             © 2026 All rights reserved.
                         </Text>
+                        {branding.enabled && (
+                            <Text style={{
+                                fontSize: 10,
+                                fontFamily: 'Poppins_400Regular',
+                                color: theme.muted,
+                                opacity: 0.5,
+                                marginTop: 2,
+                            }}>
+                                Powered by QubeEx
+                            </Text>
+                        )}
                     </View>
                 </View>
             </ScrollView>
