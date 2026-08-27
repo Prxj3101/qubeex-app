@@ -117,7 +117,7 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
         <View>
             <View style={[styles.container, { backgroundColor: containerBg }]}>
                 {/* Logo + Name */}
-                <View style={styles.logoRow}>
+                <View style={[styles.logoRow, branding.enabled && styles.logoRowWideGap]}>
 
                     {/* Logo clickable */}
                     <Pressable
@@ -131,19 +131,36 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                                     ? { uri: branding.logoUrl }
                                     : require('../assets/images/QubeEx_darkmode_DA7756.png')
                             }
-                            style={[styles.logo, { transform: [{ rotate }] }]}
+                            // White-labeled institution logos stay static — only the
+                            // default QubeEx logo does the spin animation. Tap-to-reveal
+                            // the brand name still works either way.
+                            // The QubeEx asset has built-in transparent padding, which is
+                            // why it can absorb a -4 marginLeft; uploaded institution logos
+                            // don't, so that same negative margin was clipping their left
+                            // edge against the row's overflow:hidden — skip it for those.
+                            style={[
+                                styles.logo,
+                                branding.enabled && branding.logoUrl && styles.logoNoOffset,
+                                !branding.enabled && { transform: [{ rotate }] },
+                            ]}
                             resizeMode="contain"
                         />
                     </Pressable>
 
                     {/* Animated BrandName */}
                     <Animated.Text
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
+                        // Option 3: whitelabelled names get 2 lines to wrap into instead
+                        // of squishing onto 1 — smaller fixed font + tighter line height
+                        // so it still fits the topbar's height reasonably. QubeEx's own
+                        // short wordmark is unaffected (still 1 line, auto-fit).
+                        numberOfLines={branding.enabled ? 2 : 1}
+                        ellipsizeMode="tail"
+                        adjustsFontSizeToFit={!branding.enabled}
                         minimumFontScale={0.5}
                         style={[
                             styles.brandName,
                             branding.enabled && styles.brandNameShrinkable,
+                            branding.enabled && styles.brandNameWrap,
                             {
                                 color: brandColor,
                                 transform: [{ translateX: brandAnim }],
@@ -230,12 +247,18 @@ const styles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
+    logoRowWideGap: {
+        gap: 12,
+    },
     logo: {
         width: 38,
         height: 38,
         borderRadius: 10,
         zIndex: 2,
         marginLeft: -4,
+    },
+    logoNoOffset: {
+        marginLeft: 0,
     },
     brandName: {
         fontSize: 25,
@@ -250,6 +273,10 @@ const styles = StyleSheet.create({
     brandNameShrinkable: {
         flexShrink: 1,
         minWidth: 0,
+    },
+    brandNameWrap: {
+        fontSize: 15,
+        lineHeight: 20,
     },
     rightRow: {
         flexDirection: 'row',
