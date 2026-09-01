@@ -8,7 +8,8 @@ import { Tabs } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { BookOpen, FileText, Home, Rss, User } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { Image, View } from 'react-native';
+import { Image, Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function ProfileTabIcon({ color, size }: { color: string; size: number }) {
   const { photo } = useStudent();
@@ -47,6 +48,18 @@ function FeedTabIcon({ color }: { color: string }) {
 
 function TabLayout() {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  // On gesture-nav devices the system inset is already small, so this stays
+  // close to the original 8px padding (same look as before). On devices with
+  // a dedicated 3-button/back-home-recents nav bar, insets.bottom reports
+  // that bar's real height, so the tab bar grows to sit above it instead of
+  // being covered by it. iOS and Android report very different raw inset
+  // values for the same "just clear the home indicator / gesture pill" look,
+  // so they're tuned separately rather than sharing one formula.
+  const tabBarBottomPadding = Platform.OS === 'ios'
+    ? Math.max(insets.bottom - 14, 8)
+    : Math.max(insets.bottom, 14);
+  const tabBarHeight = 52 + tabBarBottomPadding;
 
   return (
     <>
@@ -58,8 +71,8 @@ function TabLayout() {
           tabBarStyle: {
             backgroundColor: isDark ? '#1A1030' : 'white',
             borderTopColor: isDark ? '#2D1F50' : '#EDE9FE',
-            height: 60,
-            paddingBottom: 8,
+            height: tabBarHeight,
+            paddingBottom: tabBarBottomPadding,
           },
           tabBarLabelStyle: {
             fontFamily: 'Poppins_600SemiBold',
@@ -68,6 +81,10 @@ function TabLayout() {
         }}
         initialRouteName="index"
       >
+        <Tabs.Screen name="index" options={{
+          title: 'Home',
+          tabBarIcon: ({ color }) => <Home size={22} color={color} />,
+        }} />
         <Tabs.Screen name="feed" options={{
           title: 'Feed',
           tabBarIcon: ({ color }) => <FeedTabIcon color={color} />,
@@ -75,10 +92,6 @@ function TabLayout() {
         <Tabs.Screen name="tasks" options={{
           title: 'Tasks',
           tabBarIcon: ({ color }) => <FileText size={22} color={color} />,
-        }} />
-        <Tabs.Screen name="index" options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <Home size={22} color={color} />,
         }} />
         <Tabs.Screen name="class" options={{
           title: 'Class',

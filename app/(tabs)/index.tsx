@@ -1,6 +1,7 @@
 import { AnnouncementStrip } from '@/components/AnnouncementStrip';
 import { BirthdayBanner } from '@/components/BirthdayBanner';
 import { Header } from '@/components/Header';
+import { ParentModeView } from '@/components/ParentModeView';
 import { QuickStats } from '@/components/QuickStats';
 import { ThoughtOfTheDay } from '@/components/ThoughtOfTheDay';
 import { TopBar } from '@/components/TopBar';
@@ -8,7 +9,7 @@ import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -62,6 +63,8 @@ function Avatar({ name, avatarUrl, color, bg, size }: { name: string; avatarUrl?
 
 export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
+    const scrollRef = useRef<ScrollView>(null);
+    const navigation = useNavigation<any>();
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
     const showEntryCover = useTabEntryCover();
@@ -96,6 +99,17 @@ export default function Home() {
         setRefreshing(false);
     }, [fetchProfile, fetchOverview]);
 
+    // Tapping the active tab's own icon again (standard behavior across
+    // Instagram/YouTube/etc.) scrolls back to the top instead of doing nothing.
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            if (navigation.isFocused()) {
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+        });
+        return unsubscribe;
+    }, [navigation]);
+
     const lb = overview?.leaderboard ?? [];
     // Arrange podium: 2nd | 1st | 3rd — same layout/colors as Class > Leaderboard
     const podiumOrder = [lb[1], lb[0], lb[2]].filter(Boolean);
@@ -104,11 +118,21 @@ export default function Home() {
     const podiumSizes   = [36, 44, 36];
     const podiumColors  = ['#C0C0C0', '#F59E0B', '#CD7F32'];
 
+    if (isParentView) {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
+                <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
+                <ParentModeView isDark={isDark} />
+            </View>
+        );
+    }
+
     return (
         <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView
+                ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />}
             >

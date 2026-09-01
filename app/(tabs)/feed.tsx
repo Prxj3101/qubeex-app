@@ -10,6 +10,7 @@ import { formatDisplayName, resolveDisplayTitle } from '@/lib/displayName';
 import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import {
     Animated,
@@ -484,6 +485,8 @@ export default function Feed() {
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const feedScrollRef = useRef<ScrollView>(null);
+    const outerScrollRef = useRef<ScrollView>(null);
+    const navigation = useNavigation<any>();
     const spinAnim = useRef(new Animated.Value(0)).current;
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const latestCreatedAtRef = useRef<string | null>(null);
@@ -495,6 +498,18 @@ export default function Feed() {
         setFeedHasNew(false);
         return () => { isFocusedRef.current = false; };
     }, [setFeedHasNew]));
+
+    // Tapping the active tab's own icon again (standard behavior across
+    // Instagram/YouTube/etc.) scrolls back to the top instead of doing nothing.
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            if (navigation.isFocused()) {
+                outerScrollRef.current?.scrollTo({ y: 0, animated: true });
+                feedScrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     const fetchPosts = useCallback(async (isInitial = false) => {
         if (isInitial) setLoading(true);
@@ -570,7 +585,7 @@ export default function Feed() {
         <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <ScreenHeader title="Feed" />
             <View style={{ flex: 1, position: 'relative' }}>
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 2 }}>
+            <ScrollView ref={outerScrollRef} showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 2 }}>
                 <View style={[styles.body, { paddingTop: 6 }]}>
 
                     <MiniCalendar theme={theme} isDark={isDark} />

@@ -1,6 +1,6 @@
 import { InlineWheel } from '@/components/InlineWheel';
-import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { StudentIDCard } from '@/components/StudentIDCard';
 import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useBranding } from '@/context/BrandingContext';
 import { useInstitution } from '@/context/InstitutionContext';
@@ -12,12 +12,12 @@ import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import { useNavigation } from '@react-navigation/native';
 import {
     Award,
     BarChart2, Bell, CalendarDays,
-    ChevronRight, Copy,
-    Flag, Hash, IndianRupee, LogOut,
+    ChevronRight,
+    Flag, IndianRupee, LogOut,
     Star,
     Trophy,
     User
@@ -300,152 +300,6 @@ function Card({ children, theme, style }: { children: React.ReactNode; theme: ty
     );
 }
 
-// ─── ID Card ──────────────────────────────────────────────────────────────────
-function IDCard({ student, theme, isDark, router }: { student: any; theme: typeof LIGHT; isDark: boolean; router: any }) {
-    const [copied, setCopied] = useState(false);
-    const [photoExpanded, setPhotoExpanded] = useState(false);
-    const { photo } = useStudent();
-    const dobDate = student.dob ? new Date(student.dob) : null;
-    const dobValid = !!dobDate && !isNaN(dobDate.getTime());
-    const age = dobValid ? new Date().getFullYear() - dobDate!.getFullYear() : null;
-    const dobDisplay = dobValid ? dobDate!.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
-    const classNum = student.standard.replace(/^Class\s*/i, '');
-    const divLetter = student.div.replace(/^Division\s*/i, '');
-    const classDiv = `${classNum}-${divLetter}`;
-
-    return (
-        <View style={{ paddingHorizontal: 14, paddingTop: 6 }}>
-            <View style={[idStyles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, shadowColor: theme.purple }]}>
-                <LinearGradient
-                    colors={isDark ? ['#4C1D95', '#2D1F50'] : ['#7C3AED', '#5B21B6']}
-                    style={idStyles.strip}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                >
-                    <View>
-                        <Text style={idStyles.instituteName}>{student.institutionName || 'School'}</Text>
-                        <Text style={idStyles.instituteTag}>Student ID Card</Text>
-                    </View>
-                    <TouchableOpacity
-                        onPress={() => router.push('/student_detail')}
-                        style={{
-                            backgroundColor: 'rgba(255,255,255,0.2)',
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
-                            borderRadius: 99,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 4,
-                        }}
-                    >
-                        <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: 'white' }}>
-                            View
-                        </Text>
-                        <ChevronRight size={12} color="white" />
-                    </TouchableOpacity>
-                </LinearGradient>
-
-                <View style={idStyles.body}>
-                    <View style={idStyles.avatarSection}>
-                        <TouchableOpacity
-                            style={idStyles.avatarWrap}
-                            activeOpacity={photo ? 0.85 : 1}
-                            onPress={() => photo && setPhotoExpanded(true)}
-                        >
-                            <LinearGradient colors={['#A78BFA', '#7C3AED']} style={idStyles.avatar}>
-                                {photo
-                                    ? <Image source={{ uri: photo }} style={idStyles.avatarImage} />
-                                    : (
-                                        <Text style={idStyles.avatarText}>
-                                            {student.name.split(' ').map((n: string) => n[0]).join('')}
-                                        </Text>
-                                    )
-                                }
-                            </LinearGradient>
-                            <View style={[idStyles.onlineDot, { backgroundColor: theme.green, borderColor: theme.card }]} />
-                        </TouchableOpacity>
-                        <PhotoViewerModal visible={photoExpanded} photoUrl={photo} onClose={() => setPhotoExpanded(false)} />
-                        <View style={[idStyles.batchBadge, { backgroundColor: theme.purpleLight }]}>
-                            <Text style={[idStyles.batchBadgeText, { color: theme.purple }]}>
-                                {student.standard}
-                            </Text>
-                        </View>
-                    </View>
-
-                    <View style={idStyles.infoSection}>
-                        <Text style={[idStyles.name, { color: theme.text }]}>{student.name}</Text>
-                        <Text style={[idStyles.semDiv, { color: theme.purple }]}>
-                            {student.standard} · {student.div}
-                        </Text>
-                        <View style={[idStyles.divider, { backgroundColor: theme.cardBorder }]} />
-                        {[
-                            { label: 'Roll No', value: student.rollNo || '—' },
-                            { label: 'Class', value: classDiv || '—' },
-                            { label: 'Admission Year', value: student.admissionYear || '—' },
-                            { label: 'Date of Birth', value: dobValid ? `${dobDisplay} (${age} yrs)` : '—' },
-                            { label: 'Email', value: student.email || '—' },
-                        ].map((item) => (
-                            <View key={item.label} style={idStyles.infoRow}>
-                                <Text style={[idStyles.infoLabel, { color: theme.muted }]}>{item.label}</Text>
-                                <Text style={[idStyles.infoValue, { color: theme.text }]}>{item.value}</Text>
-                            </View>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={[idStyles.dot1, { backgroundColor: theme.cardBorder }]} />
-                <View style={[idStyles.dot2, { backgroundColor: theme.cardBorder }]} />
-
-                {/* UID strip */}
-                <View style={[idStyles.uidStrip, { backgroundColor: theme.purpleLight, borderTopColor: theme.cardBorder }]}>
-                    <Hash size={14} color={theme.muted} />
-                    <Text style={[idStyles.uidText, { color: '#DA7756' }]}>{student.uid}</Text>
-                    <TouchableOpacity
-                        onPress={async () => {
-                            await Clipboard.setStringAsync(student.uid);
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 1500);
-                        }}
-                        style={[idStyles.copyBtn, { backgroundColor: theme.card }]}
-                    >
-                        <Copy size={11} color={theme.muted} />
-                        <Text style={[idStyles.copyBtnText, { color: theme.muted }]}>{copied ? 'Copied!' : 'Copy'}</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-    );
-}
-
-const idStyles = StyleSheet.create({
-    card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
-    strip: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    instituteName: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: 'white' },
-    instituteTag: { fontSize: 10, fontFamily: 'Poppins_400Regular', color: 'rgba(255,255,255,0.75)' },
-    body: { flexDirection: 'row', padding: 16, gap: 16 },
-    avatarSection: { alignItems: 'center', gap: 8 },
-    avatarWrap: { width: 72, height: 72, position: 'relative' },
-    avatar: { width: 72, height: 72, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-    avatarImage: { width: '100%', height: '100%' },
-    avatarText: { fontSize: 24, fontFamily: 'Poppins_700Bold', color: 'white' },
-    onlineDot: { position: 'absolute', bottom: -4, right: -4, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' },
-    batchBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 99 },
-    batchBadgeText: { fontSize: 10, fontFamily: 'Poppins_600SemiBold' },
-    infoSection: { flex: 1, gap: 3 },
-    name: { fontSize: 15, fontFamily: 'Poppins_700Bold', lineHeight: 20 },
-    semDiv: { fontSize: 11, fontFamily: 'Poppins_600SemiBold' },
-    divider: { height: 1, marginVertical: 6 },
-    infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    infoLabel: { fontSize: 10, fontFamily: 'Poppins_400Regular' },
-    infoValue: { fontSize: 11, fontFamily: 'Poppins_600SemiBold' },
-    dot1: { position: 'absolute', width: 60, height: 60, borderRadius: 30, top: -20, right: -20, opacity: 0.3 },
-    dot2: { position: 'absolute', width: 40, height: 40, borderRadius: 20, bottom: 30, left: -15, opacity: 0.2 },
-    uidStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1 },
-    uidText: { flex: 1, fontSize: 13, fontFamily: 'RobotoMono_600SemiBold', letterSpacing: 0.8 },
-    copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-    copyBtnText: { fontSize: 10, fontFamily: 'Poppins_600SemiBold' },
-});
-
 // ─── Attendance types ─────────────────────────────────────────────────────────
 interface AttendanceMonth {
     month: string; key: number; year: number;
@@ -485,6 +339,19 @@ export default function Profile() {
     const [extraDetailFields, setExtraDetailFields] = useState<Record<string, string> | null>(null);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
+    const scrollRef = useRef<ScrollView>(null);
+    const navigation = useNavigation<any>();
+
+    // Tapping the active tab's own icon again (standard behavior across
+    // Instagram/YouTube/etc.) scrolls back to the top instead of doing nothing.
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            if (navigation.isFocused()) {
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     useFocusEffect(
         React.useCallback(() => {
@@ -520,17 +387,6 @@ export default function Profile() {
         }
     }, [attendanceVisible]);
 
-    const student = {
-        name: profile?.name ?? '',
-        rollNo: profile?.rollNo ?? '',
-        standard: profile?.standard ?? '',
-        div: (() => { const d = profile?.division ?? ''; const parts = d.split('-'); return parts.length > 1 ? `Division ${parts.slice(1).join('-')}` : d ? `Division ${d}` : ''; })(),
-        dob: profile?.dob ?? '',
-        email: profile?.email ?? '',
-        uid: profile?.studentId ?? '',
-        institutionName: profile?.institutionName ?? '',
-        admissionYear: profile?.admissionYear ?? '',
-    };
 
     const getFeePayment = (feeMonthId: string): FeePayment =>
         feePayments.find(p => p.feeMonthId === feeMonthId) ?? { feeMonthId, status: 'PENDING', paidDate: null, remark: null, extraFields: null, extraStructureIds: null };
@@ -686,9 +542,11 @@ export default function Profile() {
         <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
             <ScreenHeader title="Profile" />
             <View style={{ flex: 1, position: 'relative' }}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+            <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
 
-                <IDCard student={student} theme={theme} isDark={isDark} router={router} />
+                <View style={{ paddingTop: 6 }}>
+                    <StudentIDCard isDark={isDark} />
+                </View>
 
                 <View style={styles.body}>
 

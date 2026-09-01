@@ -1,13 +1,13 @@
+import { AttendanceSheet } from '@/components/AttendanceSheet';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CalendarCheck, CalendarDays, Info } from 'lucide-react-native';
+import { CalendarDays, Info } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
-    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -51,22 +51,6 @@ function pctColor(p: number, theme: typeof LIGHT) {
     return p >= 75 ? theme.green : p >= 65 ? theme.amber : theme.red;
 }
 
-const DATE_COLS = Array.from({ length: 31 }, (_, i) => i + 1);
-const SHEET_ROW_H = 26;
-const MONTH_COL_W = 44;
-const DATE_COL_W = 23;
-const SUMMARY_COL_W = 26;
-const PCT_COL_W = 32;
-const SHEET_HEADER_BG = '#ECF3D0';
-const SHEET_BODY_BG = '#F5F8EE';
-const SHEET_BORDER = '#BACE85';
-const SHEET_TEXT = '#2A3A10';
-const SHEET_SUNDAY_BG = '#FFF0F0';
-const SHEET_HOLIDAY_BG = '#FEF2F2';
-const PAL_FONT_SIZE = Platform.OS === 'ios' ? 15 : 14;
-const LEGEND_FONT_SIZE = Platform.OS === 'ios' ? 18 : 17;
-const SUMMARY_NUM_SIZE = Platform.OS === 'ios' ? 11 : 10;
-
 interface AttendanceMonth {
     month: string; key: number; year: number;
     present: number; absent: number; leave: number; total: number;
@@ -84,7 +68,6 @@ interface AttendanceApiData {
 export default function AttendanceDetail() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
-    const [activeHoliday, setActiveHoliday] = useState<{ name: string; month: string; day: number } | null>(null);
     const [data, setData] = useState<AttendanceApiData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -104,13 +87,6 @@ export default function AttendanceDetail() {
             ])
         ).start();
     }, []);
-
-    // Holiday lookup: "YYYY-MM-DD" → name
-    const holidayMap = useMemo(() => {
-        const m: Record<string, string> = {};
-        for (const h of data?.holidays ?? []) m[h.date] = h.name;
-        return m;
-    }, [data]);
 
     const monthData = useMemo(() => {
         if (!data) return [];
@@ -252,181 +228,7 @@ export default function AttendanceDetail() {
 
                     {/* Attendance Sheet */}
                     <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                        <View style={[styles.sectionHeader, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
-                            <CalendarCheck size={16} color={theme.green} />
-                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }}>Attendance Sheet</Text>
-                            <View style={{ flex: 1 }} />
-                            <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{data?.student.name ?? ''}</Text>
-                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll No. {data?.student.rollNo ?? ''}</Text>
-                            </View>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', backgroundColor: SHEET_BODY_BG }}>
-                            {/* Sticky left — Month */}
-                            <View>
-                                <View style={[sheetStyles.headerCell, { width: MONTH_COL_W }]}>
-                                    <Text style={[sheetStyles.headerText, { fontSize: Platform.OS === 'ios' ? 10 : 9 }]}>Month</Text>
-                                </View>
-                                {monthData.map(m => (
-                                    <View key={m.month} style={[sheetStyles.dataCell, { width: MONTH_COL_W, backgroundColor: SHEET_HEADER_BG }]}>
-                                        <Text style={sheetStyles.monthText}>{m.month}</Text>
-                                    </View>
-                                ))}
-                            </View>
-
-                            {/* Scrollable middle — dates 1–31 */}
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                <View>
-                                    <View style={{ flexDirection: 'row' }}>
-                                        {DATE_COLS.map(d => (
-                                            <View key={d} style={[sheetStyles.headerCell, { width: DATE_COL_W }]}>
-                                                <Text style={sheetStyles.headerText}>{d}</Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                    {monthData.map((m, mi) => (
-                                        <View key={m.month} style={{ flexDirection: 'row', position: 'relative' }}>
-                                            {DATE_COLS.map(d => {
-                                                const isOutOfMonth = d > m.daysInMonth;
-                                                const isSunday = !isOutOfMonth && new Date(m.year, m.key, d).getDay() === 0;
-                                                const dateStr = !isOutOfMonth
-                                                    ? `${m.year}-${m.paddedM}-${String(d).padStart(2, '0')}`
-                                                    : '';
-                                                const holName = dateStr ? holidayMap[dateStr] : undefined;
-                                                const isHol = !isSunday && !!holName;
-                                                const status = dateStr && data ? (data.daily[dateStr] ?? null) : null;
-                                                const cellBg = isOutOfMonth ? 'transparent' : isSunday ? SHEET_SUNDAY_BG : isHol ? SHEET_HOLIDAY_BG : 'transparent';
-
-                                                const content = isOutOfMonth ? (
-                                                    <Text style={{ color: SHEET_BORDER, fontSize: 10 }}>·</Text>
-                                                ) : isHol ? (
-                                                    <Text style={{ color: '#FCA5A5', fontSize: 13 }}>×</Text>
-                                                ) : status ? (
-                                                    <Text style={{
-                                                        fontFamily: 'PatrickHand_400Regular', fontSize: PAL_FONT_SIZE, fontWeight: '700',
-                                                        textShadowColor: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
-                                                        textShadowOffset: { width: 0.6, height: 0 }, textShadowRadius: 0,
-                                                        color: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
-                                                    }}>{status}</Text>
-                                                ) : (
-                                                    <Text style={{ color: SHEET_BORDER, fontSize: 10 }}>—</Text>
-                                                );
-
-                                                if (isHol) {
-                                                    return (
-                                                        <TouchableOpacity key={d} activeOpacity={0.7}
-                                                            onPress={() => {
-                                                                setActiveHoliday(prev =>
-                                                                    prev?.month === m.month && prev?.day === d
-                                                                        ? null
-                                                                        : { name: holName ?? 'Holiday', month: m.month, day: d }
-                                                                );
-                                                            }}
-                                                            style={[sheetStyles.dataCell, { width: DATE_COL_W, backgroundColor: cellBg }]}>
-                                                            {content}
-                                                        </TouchableOpacity>
-                                                    );
-                                                }
-                                                return (
-                                                    <View key={d} style={[sheetStyles.dataCell, { width: DATE_COL_W, backgroundColor: cellBg }]}>
-                                                        {content}
-                                                    </View>
-                                                );
-                                            })}
-
-                                            {/* Floating tooltip — anchored to the tapped holiday cell
-                                                itself (inside the same scrollable row) instead of a
-                                                banner pinned to the top of the card, which went out of
-                                                view whenever the sheet was scrolled past the tapped row. */}
-                                            {activeHoliday?.month === m.month && (
-                                                <TouchableOpacity
-                                                    activeOpacity={1}
-                                                    onPress={() => setActiveHoliday(null)}
-                                                    style={{
-                                                        position: 'absolute',
-                                                        // First row has no room above it, so its tooltip
-                                                        // opens downward; every other row opens upward.
-                                                        [mi === 0 ? 'top' : 'bottom']: SHEET_ROW_H + 4,
-                                                        left: Math.max(0, (activeHoliday.day - 1) * DATE_COL_W + DATE_COL_W / 2 - 55),
-                                                        zIndex: 20,
-                                                        backgroundColor: theme.text,
-                                                        borderRadius: 8,
-                                                        paddingHorizontal: 10,
-                                                        paddingVertical: 6,
-                                                        minWidth: 110,
-                                                        maxWidth: 160,
-                                                        shadowColor: '#000',
-                                                        shadowOpacity: 0.25,
-                                                        shadowRadius: 6,
-                                                        shadowOffset: { width: 0, height: 2 },
-                                                        elevation: 6,
-                                                    }}
-                                                >
-                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.card }}>
-                                                        {activeHoliday.name}
-                                                    </Text>
-                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.card, opacity: 0.8, marginTop: 1 }}>
-                                                        {m.month} {activeHoliday.day}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            )}
-                                        </View>
-                                    ))}
-                                </View>
-                            </ScrollView>
-
-                            {/* Sticky right — P A L T % */}
-                            <View>
-                                <View style={{ flexDirection: 'row' }}>
-                                    {['P', 'A', 'L', 'T', '%'].map(h => {
-                                        const headerColor = h === 'P' ? '#047857' : h === 'A' ? '#EF4444' : h === 'L' ? '#D97706' : SHEET_TEXT;
-                                        return (
-                                            <View key={h} style={[sheetStyles.headerCell, { width: h === '%' ? PCT_COL_W : SUMMARY_COL_W }]}>
-                                                <Text style={[sheetStyles.headerText, { color: headerColor }]}>{h}</Text>
-                                            </View>
-                                        );
-                                    })}
-                                </View>
-                                {monthData.map(m => (
-                                    <View key={m.month} style={{ flexDirection: 'row' }}>
-                                        <View style={[sheetStyles.dataCell, { width: SUMMARY_COL_W }]}>
-                                            <Text style={{ fontSize: SUMMARY_NUM_SIZE, fontFamily: 'Poppins_700Bold', color: '#16a34a' }}>{m.p || '—'}</Text>
-                                        </View>
-                                        <View style={[sheetStyles.dataCell, { width: SUMMARY_COL_W }]}>
-                                            <Text style={{ fontSize: SUMMARY_NUM_SIZE, fontFamily: 'Poppins_700Bold', color: '#dc2626' }}>{m.a || '—'}</Text>
-                                        </View>
-                                        <View style={[sheetStyles.dataCell, { width: SUMMARY_COL_W }]}>
-                                            <Text style={{ fontSize: SUMMARY_NUM_SIZE, fontFamily: 'Poppins_700Bold', color: '#d97706' }}>{m.l || '—'}</Text>
-                                        </View>
-                                        <View style={[sheetStyles.dataCell, { width: SUMMARY_COL_W }]}>
-                                            <Text style={{ fontSize: SUMMARY_NUM_SIZE, fontFamily: 'Poppins_700Bold', color: SHEET_TEXT }}>{m.total || '—'}</Text>
-                                        </View>
-                                        <View style={[sheetStyles.dataCell, { width: PCT_COL_W }]}>
-                                            <Text style={{ fontSize: SUMMARY_NUM_SIZE, fontFamily: 'Poppins_800ExtraBold', color: m.sheetPct !== null ? pctColor(m.sheetPct, theme) : SHEET_BORDER }}>
-                                                {m.sheetPct !== null ? `${m.sheetPct}%` : '—'}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        </View>
-
-                        {/* Footer legend */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.cardBorder, backgroundColor: theme.card }}>
-                            {(['Present', 'Absent', 'Late'] as const).map(label => (
-                                <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                    <Text style={{
-                                        fontFamily: 'PatrickHand_400Regular', fontSize: LEGEND_FONT_SIZE, fontWeight: '700',
-                                        textShadowColor: label === 'Present' ? '#16a34a' : label === 'Absent' ? '#dc2626' : '#d97706',
-                                        textShadowOffset: { width: 0.6, height: 0 }, textShadowRadius: 0,
-                                        color: label === 'Present' ? '#16a34a' : label === 'Absent' ? '#dc2626' : '#d97706',
-                                    }}>{label[0]}</Text>
-                                    <Text style={{ fontSize: 10, color: theme.muted }}>{label}</Text>
-                                </View>
-                            ))}
-                            <Text style={{ fontSize: 9, color: theme.muted, marginLeft: 'auto', fontStyle: 'italic' }}>% = (P + L) / Total</Text>
-                        </View>
+                        <AttendanceSheet isDark={isDark} data={data} />
                     </View>
 
                 </View>
@@ -449,17 +251,4 @@ const styles = StyleSheet.create({
     statCard: { flex: 1, borderRadius: 16, padding: 14, borderWidth: 1, alignItems: 'center' },
     sectionCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
     sectionHeader: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1 },
-});
-
-const sheetStyles = StyleSheet.create({
-    headerCell: {
-        height: SHEET_ROW_H, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: SHEET_HEADER_BG, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: SHEET_BORDER + '80',
-    },
-    headerText: { fontSize: 10, fontFamily: 'Poppins_700Bold', color: SHEET_TEXT },
-    dataCell: {
-        height: SHEET_ROW_H, alignItems: 'center', justifyContent: 'center',
-        borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: SHEET_BORDER + '80',
-    },
-    monthText: { fontSize: Platform.OS === 'ios' ? 10 : 9, fontFamily: 'Poppins_700Bold', color: SHEET_TEXT },
 });

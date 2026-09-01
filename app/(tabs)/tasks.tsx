@@ -25,7 +25,8 @@ import {
     Upload,
     Zap,
 } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
     ActivityIndicator,
     Alert,
@@ -895,6 +896,19 @@ export default function Tasks() {
     const [loadingSubmissions, setLoadingSubmissions] = useState(false);
     const [submissionsLoaded, setSubmissionsLoaded] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const scrollRef = useRef<ScrollView>(null);
+    const navigation = useNavigation<any>();
+
+    // Tapping the active tab's own icon again (standard behavior across
+    // Instagram/YouTube/etc.) scrolls back to the top instead of doing nothing.
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            if (navigation.isFocused()) {
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     async function fetchTests() {
         try {
@@ -1107,6 +1121,7 @@ export default function Tasks() {
             </View>
 
             <ScrollView
+                ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 30, gap: 12 }}
                 refreshControl={

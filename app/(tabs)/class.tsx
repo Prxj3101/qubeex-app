@@ -18,6 +18,7 @@ import {
     X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
     ActivityIndicator,
     Animated,
@@ -430,6 +431,18 @@ export default function Courses() {
             scrollRef.current?.scrollTo({ y: switcherY, animated: false });
         }
     }, [activeTab]);
+
+    // Tapping the active tab's own icon again (standard behavior across
+    // Instagram/YouTube/etc.) scrolls back to the top instead of doing nothing.
+    const navigation = useNavigation<any>();
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            if (navigation.isFocused()) {
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     const fetchData = useCallback(async () => {
         try {

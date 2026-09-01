@@ -186,19 +186,28 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                         <View style={styles.bellDot} />
                     </View>
 
-                    {/* Dark/Light Mode Toggle */}
-                    <TouchableOpacity
+                    {/* Dark/Light Mode Toggle — Pressable instead of TouchableOpacity here
+                        specifically, because toggling theme re-renders this whole tree with
+                        new colors mid-gesture; on iOS that heavy re-render can orphan
+                        TouchableOpacity's internal Animated opacity before it ever fires
+                        pressOut, leaving the button visually stuck in its pressed state.
+                        Pressable derives its pressed style fresh each render instead of
+                        relying on a persisted Animated value, so it can't get stuck. */}
+                    <Pressable
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             toggleTheme();
                         }}
-                        style={[styles.bellBtn, { backgroundColor: iconBg }]}
+                        style={({ pressed }) => [
+                            styles.bellBtn,
+                            { backgroundColor: iconBg, opacity: pressed ? 0.6 : 1 },
+                        ]}
                     >
                         {isDark
                             ? <Moon size={18} color={iconColor} strokeWidth={1.5} />
                             : <Sun size={18} color={iconColor} strokeWidth={1.5} />
                         }
-                    </TouchableOpacity>
+                    </Pressable>
 
                     {/* Toggle Switch */}
                     <TouchableOpacity onPress={handleToggle} activeOpacity={1}>

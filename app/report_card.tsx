@@ -1,9 +1,9 @@
+import { ReportCardSheet } from '@/components/ReportCardSheet';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import { useStudent } from '@/context/StudentContext';
 import api from '@/lib/api';
-import { colorForSubject } from '@/lib/subjectColors';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Image as RNImage,
@@ -11,7 +11,6 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,25 +50,6 @@ function scoreColor(pct: number | null, theme: typeof LIGHT) {
 }
 
 interface GradeScaleEntry { grade: string; minPct: number }
-const DEFAULT_GRADE_SCALE: GradeScaleEntry[] = [
-    { grade: 'A', minPct: 75 },
-    { grade: 'B', minPct: 60 },
-    { grade: 'C', minPct: 45 },
-    { grade: 'D', minPct: 35 },
-    { grade: 'F', minPct: 0 },
-];
-// Best-to-worst color ramp, assigned by rank within the scale — every grade
-// (including custom labels) gets its own distinct color, bottom always red.
-const GRADE_COLOR_RAMP = ['#059669', '#16A34A', '#65A30D', '#CA8A04', '#D97706', '#EA580C', '#DC2626', '#B91C1C', '#991B1B'];
-function gradeColor(g: string | null, theme: typeof LIGHT, scale: GradeScaleEntry[]) {
-    if (!g) return theme.muted;
-    const sorted = scale.length > 0 ? [...scale].sort((a, b) => b.minPct - a.minPct) : DEFAULT_GRADE_SCALE;
-    const rank = sorted.findIndex(e => e.grade.toUpperCase() === g.toUpperCase());
-    if (rank === -1) return theme.muted;
-    if (sorted.length <= 1) return GRADE_COLOR_RAMP[0];
-    const idx = Math.round((rank / (sorted.length - 1)) * (GRADE_COLOR_RAMP.length - 1));
-    return GRADE_COLOR_RAMP[idx];
-}
 
 interface ExamCol { id: string; name: string; maxMarks: number; score: number | null; isAbsent: boolean; }
 interface MarksheetSubject {
@@ -103,28 +83,10 @@ interface MarksheetData {
     remarks: string | null;
 }
 
-// Sheet layout constants
-const ROW_H = 32;
-const SUBJ_COL_W = 110;
-const EXAM_COL_W = 56;
-const TOTAL_COL_W = 64;
-const PCT_COL_W = 46;
-const GRADE_COL_W = 48;
-const TESTS_MARKS_COL_W = 210;
-const GRADED_NAME_W = 100;
-const GRADED_TERM_W = 64;
-
-const SHEET_HEADER_BG = '#EDE4D6';
-const SHEET_BODY_BG = '#FAF5EE';
-const SHEET_SUMMARY_BG = '#E8DDD0';
-const SHEET_BORDER = '#D8C4A0';
-const SHEET_TEXT = '#2A1F10';
-
 export default function ReportCard() {
     const { isDark } = useTheme();
     const theme = isDark ? DARK : LIGHT;
     const { photo } = useStudent();
-    const [tab, setTab] = useState<'offline' | 'online'>('offline');
     const [data, setData] = useState<MarksheetData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -134,25 +96,6 @@ export default function ReportCard() {
             .catch(() => {})
             .finally(() => setLoading(false));
     }, []);
-
-    // Unique exam columns in order of first occurrence across all subjects
-    const uniqueCols = useMemo(() => {
-        if (!data) return [] as { name: string; maxMarks: number }[];
-        const seen = new Set<string>();
-        const cols: { name: string; maxMarks: number }[] = [];
-        for (const sub of data.subjects) {
-            for (const col of sub.columns) {
-                if (!seen.has(col.name)) {
-                    seen.add(col.name);
-                    cols.push({ name: col.name, maxMarks: col.maxMarks });
-                }
-            }
-        }
-        return cols;
-    }, [data]);
-
-    // For syncing horizontal scroll between header and body in offline tab
-    const offlineBodyScrollRef = useRef<ScrollView>(null);
 
     if (loading) {
         return (
@@ -192,11 +135,6 @@ export default function ReportCard() {
     const combinedScored = data.grandTotal.scored + data.onlineGrandTotal.scored;
     const overallPct = combinedMax > 0 ? Math.round((combinedScored / combinedMax) * 100) : null;
 
-    // Offline scroll width
-    const offlineScrollWidth = uniqueCols.length * EXAM_COL_W + TOTAL_COL_W + PCT_COL_W + GRADE_COL_W;
-    // Graded subjects scroll width
-    const gradedScrollWidth = GRADED_TERM_W * 2;
-
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
             <ScreenHeader title="Report Card" showBack />
@@ -227,281 +165,7 @@ export default function ReportCard() {
 
                 {/* ── Report Card ── */}
                 <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <View style={[styles.sectionHeader, { borderBottomColor: theme.cardBorder, backgroundColor: theme.card }]}>
-                        <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }}>Report Card</Text>
-                        <View style={{ flexDirection: 'row', gap: 2, backgroundColor: theme.cardBorder, borderRadius: 10, padding: 2 }}>
-                            {(['offline', 'online'] as const).map(t => (
-                                <TouchableOpacity key={t} onPress={() => setTab(t)}
-                                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: tab === t ? theme.card : 'transparent' }}>
-                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: tab === t ? theme.text : theme.muted, textTransform: 'capitalize' }}>{t}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </View>
-
-                    {tab === 'offline' ? (
-                        <View style={{ backgroundColor: SHEET_BODY_BG }}>
-                            {/* Fixed header row */}
-                            <View style={{ flexDirection: 'row' }}>
-                                <View style={[sheetStyles.headerCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}>
-                                    <Text style={sheetStyles.headerText}>Subjects</Text>
-                                </View>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={false} ref={offlineBodyScrollRef}>
-                                    <View style={{ flexDirection: 'row' }}>
-                                        {uniqueCols.map(col => (
-                                            <View key={col.name} style={[sheetStyles.headerCell, { width: EXAM_COL_W }]}>
-                                                <Text style={sheetStyles.headerText} numberOfLines={1}>{col.name}</Text>
-                                                <Text style={[sheetStyles.headerText, { opacity: 0.6, fontSize: fs(8) }]}>/{col.maxMarks}</Text>
-                                            </View>
-                                        ))}
-                                        <View style={[sheetStyles.headerCell, { width: TOTAL_COL_W }]}><Text style={sheetStyles.headerText}>Total</Text></View>
-                                        <View style={[sheetStyles.headerCell, { width: PCT_COL_W }]}><Text style={sheetStyles.headerText}>%</Text></View>
-                                        <View style={[sheetStyles.headerCell, { width: GRADE_COL_W }]}><Text style={sheetStyles.headerText}>Grade</Text></View>
-                                    </View>
-                                </ScrollView>
-                            </View>
-
-                            {/* Scrollable body */}
-                            <ScrollView
-                                showsVerticalScrollIndicator={false}
-                                nestedScrollEnabled
-                                bounces={false}
-                                overScrollMode="never"
-                                style={{ maxHeight: (data.subjects.length + 1) * ROW_H + 10 }}
-                            >
-                                <View style={{ flexDirection: 'row' }}>
-                                    {/* Sticky left — subject names */}
-                                    <View>
-                                        {data.subjects.map(sub => (
-                                            <View key={sub.id} style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colorForSubject(sub) }} />
-                                                    <Text style={sheetStyles.subjText} numberOfLines={1}>{sub.name}</Text>
-                                                </View>
-                                            </View>
-                                        ))}
-                                        {/* Grand Total */}
-                                        <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                            <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold' }]}>Grand Total</Text>
-                                        </View>
-                                    </View>
-
-                                    {/* Scrollable — exam scores + totals */}
-                                    <ScrollView
-                                        horizontal
-                                        showsHorizontalScrollIndicator={false}
-                                        bounces={false}
-                                        overScrollMode="never"
-                                        onScroll={e => offlineBodyScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })}
-                                        scrollEventThrottle={16}
-                                    >
-                                        <View>
-                                            {data.subjects.map(sub => {
-                                                const byName = new Map(sub.columns.map(c => [c.name, c]));
-                                                return (
-                                                    <View key={sub.id} style={{ flexDirection: 'row' }}>
-                                                        {uniqueCols.map(col => {
-                                                            const c = byName.get(col.name);
-                                                            if (!c) return (
-                                                                <View key={col.name} style={[sheetStyles.dataCell, { width: EXAM_COL_W }]}>
-                                                                    <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>
-                                                                </View>
-                                                            );
-                                                            if (c.isAbsent) return (
-                                                                <View key={col.name} style={[sheetStyles.dataCell, { width: EXAM_COL_W }]}>
-                                                                    <Text style={[sheetStyles.valText, { color: theme.red }]}>Ab</Text>
-                                                                </View>
-                                                            );
-                                                            if (c.score === null) return (
-                                                                <View key={col.name} style={[sheetStyles.dataCell, { width: EXAM_COL_W }]}>
-                                                                    <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>
-                                                                </View>
-                                                            );
-                                                            const cellPct = c.maxMarks > 0 ? Math.round((c.score / c.maxMarks) * 100) : null;
-                                                            return (
-                                                                <View key={col.name} style={[sheetStyles.dataCell, { width: EXAM_COL_W }]}>
-                                                                    <Text style={[sheetStyles.valText, { color: scoreColor(cellPct, theme) }]}>{c.score}</Text>
-                                                                </View>
-                                                            );
-                                                        })}
-                                                        <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_BODY_BG }]}>
-                                                            <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>{sub.total.scored}/{sub.total.max}</Text>
-                                                        </View>
-                                                        <View style={[sheetStyles.dataCell, { width: PCT_COL_W }]}>
-                                                            {sub.pct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(sub.pct, theme) }]}>{sub.pct}%</Text>}
-                                                        </View>
-                                                        <View style={[sheetStyles.dataCell, { width: GRADE_COL_W }]}>
-                                                            <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(sub.pct, theme) }]}>{sub.grade}</Text>
-                                                        </View>
-                                                    </View>
-                                                );
-                                            })}
-                                            {/* Grand Total row */}
-                                            <View style={{ flexDirection: 'row' }}>
-                                                {uniqueCols.map(col => (
-                                                    <View key={col.name} style={[sheetStyles.dataCell, { width: EXAM_COL_W, backgroundColor: SHEET_BODY_BG }]} />
-                                                ))}
-                                                <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>{data.grandTotal.scored}/{data.grandTotal.max}</Text>
-                                                </View>
-                                                <View style={[sheetStyles.dataCell, { width: PCT_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                                    {data.grandPct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(data.grandPct, theme) }]}>{data.grandPct}%</Text>}
-                                                </View>
-                                                <View style={[sheetStyles.dataCell, { width: GRADE_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(data.grandPct, theme) }]}>{data.grade}</Text>
-                                                </View>
-                                            </View>
-                                        </View>
-                                    </ScrollView>
-                                </View>
-                            </ScrollView>
-
-                            {/* Conduct & Remarks — set by the class teacher */}
-                            {(data.conduct || data.remarks) && (
-                                <View style={{ borderTopWidth: 1, borderTopColor: SHEET_BORDER, marginTop: 12, backgroundColor: SHEET_HEADER_BG, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 6 }}>
-                                    {data.conduct ? (
-                                        <View style={{ flexDirection: 'row', marginBottom: data.remarks ? 4 : 0 }}>
-                                            <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold', width: 70 }]}>Conduct</Text>
-                                            <Text style={sheetStyles.subjText}>{data.conduct}</Text>
-                                        </View>
-                                    ) : null}
-                                    {data.remarks ? (
-                                        <View style={{ flexDirection: 'row' }}>
-                                            <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold', width: 70 }]}>Remarks</Text>
-                                            <Text style={[sheetStyles.subjText, { fontStyle: 'italic', flex: 1 }]}>{data.remarks}</Text>
-                                        </View>
-                                    ) : null}
-                                </View>
-                            )}
-
-                            {/* Graded subjects */}
-                            {data.gradedSubjects.length > 0 && (
-                                <View style={{ borderTopWidth: 1, borderTopColor: SHEET_BORDER, marginTop: 12 }}>
-                                    <View style={{ flexDirection: 'row', backgroundColor: SHEET_HEADER_BG }}>
-                                        <View style={[sheetStyles.headerCell, { width: GRADED_NAME_W, alignItems: 'flex-start', paddingLeft: 8 }]}>
-                                            <Text style={sheetStyles.headerText}>Graded Subjects</Text>
-                                        </View>
-                                        <View style={[sheetStyles.headerCell, { width: GRADED_TERM_W }]}><Text style={sheetStyles.headerText}>Term 1</Text></View>
-                                        <View style={[sheetStyles.headerCell, { width: GRADED_TERM_W }]}><Text style={sheetStyles.headerText}>Term 2</Text></View>
-                                    </View>
-                                    {data.gradedSubjects.map(gs => (
-                                        <View key={gs.id} style={{ flexDirection: 'row' }}>
-                                            <View style={[sheetStyles.dataCell, { width: GRADED_NAME_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
-                                                <Text style={sheetStyles.subjText}>{gs.name}</Text>
-                                            </View>
-                                            <View style={[sheetStyles.dataCell, { width: GRADED_TERM_W }]}>
-                                                {gs.term1Grade
-                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term1Grade, theme, data.gradeScale) }]}>{gs.term1Grade}</Text>
-                                                    : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
-                                            </View>
-                                            <View style={[sheetStyles.dataCell, { width: GRADED_TERM_W }]}>
-                                                {gs.term2Grade
-                                                    ? <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: gradeColor(gs.term2Grade, theme, data.gradeScale) }]}>{gs.term2Grade}</Text>
-                                                    : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
-                                            </View>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
-                    ) : data.subjects.some(s => s.onlineTotal.max > 0) ? (
-                        /* Online: each subject lists every completed test by name with its
-                           own mark (as chips), since different subjects can have very
-                           different numbers/names of tests — there's no single shared column
-                           structure like offline's exam columns. Wrapped in a horizontal
-                           ScrollView since the wider "Tests & Marks" column can overflow
-                           narrow screens. */
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <View style={{ backgroundColor: SHEET_BODY_BG }}>
-                            <View style={{ flexDirection: 'row', backgroundColor: SHEET_HEADER_BG }}>
-                                <View style={[sheetStyles.headerCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}>
-                                    <Text style={sheetStyles.headerText}>Subjects</Text>
-                                </View>
-                                <View style={[sheetStyles.headerCell, { width: TESTS_MARKS_COL_W, alignItems: 'flex-start', paddingLeft: 8 }]}><Text style={sheetStyles.headerText}>Tests & Marks</Text></View>
-                                <View style={[sheetStyles.headerCell, { width: TOTAL_COL_W }]}><Text style={sheetStyles.headerText}>Total</Text></View>
-                                <View style={[sheetStyles.headerCell, { width: PCT_COL_W }]}><Text style={sheetStyles.headerText}>%</Text></View>
-                                <View style={[sheetStyles.headerCell, { width: GRADE_COL_W }]}><Text style={sheetStyles.headerText}>Grade</Text></View>
-                            </View>
-                            {data.subjects.map(sub => (
-                                <View key={sub.id} style={{ flexDirection: 'row' }}>
-                                    <View style={[sheetStyles.dataCellFlexTop, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_BODY_BG }]}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colorForSubject(sub) }} />
-                                            <Text style={sheetStyles.subjText} numberOfLines={1}>{sub.name}</Text>
-                                        </View>
-                                    </View>
-                                    {/* Tests & Marks — one chip per completed test, name + score/max
-                                        (or "Ab" if absent), matching the web report card exactly. */}
-                                    <View style={[sheetStyles.dataCellFlexTop, { width: TESTS_MARKS_COL_W, alignItems: 'flex-start', paddingLeft: 6, backgroundColor: SHEET_BODY_BG }]}>
-                                        {sub.onlineColumns.length > 0 ? (
-                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                                                {sub.onlineColumns.map(c => {
-                                                    const cPct = c.maxMarks > 0 && c.score !== null ? Math.round((c.score / c.maxMarks) * 100) : null;
-                                                    return (
-                                                        <View key={c.id} style={chipStyles.chip}>
-                                                            <Text style={chipStyles.chipLabel} numberOfLines={1}>{c.name}</Text>
-                                                            {c.isAbsent
-                                                                ? <Text style={[chipStyles.chipVal, { color: theme.red }]}>Ab</Text>
-                                                                : <Text style={[chipStyles.chipVal, { color: scoreColor(cPct, theme) }]}>{c.score}/{c.maxMarks}</Text>}
-                                                        </View>
-                                                    );
-                                                })}
-                                            </View>
-                                        ) : <Text style={[sheetStyles.valText, { color: SHEET_BORDER }]}>—</Text>}
-                                    </View>
-                                    <View style={[sheetStyles.dataCellFlexTop, { width: TOTAL_COL_W, backgroundColor: SHEET_BODY_BG }]}>
-                                        <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
-                                            {sub.onlineTotal.max > 0 ? `${sub.onlineTotal.scored}/${sub.onlineTotal.max}` : '—'}
-                                        </Text>
-                                    </View>
-                                    <View style={[sheetStyles.dataCellFlexTop, { width: PCT_COL_W, backgroundColor: SHEET_BODY_BG }]}>
-                                        {sub.onlinePct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlinePct}%</Text>}
-                                    </View>
-                                    <View style={[sheetStyles.dataCellFlexTop, { width: GRADE_COL_W, backgroundColor: SHEET_BODY_BG }]}>
-                                        <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(sub.onlinePct, theme) }]}>{sub.onlineGrade}</Text>
-                                    </View>
-                                </View>
-                            ))}
-                            {/* Grand Total row */}
-                            <View style={{ flexDirection: 'row' }}>
-                                <View style={[sheetStyles.dataCell, { width: SUBJ_COL_W, alignItems: 'flex-start', paddingLeft: 8, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                    <Text style={[sheetStyles.subjText, { fontFamily: 'Poppins_700Bold' }]}>Grand Total</Text>
-                                </View>
-                                <View style={[sheetStyles.dataCell, { width: TESTS_MARKS_COL_W, backgroundColor: SHEET_SUMMARY_BG }]} />
-                                <View style={[sheetStyles.dataCell, { width: TOTAL_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold' }]}>
-                                        {data.onlineGrandTotal.max > 0 ? `${data.onlineGrandTotal.scored}/${data.onlineGrandTotal.max}` : '—'}
-                                    </Text>
-                                </View>
-                                <View style={[sheetStyles.dataCell, { width: PCT_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                    {data.onlineGrandPct !== null && <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_700Bold', color: scoreColor(data.onlineGrandPct, theme) }]}>{data.onlineGrandPct}%</Text>}
-                                </View>
-                                <View style={[sheetStyles.dataCell, { width: GRADE_COL_W, backgroundColor: SHEET_SUMMARY_BG }]}>
-                                    <Text style={[sheetStyles.valText, { fontFamily: 'Poppins_600SemiBold', color: scoreColor(data.onlineGrandPct, theme) }]}>{data.onlineGrade}</Text>
-                                </View>
-                            </View>
-                        </View>
-                        </ScrollView>
-                    ) : (
-                        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 }}>
-                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_500Medium', color: theme.muted }}>No completed tests yet</Text>
-                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.7 }}>Online results appear here once a test is completed</Text>
-                        </View>
-                    )}
-
-                    {/* Footer legend */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.cardBorder }}>
-                        {[
-                            { label: '≥75% Pass', color: theme.green, sample: 75 },
-                            { label: '35–74% Pass', color: theme.amber, sample: 36 },
-                            { label: '<35% Fail', color: theme.red, sample: 17 },
-                        ].map(item => (
-                            <View key={item.label} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: item.color }}>{item.sample}%</Text>
-                                <Text style={{ fontSize: 9, color: theme.muted }}>{item.label}</Text>
-                            </View>
-                        ))}
-                    </View>
+                    <ReportCardSheet isDark={isDark} />
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -512,37 +176,4 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     nameCard: { borderRadius: 16, borderWidth: 1, padding: 14, flexDirection: 'column', alignItems: 'center', gap: 8 },
     sectionCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1 },
-});
-
-const sheetStyles = StyleSheet.create({
-    headerCell: {
-        height: ROW_H, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: SHEET_HEADER_BG, borderRightWidth: 1, borderBottomWidth: 1, borderColor: SHEET_BORDER,
-    },
-    headerText: { fontSize: fs(10), fontFamily: 'Poppins_700Bold', color: SHEET_TEXT },
-    dataCell: {
-        height: ROW_H, alignItems: 'center', justifyContent: 'center',
-        borderRightWidth: 1, borderBottomWidth: 1, borderColor: SHEET_BORDER,
-    },
-    // Same as dataCell but with no fixed height and top-aligned content — used
-    // for the online tab's "Tests & Marks" row, whose height varies with how
-    // many test chips a subject has, so every cell in that row must grow to
-    // match instead of clipping at a fixed 32px.
-    dataCellFlexTop: {
-        minHeight: ROW_H, alignItems: 'center', justifyContent: 'center', paddingVertical: 6,
-        borderRightWidth: 1, borderBottomWidth: 1, borderColor: SHEET_BORDER,
-    },
-    subjText: { fontSize: fs(11), fontFamily: 'Poppins_600SemiBold', color: SHEET_TEXT },
-    valText: { fontSize: fs(11), fontFamily: 'Poppins_600SemiBold', color: SHEET_TEXT },
-});
-
-const chipStyles = StyleSheet.create({
-    chip: {
-        flexDirection: 'row', alignItems: 'center', gap: 3,
-        backgroundColor: '#EDE4D6', borderWidth: 1, borderColor: SHEET_BORDER,
-        borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2,
-    },
-    chipLabel: { fontSize: fs(9), fontFamily: 'Poppins_500Medium', color: '#7A6A55' },
-    chipVal: { fontSize: fs(9), fontFamily: 'Poppins_700Bold' },
 });
