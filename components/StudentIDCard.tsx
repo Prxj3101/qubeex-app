@@ -38,6 +38,7 @@ export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean
         email: profile?.email ?? '',
         uid: profile?.studentId ?? '',
         institutionName: profile?.institutionName ?? '',
+        institutionLogoUrl: profile?.institutionLogoUrl ?? null,
         admissionYear: profile?.admissionYear ?? '',
     };
 
@@ -58,9 +59,16 @@ export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                 >
-                    <View>
-                        <Text style={idStyles.instituteName}>{student.institutionName || 'School'}</Text>
-                        <Text style={idStyles.instituteTag}>Student ID Card</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
+                        {student.institutionLogoUrl ? (
+                            <View style={idStyles.logoWrap}>
+                                <Image source={{ uri: student.institutionLogoUrl }} style={idStyles.logoImage} resizeMode="contain" />
+                            </View>
+                        ) : null}
+                        <View style={{ flexShrink: 1 }}>
+                            <Text style={idStyles.instituteName}>{student.institutionName || 'School'}</Text>
+                            <Text style={idStyles.instituteTag}>Student ID Card</Text>
+                        </View>
                     </View>
                     <TouchableOpacity
                         onPress={() => router.push('/student_detail')}
@@ -158,6 +166,8 @@ const idStyles = StyleSheet.create({
     strip: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     instituteName: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: 'white' },
     instituteTag: { fontSize: 10, fontFamily: 'Poppins_400Regular', color: 'rgba(255,255,255,0.75)' },
+    logoWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    logoImage: { width: '100%', height: '100%' },
     body: { flexDirection: 'row', padding: 16, gap: 16 },
     avatarSection: { alignItems: 'center', gap: 8 },
     avatarWrap: { width: 72, height: 72, position: 'relative' },

@@ -11,6 +11,7 @@ export interface StudentProfile {
     divisionId: string;
     houseColor: string;
     institutionName: string;
+    institutionLogoUrl: string | null;
     tempPassword: string | null;
     mustChangePassword: boolean;
     avatarUrl: string | null;
@@ -35,7 +36,7 @@ export interface StudentProfile {
     guardians: Guardian[];
 }
 
-export type ProfilePatch = Partial<Omit<StudentProfile, 'studentId' | 'rollNo' | 'standard' | 'division' | 'houseColor' | 'institutionName' | 'tempPassword' | 'mustChangePassword' | 'avatarUrl'>>;
+export type ProfilePatch = Partial<Omit<StudentProfile, 'studentId' | 'rollNo' | 'standard' | 'division' | 'houseColor' | 'institutionName' | 'institutionLogoUrl' | 'tempPassword' | 'mustChangePassword' | 'avatarUrl'>>;
 
 type StudentContextType = {
     photo: string | null;
@@ -83,6 +84,7 @@ export function StudentProvider({ children }: { children: React.ReactNode }) {
                 divisionId: s.division?.id ?? '',
                 houseColor: s.houseColor ?? '',
                 institutionName: s.institution?.name ?? '',
+                institutionLogoUrl: s.institution?.logoUrl ?? null,
                 tempPassword: s.tempPassword ?? null,
                 mustChangePassword: s.user?.mustChangePassword ?? false,
                 avatarUrl: s.avatarUrl ?? null,
