@@ -63,6 +63,20 @@ function Avatar({ name, avatarUrl, color, bg, size }: { name: string; avatarUrl?
 
 export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
+
+    // Fire-and-forget: logs one event whenever Parent Mode is switched ON, so
+    // admin insights can flag families who haven't checked in recently. Never
+    // blocks or shows an error to the parent — a missed log just means this
+    // one open doesn't count toward engagement, not a broken feature.
+    const toggleParentView = useCallback(() => {
+        setIsParentView(prev => {
+            const next = !prev;
+            if (next) {
+                api.post('/student/parent-mode/log').catch(() => {});
+            }
+            return next;
+        });
+    }, []);
     const scrollRef = useRef<ScrollView>(null);
     const navigation = useNavigation<any>();
     const { isDark } = useTheme();
@@ -121,7 +135,7 @@ export default function Home() {
     if (isParentView) {
         return (
             <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
-                <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
+                <TopBar isParentView={isParentView} onToggle={toggleParentView} />
                 <ParentModeView isDark={isDark} />
             </View>
         );
@@ -129,7 +143,7 @@ export default function Home() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
-            <TopBar isParentView={isParentView} onToggle={() => setIsParentView(!isParentView)} />
+            <TopBar isParentView={isParentView} onToggle={toggleParentView} />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView
                 ref={scrollRef}
