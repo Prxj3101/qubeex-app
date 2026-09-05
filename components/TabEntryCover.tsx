@@ -1,5 +1,5 @@
 import { useTheme } from '@/context/ThemeContext';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import PencilLoader from '@/components/Pencilloader';

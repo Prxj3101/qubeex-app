@@ -41,7 +41,9 @@
         {
           "photosPermission": "Allow QubeEx to access your photos to set a profile picture."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

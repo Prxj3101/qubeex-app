@@ -26,7 +26,7 @@ import {
     Zap,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from 'expo-router';
 import {
     ActivityIndicator,
     Alert,

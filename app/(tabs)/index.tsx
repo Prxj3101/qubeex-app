@@ -9,7 +9,7 @@ import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';

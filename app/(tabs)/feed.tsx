@@ -9,8 +9,7 @@ import api from '@/lib/api';
 import { formatDisplayName, resolveDisplayTitle } from '@/lib/displayName';
 import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import {
     Animated,

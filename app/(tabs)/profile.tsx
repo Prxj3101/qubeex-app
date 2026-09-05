@@ -11,8 +11,7 @@ import api from '@/lib/api';
 import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useRouter, useNavigation } from 'expo-router';
 import {
     Award,
     BarChart2, Bell, CalendarDays,

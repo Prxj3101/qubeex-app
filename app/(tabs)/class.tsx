@@ -18,7 +18,7 @@ import {
     X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from 'expo-router';
 import {
     ActivityIndicator,
     Animated,
