@@ -50,12 +50,12 @@ const LIGHT = {
     redLight:        '#FEE2E2',
 };
 const DARK = {
-    bg:              '#0F0A1E',   // --background
-    card:            '#1A1030',   // --card
-    cardBorder:      '#2D1F5080', // --border / 50%
-    mutedColor:      '#2D1F50',   // --muted
-    mutedBg:         '#2D1F5033', // bg-muted/20
-    studentHeaderBg: '#2D1F5033', // bg-muted/20
+    bg:              '#000000',   // --background
+    card:            '#0A0A0A',   // --card
+    cardBorder:      '#1F1F1F80', // --border / 50%
+    mutedColor:      '#1F1F1F',   // --muted
+    mutedBg:         '#1F1F1F33', // bg-muted/20
+    studentHeaderBg: '#1F1F1F33', // bg-muted/20
     text:            '#F1F5F9',
     muted:           '#94A3B8',   // --muted-foreground
     purple:          '#A78BFA',
@@ -649,8 +649,8 @@ function FeeFlipCard({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function FeesDetail() {
-    const { isDark } = useTheme();
-    const theme = isDark ? DARK : LIGHT;
+    const { isDark, accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
 
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);

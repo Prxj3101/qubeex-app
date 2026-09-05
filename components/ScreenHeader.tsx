@@ -15,13 +15,13 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
     const router = useRouter();
 
     return (
-        <View style={[styles.container, { backgroundColor: isDark ? '#1A1030' : 'white' }]}>
+        <View style={[styles.container, { backgroundColor: isDark ? '#0A0A0A' : 'white' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
 
                 {showBack && (
                     <TouchableOpacity
                         onPress={() => router.back()}
-                        style={[styles.btn, { backgroundColor: isDark ? '#2D1F50' : '#F8F8F8' }]}
+                        style={[styles.btn, { backgroundColor: isDark ? '#1F1F1F' : '#F8F8F8' }]}
                     >
                         <ArrowLeft size={18} color={isDark ? '#A78BFA' : '#374151'} strokeWidth={1.5} />
                     </TouchableOpacity>
@@ -35,7 +35,7 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
 
             <View style={styles.rightRow}>
                 {/* Bell */}
-                <View style={[styles.btn, { backgroundColor: isDark ? '#2D1F50' : '#F8F8F8' }]}>
+                <View style={[styles.btn, { backgroundColor: isDark ? '#1F1F1F' : '#F8F8F8' }]}>
                     <Bell size={20} color={isDark ? '#A78BFA' : '#374151'} strokeWidth={1.5} />
                     <View style={styles.bellDot} />
                 </View>
@@ -46,7 +46,7 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         toggleTheme();
                     }}
-                    style={[styles.btn, { backgroundColor: isDark ? '#2D1F50' : '#F8F8F8' }]}
+                    style={[styles.btn, { backgroundColor: isDark ? '#1F1F1F' : '#F8F8F8' }]}
                 >
                     {isDark
                         ? <Moon size={18} color="#A78BFA" strokeWidth={1.5} />

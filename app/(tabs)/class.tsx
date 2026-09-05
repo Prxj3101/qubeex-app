@@ -49,7 +49,7 @@ const LIGHT = {
     red: '#EF4444', redLight: '#FEE2E2',
 };
 const DARK = {
-    bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50',
+    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     amber: '#FCD34D', amberLight: '#2D2010',
@@ -127,14 +127,14 @@ function FileViewerModal({ file, onClose }: { file: ViewerFile | null; onClose: 
     if (!file) return null;
     return (
         <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-            <StatusBar barStyle="light-content" backgroundColor="#0F0A1E" />
-            <View style={{ flex: 1, backgroundColor: '#0F0A1E' }}>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            <View style={{ flex: 1, backgroundColor: '#000000' }}>
                 {/* Header */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2D1F50' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#1F1F1F' }}>
                     <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#F1F5F9' }} numberOfLines={1}>{file.title}</Text>
                     </View>
-                    <TouchableOpacity onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#2D1F50', alignItems: 'center', justifyContent: 'center' }} activeOpacity={0.75}>
+                    <TouchableOpacity onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#1F1F1F', alignItems: 'center', justifyContent: 'center' }} activeOpacity={0.75}>
                         <X size={16} color="#F1F5F9" />
                     </TouchableOpacity>
                 </View>
@@ -147,7 +147,7 @@ function FileViewerModal({ file, onClose }: { file: ViewerFile | null; onClose: 
                     )}
                     <WebView
                         source={{ uri: file.url }}
-                        style={{ flex: 1, backgroundColor: '#0F0A1E' }}
+                        style={{ flex: 1, backgroundColor: '#000000' }}
                         onLoadEnd={() => setWebViewLoading(false)}
                         onLoadStart={() => setWebViewLoading(true)}
                         scalesPageToFit
@@ -388,8 +388,8 @@ function SubjectChipSelector({ subjects, activeSubjectIdx, setActiveSubjectIdx, 
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Courses() {
-    const { isDark } = useTheme();
-    const theme = isDark ? DARK : LIGHT;
+    const { isDark, accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const showEntryCover = useTabEntryCover();
 
     const [classData, setClassData] = useState<ClassData | null>(null);

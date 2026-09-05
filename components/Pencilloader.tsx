@@ -8,7 +8,7 @@ interface PencilLoaderProps {
 
 export default function PencilLoader({ size = 100 }: PencilLoaderProps) {
     const { isDark } = useTheme();
-    const bg = isDark ? '#0F0A1E' : '#FAF8FF';
+    const bg = isDark ? '#000000' : '#FAF8FF';
     const strokeColor = isDark ? '#D97757' : '#000000';
     const leadColor   = isDark ? '#D97757' : '#000000';
 

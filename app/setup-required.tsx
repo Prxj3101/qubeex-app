@@ -10,10 +10,10 @@ const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://app.qubeex.in';
 export default function SetupRequired() {
     const { isDark } = useTheme();
     const router = useRouter();
-    const bg = isDark ? '#0F0A1E' : '#FAF8FF';
+    const bg = isDark ? '#000000' : '#FAF8FF';
     const text = isDark ? '#F1F5F9' : '#0F172A';
     const sub = isDark ? '#94A3B8' : '#64748B';
-    const card = isDark ? '#1A1030' : '#FFFFFF';
+    const card = isDark ? '#0A0A0A' : '#FFFFFF';
     const border = isDark ? '#2D1F50' : '#EDE9FE';
 
     const handleLogout = async () => {

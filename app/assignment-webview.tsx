@@ -84,7 +84,7 @@ export default function AssignmentWebViewScreen() {
                 // white background as a thin line between them. Giving the
                 // WebView the same dark background as the screen means that
                 // momentary seam is invisible instead of a white flash.
-                style={{ flex: 1, backgroundColor: '#0F0A1E' }}
+                style={{ flex: 1, backgroundColor: '#000000' }}
                 onNavigationStateChange={state => {
                     canGoBackRef.current = state.canGoBack;
                 }}
@@ -105,10 +105,10 @@ export default function AssignmentWebViewScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0F0A1E' },
+    container: { flex: 1, backgroundColor: '#000000' },
     header: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#1A1030',
+        paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#0A0A0A',
     },
     backBtn: { padding: 6 },
     headerTitle: { fontSize: 16, fontFamily: 'Poppins_600SemiBold', color: '#F1F5F9' },

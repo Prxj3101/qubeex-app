@@ -1,3 +1,4 @@
+import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import { AttendanceSheet, type AttendanceApiData } from '@/components/AttendanceSheet';
 import { FlagsSheet } from '@/components/FlagsSheet';
@@ -67,7 +68,7 @@ interface PTMNote {
 }
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED', amber: '#F59E0B' };
-const DARK = { bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA', amber: '#FBBF24' };
+const DARK = { bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA', amber: '#FBBF24' };
 
 // Per-language sentence templates for the tier verdict, keyed the same way
 // across en/hinglish/hi/mr. Hindi/Marathi entries are phrased as noun
@@ -250,7 +251,8 @@ const TREND_GREEN = '#10B981';
 const TREND_RED = '#EF4444';
 
 export function ParentModeView({ isDark }: { isDark: boolean }) {
-    const theme = isDark ? DARK : LIGHT;
+    const { accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     // Same red as profile.tsx's own theme (ParentModeView's own LIGHT/DARK
     // above doesn't define one), just for the Flag icon color.
     const flagRed = isDark ? '#F87171' : '#EF4444';

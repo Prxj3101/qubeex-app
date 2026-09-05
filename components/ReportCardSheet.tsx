@@ -1,3 +1,4 @@
+import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import { useParentModeLanguage } from '@/context/ParentModeLanguageContext';
 import { useDynamicTranslation } from '@/lib/dynamicTranslate';
@@ -25,7 +26,7 @@ const LIGHT = {
 };
 
 const DARK = {
-    bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50',
+    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     amber: '#F59E0B', amberLight: '#2D2010',
@@ -124,7 +125,8 @@ interface ReportCardSheetProps {
 }
 
 export function ReportCardSheet({ isDark, data: providedData }: ReportCardSheetProps) {
-    const theme = isDark ? DARK : LIGHT;
+    const { accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const { lang } = useParentModeLanguage();
     const [tab, setTab] = useState<'offline' | 'online'>('offline');
     const isEmbedMode = providedData !== undefined;

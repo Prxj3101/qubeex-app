@@ -39,7 +39,7 @@ function FeedTabIcon({ color }: { color: string }) {
         borderRadius: 99,
         backgroundColor: '#EF4444',
         borderWidth: 1.5,
-        borderColor: isDark ? '#1A1030' : 'white',
+        borderColor: isDark ? '#0A0A0A' : 'white',
         opacity: feedHasNew ? 1 : 0,
       }} />
     </View>
@@ -69,7 +69,7 @@ function TabLayout() {
           tabBarActiveTintColor: '#DA7756',
           tabBarInactiveTintColor: isDark ? '#64748B' : '#94A3B8',
           tabBarStyle: {
-            backgroundColor: isDark ? '#1A1030' : 'white',
+            backgroundColor: isDark ? '#0A0A0A' : 'white',
             borderTopColor: isDark ? '#2D1F50' : '#EDE9FE',
             height: tabBarHeight,
             paddingBottom: tabBarBottomPadding,

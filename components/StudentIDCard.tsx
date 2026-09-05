@@ -1,3 +1,4 @@
+import { useTheme } from '@/context/ThemeContext';
 import { PhotoViewerModal } from '@/components/PhotoViewerModal';
 import { useStudent } from '@/context/StudentContext';
 import * as Clipboard from 'expo-clipboard';
@@ -14,7 +15,7 @@ const LIGHT = {
     green: '#10B981',
 };
 const DARK = {
-    card: '#1A1030', cardBorder: '#2D1F50',
+    card: '#0A0A0A', cardBorder: '#1F1F1F',
     text: '#F1F5F9', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     green: '#10B981',
@@ -23,7 +24,8 @@ const DARK = {
 // The same Student ID Card used on the Profile tab, reused as-is wherever an
 // at-a-glance "who is this student" identity card is needed (e.g. Parent Mode).
 export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean; noHorizontalPadding?: boolean }) {
-    const theme = isDark ? DARK : LIGHT;
+    const { accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const router = useRouter();
     const { profile, photo } = useStudent();
     const [copied, setCopied] = useState(false);

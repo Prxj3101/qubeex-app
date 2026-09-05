@@ -108,10 +108,10 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
     });
 
     // Dynamic colors
-    const containerBg = isDark ? '#1A1030' : 'white';
-    const iconBg = isDark ? '#2D1F50' : '#F8F8F8';
+    const containerBg = isDark ? '#0A0A0A' : 'white';
+    const iconBg = isDark ? '#1F1F1F' : '#F8F8F8';
     const iconColor = isDark ? '#A78BFA' : '#374151';
-    const brandColor = isDark ? '#FDF0EB' : '#374151';
+    const brandColor = isDark ? '#FAE5D9' : '#374151';
 
     return (
         <View>

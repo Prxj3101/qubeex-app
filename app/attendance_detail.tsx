@@ -27,7 +27,7 @@ const LIGHT = {
     blue: '#2563EB', blueLight: '#EFF6FF',
 };
 const DARK = {
-    bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50',
+    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     amber: '#FCD34D', amberLight: '#2D2010',
@@ -66,8 +66,8 @@ interface AttendanceApiData {
 }
 
 export default function AttendanceDetail() {
-    const { isDark } = useTheme();
-    const theme = isDark ? DARK : LIGHT;
+    const { isDark, accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const [data, setData] = useState<AttendanceApiData | null>(null);
     const [loading, setLoading] = useState(true);
 

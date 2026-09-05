@@ -36,7 +36,7 @@ const LIGHT = {
     classBadgeBg: '#CCFBF1', classBadgeText: '#0F766E',
 };
 const DARK = {
-    bg: '#0F0A1E', card: '#1A1030', cardBorder: '#2D1F50',
+    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     generalBadgeBg: '#2D1F50', generalBadgeText: '#A78BFA',
@@ -286,7 +286,7 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
 
                 <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
                     <Pressable style={styles.overlay} onPress={() => setModalVisible(false)}>
-                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1A1030' : 'white' }]} onPress={() => {}}>
+                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#0A0A0A' : 'white' }]} onPress={() => {}}>
                             <Text style={[styles.modalDateTitle, { color: theme.text }]}>
                                 📅 {selectedDate} {MONTHS_S[month]}, {year}
                             </Text>
@@ -472,8 +472,8 @@ const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 export default function Feed() {
-    const { isDark } = useTheme();
-    const theme = isDark ? DARK : LIGHT;
+    const { isDark, accent } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const showEntryCover = useTabEntryCover();
     const { profile } = useStudent();
     const { setFeedHasNew } = useFeedBadge();
