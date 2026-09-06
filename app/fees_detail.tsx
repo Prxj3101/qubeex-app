@@ -51,11 +51,11 @@ const LIGHT = {
 };
 const DARK = {
     bg:              '#000000',   // --background
-    card:            '#0A0A0A',   // --card
-    cardBorder:      '#1F1F1F80', // --border / 50%
-    mutedColor:      '#1F1F1F',   // --muted
-    mutedBg:         '#1F1F1F33', // bg-muted/20
-    studentHeaderBg: '#1F1F1F33', // bg-muted/20
+    card:            '#141414',   // --card
+    cardBorder:      '#2A2A2A80', // --border / 50%
+    mutedColor:      '#2A2A2A',   // --muted
+    mutedBg:         '#2A2A2A33', // bg-muted/20
+    studentHeaderBg: '#2A2A2A33', // bg-muted/20
     text:            '#F1F5F9',
     muted:           '#94A3B8',   // --muted-foreground
     purple:          '#A78BFA',

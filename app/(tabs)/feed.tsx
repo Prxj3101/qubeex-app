@@ -36,7 +36,7 @@ const LIGHT = {
     classBadgeBg: '#CCFBF1', classBadgeText: '#0F766E',
 };
 const DARK = {
-    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
+    bg: '#000000', card: '#141414', cardBorder: '#2A2A2A',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     generalBadgeBg: '#2D1F50', generalBadgeText: '#A78BFA',
@@ -286,7 +286,7 @@ function MiniCalendar({ theme, isDark }: { theme: typeof LIGHT; isDark: boolean 
 
                 <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
                     <Pressable style={styles.overlay} onPress={() => setModalVisible(false)}>
-                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#0A0A0A' : 'white' }]} onPress={() => {}}>
+                        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#141414' : 'white' }]} onPress={() => {}}>
                             <Text style={[styles.modalDateTitle, { color: theme.text }]}>
                                 📅 {selectedDate} {MONTHS_S[month]}, {year}
                             </Text>

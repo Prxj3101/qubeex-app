@@ -15,7 +15,7 @@ const LIGHT = {
     green: '#10B981',
 };
 const DARK = {
-    card: '#0A0A0A', cardBorder: '#1F1F1F',
+    card: '#141414', cardBorder: '#2A2A2A',
     text: '#F1F5F9', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     green: '#10B981',

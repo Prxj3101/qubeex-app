@@ -13,7 +13,7 @@ export default function SetupRequired() {
     const bg = isDark ? '#000000' : '#FAF8FF';
     const text = isDark ? '#F1F5F9' : '#0F172A';
     const sub = isDark ? '#94A3B8' : '#64748B';
-    const card = isDark ? '#0A0A0A' : '#FFFFFF';
+    const card = isDark ? '#141414' : '#FFFFFF';
     const border = isDark ? '#2D1F50' : '#EDE9FE';
 
     const handleLogout = async () => {

@@ -68,7 +68,7 @@ interface PTMNote {
 }
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED', amber: '#F59E0B' };
-const DARK = { bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA', amber: '#FBBF24' };
+const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA', amber: '#FBBF24' };
 
 // Per-language sentence templates for the tier verdict, keyed the same way
 // across en/hinglish/hi/mr. Hindi/Marathi entries are phrased as noun

@@ -49,7 +49,7 @@ const LIGHT = {
     red: '#EF4444', redLight: '#FEE2E2',
 };
 const DARK = {
-    bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F',
+    bg: '#000000', card: '#141414', cardBorder: '#2A2A2A',
     text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B',
     purple: '#A78BFA', purpleLight: '#2D1F50',
     amber: '#FCD34D', amberLight: '#2D2010',
@@ -130,11 +130,11 @@ function FileViewerModal({ file, onClose }: { file: ViewerFile | null; onClose: 
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
             <View style={{ flex: 1, backgroundColor: '#000000' }}>
                 {/* Header */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#1F1F1F' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2A2A2A' }}>
                     <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#F1F5F9' }} numberOfLines={1}>{file.title}</Text>
                     </View>
-                    <TouchableOpacity onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#1F1F1F', alignItems: 'center', justifyContent: 'center' }} activeOpacity={0.75}>
+                    <TouchableOpacity onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#2A2A2A', alignItems: 'center', justifyContent: 'center' }} activeOpacity={0.75}>
                         <X size={16} color="#F1F5F9" />
                     </TouchableOpacity>
                 </View>

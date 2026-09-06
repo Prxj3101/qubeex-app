@@ -20,7 +20,7 @@ import * as MediaLibrary from 'expo-media-library';
 const { width: SW, height: SH } = Dimensions.get('window');
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', border: '#EDE9FE', text: '#0F172A', sub: '#64748B', purple: '#7C3AED' };
-const DARK  = { bg: '#000000', card: '#0A0A0A', border: '#1F1F1F', text: '#F1F5F9', sub: '#94A3B8', purple: '#A78BFA' };
+const DARK  = { bg: '#000000', card: '#141414', border: '#2A2A2A', text: '#F1F5F9', sub: '#94A3B8', purple: '#A78BFA' };
 
 function isImage(type: string, name: string) {
     return type === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(name);

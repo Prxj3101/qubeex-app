@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000000' },
     header: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#0A0A0A',
+        paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#141414',
     },
     backBtn: { padding: 6 },
     headerTitle: { fontSize: 16, fontFamily: 'Poppins_600SemiBold', color: '#F1F5F9' },

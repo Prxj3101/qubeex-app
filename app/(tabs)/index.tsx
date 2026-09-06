@@ -16,7 +16,7 @@ import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } f
 import Constants from 'expo-constants';
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED' };
-const DARK  = { bg: '#000000', card: '#0A0A0A', cardBorder: '#1F1F1F', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA' };
+const DARK  = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA' };
 
 interface OverviewData {
     student: { name: string; rollNo: string; divisionName: string; standardName: string };
@@ -192,7 +192,7 @@ export default function Home() {
                                                     name={student.name}
                                                     avatarUrl={student.avatarUrl}
                                                     color={podiumColors[i]}
-                                                    bg={isDark ? '#0A0A0A' : '#F8F4FF'}
+                                                    bg={isDark ? '#141414' : '#F8F4FF'}
                                                     size={podiumSizes[i]}
                                                 />
                                                 <View style={{ width: 66 }}>
@@ -224,7 +224,7 @@ export default function Home() {
                                     {lb.slice(3).map((student, i) => (
                                         <View key={student.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: student.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.card, borderRadius: 14, borderWidth: 1, borderColor: student.isMe ? theme.purple + '50' : theme.cardBorder }}>
                                             <Text style={{ fontSize: 16, width: 28, textAlign: 'center' }}>{i === 0 ? '4️⃣' : '5️⃣'}</Text>
-                                            <Avatar name={student.name} avatarUrl={student.avatarUrl} color={theme.purple} bg={isDark ? '#0A0A0A' : '#F8F4FF'} size={34} />
+                                            <Avatar name={student.name} avatarUrl={student.avatarUrl} color={theme.purple} bg={isDark ? '#141414' : '#F8F4FF'} size={34} />
                                             <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: student.isMe ? theme.purple : theme.text }} numberOfLines={1}>
                                                 {student.name}{student.isMe ? ' (You)' : ''}
                                             </Text>
