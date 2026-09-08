@@ -197,7 +197,10 @@ export function ReportCardSheet({ isDark, data: providedData }: ReportCardSheetP
         <View>
             <View style={[styles.sectionHeader, { borderBottomColor: theme.cardBorder, backgroundColor: theme.card }]}>
                 <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }}>{t('reportCard', lang)}</Text>
-                <View style={{ flexDirection: 'row', gap: 2, backgroundColor: theme.cardBorder, borderRadius: 10, padding: 2 }}>
+                {/* Neutral gray track — theme.cardBorder is a purple-tinted lavender
+                    in light mode (#EDE9FE), which made this look purple regardless
+                    of the institution's actual theme color. */}
+                <View style={{ flexDirection: 'row', gap: 2, backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', borderRadius: 10, padding: 2 }}>
                     {(['offline', 'online'] as const).map(tabKey => (
                         <TouchableOpacity key={tabKey} onPress={() => setTab(tabKey)}
                             style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: tab === tabKey ? theme.card : 'transparent' }}>

@@ -30,6 +30,12 @@ import Constants from 'expo-constants';
 const { width } = Dimensions.get('window');
 
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
@@ -316,8 +322,8 @@ interface AttendanceData {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function Profile() {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const showEntryCover = useTabEntryCover();
     const [marksMode, setMarksMode] = useState<MarksMode>('combined');
     const router = useRouter();
@@ -529,12 +535,14 @@ export default function Profile() {
         { icon: '📜', title: 'Hackathon Winner', desc: 'Smart India Hackathon 2024', date: 'Dec 2024' },
     ];
 
-    const getRankColor = (rank: number | null) => {
-        if (rank === null) return theme.subText;
-        if (rank === 1) return theme.amber;
-        if (rank <= 3) return theme.purple;
-        if (rank <= 10) return theme.blue;
-        return theme.subText;
+    // Same percentage-range scheme the marksheet screens use (report_card.tsx's
+    // scoreColor) — Overall Rank/Score should reflect how the student is
+    // actually doing, not the institution's chosen theme color.
+    const scoreColor = (pct: number | null) => {
+        if (pct === null) return theme.subText;
+        if (pct >= 75) return theme.green;
+        if (pct >= 35) return theme.amber;
+        return theme.red;
     };
 
     return (
@@ -556,7 +564,7 @@ export default function Profile() {
                                 <Trophy size={14} color={theme.amber} />
                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Overall Rank</Text>
                             </View>
-                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: getRankColor(overallRank) }}>{overallRank === null ? '—' : `#${overallRank}`}</Text>
+                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: scoreColor(overallScore) }}>{overallRank === null ? '—' : `#${overallRank}`}</Text>
                             <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>Overall rank</Text>
                         </Card>
 
@@ -565,7 +573,7 @@ export default function Profile() {
                                 <Star size={14} color={theme.amber} fill={theme.amber} />
                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Overall Score</Text>
                             </View>
-                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: theme.purple }}>{overallScore}%</Text>
+                            <Text style={{ fontSize: 32, fontFamily: 'Poppins_800ExtraBold', color: scoreColor(overallScore) }}>{overallScore}%</Text>
                             <Text style={{ fontSize: 11, color: theme.muted, fontFamily: 'Poppins_400Regular' }}>across all subjects</Text>
                         </Card>
                     </View>
@@ -580,16 +588,20 @@ export default function Profile() {
                             <TouchableOpacity
                                 onPress={() => router.push('/report_card')}
                                 style={{
-                                    backgroundColor: theme.cardBorder,
+                                    // Neutral gray pill — theme.cardBorder is a purple-tinted
+                                    // lavender in light mode, which looked colored regardless
+                                    // of the institution's actual theme.
+                                    backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
                                     paddingHorizontal: 10,
                                     paddingVertical: 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     gap: 4,
+                                    flexShrink: 0,
                                 }}
                             >
-                                <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>View Report Card</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View Report Card</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -617,16 +629,17 @@ export default function Profile() {
                             <TouchableOpacity
                                 onPress={() => router.push('/attendance_detail')}
                                 style={{
-                                    backgroundColor: theme.cardBorder,
+                                    backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
                                     paddingHorizontal: 10,
                                     paddingVertical: 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     gap: 4,
+                                    flexShrink: 0,
                                 }}
                             >
-                                <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>View Details</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View Details</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -869,16 +882,17 @@ export default function Profile() {
                             <TouchableOpacity
                                 onPress={() => router.push('/flags')}
                                 style={{
-                                    backgroundColor: theme.cardBorder,
+                                    backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
                                     paddingHorizontal: 10,
                                     paddingVertical: 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     gap: 4,
+                                    flexShrink: 0,
                                 }}
                             >
-                                <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>View All</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View All</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -947,9 +961,9 @@ export default function Profile() {
                             </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/fees_detail')}
-                                style={{ backgroundColor: theme.cardBorder, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}
                             >
-                                <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Pay Fees</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>Pay Fees</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -1030,8 +1044,8 @@ export default function Profile() {
                                 <Award size={16} color={theme.amber} />
                                 <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Projects & Achievements</Text>
                             </View>
-                            <View style={{ backgroundColor: theme.cardBorder, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, opacity: 0.7 }}>
-                                <Text style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Coming Soon</Text>
+                            <View style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, opacity: 0.7, flexShrink: 0 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>Coming Soon</Text>
                             </View>
                         </View>
                         <View style={{ gap: 8 }}>

@@ -1036,7 +1036,7 @@ export function ParentModeView({ isDark }: { isDark: boolean }) {
                                             )}
                                         </View>
                                         <View style={[styles.noteBubble, {
-                                            backgroundColor: isDark ? '#241a3f' : '#F8F4FF',
+                                            backgroundColor: theme.purple + (isDark ? '26' : '14'),
                                             borderColor: theme.cardBorder,
                                             marginBottom: idx < notes.length - 1 ? 12 : 0,
                                         }]}>
@@ -1114,7 +1114,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         paddingHorizontal: 14, paddingVertical: 10,
     },
-    card: { borderRadius: 16, borderWidth: 1, padding: 14 },
+    // Raised look (matches StudentIDCard's own shadow) — these cards used to
+    // sit flat against the screen background with no shadow/elevation at all.
+    card: {
+        borderRadius: 16, borderWidth: 1, padding: 14,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.14, shadowRadius: 12, elevation: 5,
+    },
     sectionTitle: { fontSize: 13, fontWeight: '700' },
     attBox: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center', gap: 3 },
     attValue: { fontSize: 15, fontWeight: '800' },

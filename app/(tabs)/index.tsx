@@ -15,6 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8', purple: '#7C3AED' };
 const DARK  = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B', purple: '#A78BFA' };
 
@@ -79,8 +85,8 @@ export default function Home() {
     }, []);
     const scrollRef = useRef<ScrollView>(null);
     const navigation = useNavigation<any>();
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const showEntryCover = useTabEntryCover();
     const { fetchProfile, profile } = useStudent();
 

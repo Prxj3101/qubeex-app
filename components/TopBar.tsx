@@ -13,7 +13,7 @@ interface TopBarProps {
 export function TopBar({ isParentView, onToggle }: TopBarProps) {
     const translateX = useRef(new Animated.Value(isParentView ? 31 : 0)).current;
     const shadowAnim = useRef(new Animated.Value(isParentView ? 1 : 0)).current;
-    const { isDark, toggleTheme } = useTheme();
+    const { isDark, toggleTheme, accent } = useTheme();
     const { branding } = useBranding();
 
     const brandAnim = useRef(new Animated.Value(0)).current;
@@ -102,15 +102,20 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
         onToggle();
     };
 
+    // Student-mode end of the track follows the institution's theme color;
+    // parent-mode end is a fixed brand terracotta in every theme, not yellow/amber.
     const switchBg = shadowAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: ['#cfb4fa', '#F59E0B'],
+        outputRange: [accent.purple, '#DA7756'],
     });
 
     // Dynamic colors
     const containerBg = isDark ? '#141414' : 'white';
     const iconBg = isDark ? '#2A2A2A' : '#F8F8F8';
-    const iconColor = isDark ? '#A78BFA' : '#374151';
+    // Was hardcoded to purple's own dark-mode accent (#A78BFA) regardless of
+    // the institution's chosen theme — accent.purple already resolves to the
+    // right family's dark-mode icon/text tint (ThemeContext's ACCENTS map).
+    const iconColor = isDark ? accent.purple : '#374151';
     const brandColor = isDark ? '#FAE5D9' : '#374151';
 
     return (
@@ -242,9 +247,11 @@ const styles = StyleSheet.create({
         marginTop: 4,
         marginBottom: 4,
         zIndex: 10,
-        shadowColor: '#7C3AED',
+        // Plain neutral shadow — was tinted with the theme accent color,
+        // which read as a colored glow behind the topbar. Removed per request.
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
+        shadowOpacity: 0.12,
         shadowRadius: 8,
         elevation: 6,
     },

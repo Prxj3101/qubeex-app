@@ -40,6 +40,24 @@ import Constants from 'expo-constants';
 
 const { width } = Dimensions.get('window');
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
+// Class banner card — mirrors Header.tsx's HERO_DARK_BG/HERO_LIGHT_BG maps so
+// the "Class X · Division Y" hero follows the institution's theme instead of
+// being pinned to purple.
+const BANNER_DARK_BG: Record<string, string> = {
+    purple: '#1A0A3E', blue: '#101E3D', teal: '#00292B', amber: '#3A2607',
+    rose: '#3D1414', indigo: '#191552', slate: '#111827',
+};
+const BANNER_LIGHT_BG: Record<string, string> = {
+    purple: '#7C3AED', blue: '#2F6AE6', teal: '#008080', amber: '#ED9A1F',
+    rose: '#DC3D2E', indigo: '#5956EB', slate: '#64748B',
+};
+
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
@@ -388,8 +406,8 @@ function SubjectChipSelector({ subjects, activeSubjectIdx, setActiveSubjectIdx, 
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Courses() {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const showEntryCover = useTabEntryCover();
 
     const [classData, setClassData] = useState<ClassData | null>(null);
@@ -519,7 +537,7 @@ export default function Courses() {
                 scrollEventThrottle={16}
             >
                 {/* ── Banner (scrolls away normally) ── */}
-                <View style={[styles.banner, { backgroundColor: isDark ? '#1A0A3E' : '#7C3AED' }]}>
+                <View style={[styles.banner, { backgroundColor: isDark ? (BANNER_DARK_BG[themeColor] ?? BANNER_DARK_BG.purple) : (BANNER_LIGHT_BG[themeColor] ?? BANNER_LIGHT_BG.purple) }]}>
                     <View style={styles.bannerOrb1} />
                     <View style={styles.bannerOrb2} />
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -717,14 +735,17 @@ export default function Courses() {
                                                 >
                                                     <View style={{ gap: 6 }}>
                                                         {classmates.map(s => (
-                                                            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: s.isMe ? theme.purple + '40' : 'transparent' }}>
+                                                            // "You" row/badge uses a neutral gray highlight instead of the
+                                                            // theme accent color — keeps it from looking like an active/
+                                                            // selected state tied to whichever theme is chosen.
+                                                            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: s.isMe ? (isDark ? '#232323' : '#F1F5F9') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: s.isMe ? (isDark ? '#3A3A3A' : '#CBD5E1') : 'transparent' }}>
                                                                 <Avatar name={s.name} avatarUrl={s.avatarUrl} size={32} />
                                                                 <View style={{ flex: 1 }}>
                                                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: s.isMe ? theme.purple : theme.text }} numberOfLines={1}>{s.name}</Text>
+                                                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{s.name}</Text>
                                                                         {s.isMe && (
-                                                                            <View style={{ backgroundColor: theme.purple + '20', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 99 }}>
-                                                                                <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.purple }}>You</Text>
+                                                                            <View style={{ backgroundColor: isDark ? '#3A3A3A' : '#E2E8F0', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 99 }}>
+                                                                                <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: theme.muted }}>You</Text>
                                                                             </View>
                                                                         )}
                                                                     </View>
@@ -790,10 +811,12 @@ export default function Courses() {
                                                                         const pct = getLbPct(e, subjLbMode);
                                                                         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
                                                                         return (
-                                                                            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: e.isMe ? (isDark ? '#2D1F50' : '#EDE9FE') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: e.isMe ? theme.purple + '50' : theme.cardBorder }}>
+                                                                            // "You" row uses a neutral gray highlight instead of the theme
+                                                                            // accent color — same treatment as the Classmates list.
+                                                                            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: e.isMe ? (isDark ? '#232323' : '#F1F5F9') : theme.bg, borderRadius: 12, borderWidth: 1, borderColor: e.isMe ? (isDark ? '#3A3A3A' : '#CBD5E1') : theme.cardBorder }}>
                                                                                 <Text style={{ fontSize: medal ? 18 : 12, width: 28, textAlign: 'center', fontFamily: 'Poppins_700Bold', color: theme.muted }}>{medal ?? `#${i + 1}`}</Text>
                                                                                 <Avatar name={e.name} avatarUrl={e.avatarUrl} size={30} />
-                                                                                <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: e.isMe ? theme.purple : theme.text }} numberOfLines={1}>{e.name.split(' ')[0]}{e.isMe ? ' (You)' : ''}</Text>
+                                                                                <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{e.name.split(' ')[0]}{e.isMe ? ' (You)' : ''}</Text>
                                                                                 <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: i === 0 ? '#F59E0B' : i === 1 ? '#94A3B8' : i === 2 ? '#CD7F32' : activeSubject.color }}>{pct != null ? `${pct}%` : '—'}</Text>
                                                                             </View>
                                                                         );

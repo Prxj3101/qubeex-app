@@ -11,8 +11,11 @@ interface ScreenHeaderProps {
 }
 
 export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
-    const { isDark, toggleTheme } = useTheme();
+    const { isDark, toggleTheme, accent } = useTheme();
     const router = useRouter();
+    // Was hardcoded to purple's own dark-mode accent (#A78BFA) regardless of
+    // the institution's chosen theme — same fix as TopBar.tsx's icon/shadow colors.
+    const iconColor = isDark ? accent.purple : '#374151';
 
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#141414' : 'white' }]}>
@@ -23,7 +26,7 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
                         onPress={() => router.back()}
                         style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
                     >
-                        <ArrowLeft size={18} color={isDark ? '#A78BFA' : '#374151'} strokeWidth={1.5} />
+                        <ArrowLeft size={18} color={iconColor} strokeWidth={1.5} />
                     </TouchableOpacity>
                 )}
 
@@ -36,7 +39,7 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
             <View style={styles.rightRow}>
                 {/* Bell */}
                 <View style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}>
-                    <Bell size={20} color={isDark ? '#A78BFA' : '#374151'} strokeWidth={1.5} />
+                    <Bell size={20} color={iconColor} strokeWidth={1.5} />
                     <View style={styles.bellDot} />
                 </View>
 
@@ -49,7 +52,7 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
                     style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
                 >
                     {isDark
-                        ? <Moon size={18} color="#A78BFA" strokeWidth={1.5} />
+                        ? <Moon size={18} color={accent.purple} strokeWidth={1.5} />
                         : <Sun size={18} color="#374151" strokeWidth={1.5} />
                     }
                 </TouchableOpacity>
@@ -70,9 +73,11 @@ const styles = StyleSheet.create({
         marginTop: 4,
         marginBottom: 4,
         zIndex: 10,
-        shadowColor: '#7C3AED',
+        // Plain neutral shadow — was tinted with the theme accent color,
+        // which read as a colored glow behind the topbar. Removed per request.
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
+        shadowOpacity: 0.12,
         shadowRadius: 8,
         elevation: 6,
     },

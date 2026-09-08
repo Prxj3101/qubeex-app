@@ -20,8 +20,37 @@ function formatDivision(divisionName: string): string {
   return `Division ${letter}`;
 }
 
+// `accent.purple` in dark mode is tuned as a light-on-dark accent (text/icon
+// tint), not a background — using it directly here made the hero far too
+// light/washed out compared to how it always looked. This mirrors the deeper
+// per-family dark-mode hero shade the web app already uses (globals.css's
+// `.dark[data-theme="X"] { --hero-accent }`), restoring the original rich
+// look while still following whichever theme color the institution picked.
+const HERO_DARK_BG: Record<string, string> = {
+  purple: '#4C1D95',
+  blue: '#3557AB',
+  teal: '#006666',
+  amber: '#D6890F',
+  rose: '#B54444',
+  indigo: '#3730A3',
+  slate: '#334155',
+};
+
+// Same idea for light mode — the web app's own `--hero-accent` is a distinct
+// (usually slightly deeper) shade from `--primary` for a couple of families
+// (blue, teal), not just a straight reuse of the accent color.
+const HERO_LIGHT_BG: Record<string, string> = {
+  purple: '#7C3AED',
+  blue: '#2F6AE6',
+  teal: '#008080',
+  amber: '#ED9A1F',
+  rose: '#DC3D2E',
+  indigo: '#5956EB',
+  slate: '#64748B',
+};
+
 export function Header({ showPurple = false }: HeaderProps) {
-  const { isDark } = useTheme();
+  const { isDark, themeColor } = useTheme();
   const { profile } = useStudent();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -98,8 +127,9 @@ export function Header({ showPurple = false }: HeaderProps) {
   }, [institutionType]);
   if (!showPurple) return null;
 
-  // Dark mode mein deeper/richer purple
-  const bgColor = isDark ? '#4C1D95' : '#7C3AED';
+  const bgColor = isDark
+    ? (HERO_DARK_BG[themeColor] ?? HERO_DARK_BG.purple)
+    : (HERO_LIGHT_BG[themeColor] ?? HERO_LIGHT_BG.purple);
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>

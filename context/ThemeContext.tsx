@@ -17,10 +17,10 @@ const NATIVE_BG = { light: '#FAF8FF', dark: '#000000' };
 // every screen needing its own copy of all seven palettes.
 const ACCENTS: Record<string, { light: { purple: string; purpleLight: string }; dark: { purple: string; purpleLight: string } }> = {
     purple: { light: { purple: '#7C3AED', purpleLight: '#EDE9FE' }, dark: { purple: '#A78BFA', purpleLight: '#2D1F50' } },
-    blue: { light: { purple: '#2563EB', purpleLight: '#DBEAFE' }, dark: { purple: '#60A5FA', purpleLight: '#0D1F3C' } },
-    teal: { light: { purple: '#0D9488', purpleLight: '#CCFBF1' }, dark: { purple: '#2DD4BF', purpleLight: '#134E4A' } },
-    amber: { light: { purple: '#D97706', purpleLight: '#FEF3C7' }, dark: { purple: '#FBBF24', purpleLight: '#2D2010' } },
-    rose: { light: { purple: '#E11D48', purpleLight: '#FFE4E6' }, dark: { purple: '#FB7185', purpleLight: '#2B0D14' } },
+    blue: { light: { purple: '#3970E0', purpleLight: '#DBEAFE' }, dark: { purple: '#6495ED', purpleLight: '#0D1F3C' } },
+    teal: { light: { purple: '#009999', purpleLight: '#CCFBF1' }, dark: { purple: '#33CCCC', purpleLight: '#134E4A' } },
+    amber: { light: { purple: '#ED9A1F', purpleLight: '#F5EBD8' }, dark: { purple: '#F0B01A', purpleLight: '#2D2010' } },
+    rose: { light: { purple: '#DC2626', purpleLight: '#FEE2E2' }, dark: { purple: '#F87171', purpleLight: '#2B0D14' } },
     indigo: { light: { purple: '#4F46E5', purpleLight: '#E0E7FF' }, dark: { purple: '#818CF8', purpleLight: '#1E1B4B' } },
     slate: { light: { purple: '#475569', purpleLight: '#F1F5F9' }, dark: { purple: '#94A3B8', purpleLight: '#1E293B' } },
 };

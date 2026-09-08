@@ -106,6 +106,37 @@ const DARK = {
     blue: '#60A5FA', blueLight: '#0D1F3C',
 };
 
+// RN's LinearGradient can't do CSS color-mix() — blends a hex color toward
+// black (negative) or white (positive) by a fraction, used below to derive
+// gradient stops from the theme accent instead of a hardcoded second shade.
+function shade(hex: string, amount: number): string {
+    const num = parseInt(hex.replace('#', ''), 16);
+    let r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff;
+    if (amount < 0) {
+        const p = 1 + amount;
+        r = Math.round(r * p); g = Math.round(g * p); b = Math.round(b * p);
+    } else {
+        r = Math.round(r + (255 - r) * amount);
+        g = Math.round(g + (255 - g) * amount);
+        b = Math.round(b + (255 - b) * amount);
+    }
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// accent.purple in dark mode is a bright light-on-dark tint (icon/text), not
+// a banner background — purple's own #A78BFA still reads fine, but e.g.
+// blue's #6495ED looks washed-out as a strip fill. Same deep per-family
+// shade used for this card's header strip in StudentIDCard.tsx / Header.tsx.
+const STRIP_DARK_BASE: Record<string, string> = {
+    purple: '#4C1D95',
+    blue: '#3557AB',
+    teal: '#006666',
+    amber: '#D6890F',
+    rose: '#B54444',
+    indigo: '#3730A3',
+    slate: '#334155',
+};
+
 // ─── Initial Student Data ─────────────────────────────────────────────────────
 const INITIAL_STUDENT = {
     name: 'Prajwal Jagdish Kotian',
@@ -696,8 +727,9 @@ function GuardianCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function StudentDetail() {
-    const { isDark, accent } = useTheme();
+    const { isDark, accent, themeColor } = useTheme();
     const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const stripBase = isDark ? (STRIP_DARK_BASE[themeColor] ?? STRIP_DARK_BASE.purple) : theme.purple;
     const router = useRouter();
     const { photo, setPhoto, profile, fetchProfile, saveProfile, uploadPhoto, isSaving } = useStudent();
     const [photoExpanded, setPhotoExpanded] = useState(false);
@@ -831,7 +863,7 @@ export default function StudentDetail() {
                 <View style={styles.heroCardWrap}>
                     <View style={[styles.heroCard, { borderColor: isDark ? 'rgba(167,139,250,0.16)' : theme.cardBorder, shadowColor: theme.purple }]}>
                         <LinearGradient
-                            colors={isDark ? ['#4C1D95', '#2D1F50'] : ['#7C3AED', '#5B21B6']}
+                            colors={isDark && themeColor === 'purple' ? ['#4C1D95', '#2D1F50'] : [stripBase, shade(stripBase, -0.3)]}
                             style={styles.banner}
                         >
                             <View style={styles.avatarWrap}>
@@ -839,7 +871,7 @@ export default function StudentDetail() {
                                     activeOpacity={photo ? 0.85 : 1}
                                     onPress={() => photo && setPhotoExpanded(true)}
                                 >
-                                    <LinearGradient colors={['#A78BFA', '#7C3AED']} style={styles.avatar}>
+                                    <LinearGradient colors={[shade(theme.purple, 0.35), theme.purple]} style={styles.avatar}>
                                         {photo
                                             ? <Image source={{ uri: photo }} style={styles.avatarImage} />
                                             : <Text style={styles.avatarText}>{initials}</Text>

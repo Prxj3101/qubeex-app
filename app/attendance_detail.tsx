@@ -17,6 +17,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
@@ -66,8 +72,8 @@ interface AttendanceApiData {
 }
 
 export default function AttendanceDetail() {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const [data, setData] = useState<AttendanceApiData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -200,7 +206,7 @@ export default function AttendanceDetail() {
 
                     {/* Month-wise Attendance */}
                     <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                        <View style={[styles.sectionHeader, { backgroundColor: isDark ? '#1F1545' : '#F8F7FF', borderBottomColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+                        <View style={[styles.sectionHeader, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                             <CalendarDays size={16} color={theme.green} />
                             <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }}>Month-wise Attendance</Text>
                         </View>

@@ -19,6 +19,12 @@ import * as MediaLibrary from 'expo-media-library';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', border: '#EDE9FE', text: '#0F172A', sub: '#64748B', purple: '#7C3AED' };
 const DARK  = { bg: '#000000', card: '#141414', border: '#2A2A2A', text: '#F1F5F9', sub: '#94A3B8', purple: '#A78BFA' };
 
@@ -130,8 +136,8 @@ interface Props {
 }
 
 export function AttachmentPreview({ url, name, type }: Props) {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const [open, setOpen] = useState(false);
 
     const img = isImage(type, name);

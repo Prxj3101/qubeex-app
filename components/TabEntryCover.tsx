@@ -35,8 +35,14 @@ export function useTabEntryCover(durationMs = 2000) {
     return visible;
 }
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 export function TabEntryCover({ visible }: { visible: boolean }) {
-    const { isDark } = useTheme();
+    const { isDark, themeColor } = useTheme();
     // PencilLoader renders through a WebView, which takes a beat to mount
     // and start playing its animation on first load. Unmounting this (via
     // `if (!visible) return null`) between tab switches was throwing that
@@ -52,7 +58,7 @@ export function TabEntryCover({ visible }: { visible: boolean }) {
             style={{
                 position: 'absolute',
                 top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: isDark ? '#000000' : '#FAF8FF',
+                backgroundColor: isDark ? '#000000' : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple),
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 999,

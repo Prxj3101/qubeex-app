@@ -6,6 +6,12 @@ import { useEffect } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF', blue: '#F7FBFE', teal: '#F0F7F3', amber: '#FEFBF7',
+    rose: '#FBF7F7', indigo: '#F3F7FE', slate: '#FBFEFE',
+};
+
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
@@ -18,8 +24,8 @@ const DARK = {
 };
 
 export default function Flags() {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const { profile, fetchProfile } = useStudent();
 
     useEffect(() => {

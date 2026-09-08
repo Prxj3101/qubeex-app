@@ -28,6 +28,19 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 
+// Per-theme light-mode page background — purple keeps its original #FAF8FF,
+// every other family gets its own faint tint instead of purple's, mirroring
+// the web app's [data-theme="X"] { --background } light values.
+const LIGHT_BG: Record<string, string> = {
+    purple: '#FBFBFF',
+    blue: '#F7FBFE',
+    teal: '#F0F7F3',
+    amber: '#FEFBF7',
+    rose: '#FBF7F7',
+    indigo: '#F3F7FE',
+    slate: '#FBFEFE',
+};
+
 const LIGHT = {
     bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE',
     text: '#0F172A', subText: '#64748B', muted: '#94A3B8',
@@ -472,8 +485,13 @@ const FILTERS: { key: FilterKey; label: string; emoji: string }[] = [
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 export default function Feed() {
-    const { isDark, accent } = useTheme();
-    const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    const { isDark, accent, themeColor } = useTheme();
+    const theme = {
+        ...(isDark ? DARK : LIGHT),
+        bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple),
+        purple: accent.purple,
+        purpleLight: accent.purpleLight,
+    };
     const showEntryCover = useTabEntryCover();
     const { profile } = useStudent();
     const { setFeedHasNew } = useFeedBadge();
@@ -678,7 +696,8 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     body: { padding: 14, gap: 14 },
 
-    card: { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 10 },
+    // Plain neutral shadow — was tinted with the theme color (a glow), removed per request.
+    card: { borderRadius: 20, borderWidth: 1, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 18, elevation: 10 },
 
     calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     navBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1 },
@@ -709,7 +728,8 @@ const styles = StyleSheet.create({
     // Shadow lives on a non-clipping wrapper (see feedPanelWrap below) — a
     // View with overflow:'hidden' (needed here to round the scrolling feed
     // content) also clips iOS shadows, so the shadow has to sit one level up.
-    feedPanelWrap: { borderRadius: 20, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 10 },
+    // Plain neutral shadow — was tinted with the theme color (a glow), removed per request.
+    feedPanelWrap: { borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 18, elevation: 10 },
     feedPanel: { height: 600, borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
     feedPanelHeader: { padding: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 
@@ -717,7 +737,8 @@ const styles = StyleSheet.create({
     filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },
     filterChipText: { fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
 
-    feedCard: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 10, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+    // Plain neutral shadow — was tinted with the theme color (a glow), removed per request.
+    feedCard: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
     typeChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
     typeChipText: { fontSize: 11, fontFamily: 'Poppins_700Bold' },
     subjectTag: { fontSize: 11, fontFamily: 'Poppins_400Regular' },

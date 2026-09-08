@@ -382,7 +382,7 @@ export function FlagsSheet({ isDark, data: providedData, showAppealNote = true }
 
             {/* Appeal Note */}
             {showAppealNote && (
-                <View style={[styles.appealNote, { backgroundColor: theme.purpleLight, borderColor: isDark ? '#4C1D95' : '#DDD6FE' }]}>
+                <View style={[styles.appealNote, { backgroundColor: theme.purpleLight, borderWidth: 0 }]}>
                     <ShieldAlert size={16} color={theme.purple} />
                     <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_700Bold', color: theme.purple, marginBottom: 2 }}>

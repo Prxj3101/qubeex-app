@@ -16,7 +16,7 @@ export function InlineWheel({ options, value, onChange, isDark, theme }: {
     value: string;
     onChange: (v: string) => void;
     isDark: boolean;
-    theme: { purple: string };
+    theme: { purple: string; purpleLight?: string };
 }) {
     const scrollRef = React.useRef<ScrollView>(null);
     const n = options.length;
@@ -86,8 +86,12 @@ export function InlineWheel({ options, value, onChange, isDark, theme }: {
             gap: 2,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: isDark ? '#2D1F50' : '#E4DCFA',
-            backgroundColor: isDark ? '#1E1533' : '#F3F0FA',
+            // Was hardcoded to purple's own tint regardless of the institution's
+            // chosen theme color — now derived from theme.purpleLight (already
+            // resolved to the correct light/dark variant per family upstream)
+            // with a plain alpha border so it follows every theme color.
+            borderColor: theme.purple + (isDark ? '4D' : '33'),
+            backgroundColor: theme.purpleLight ?? (isDark ? '#1E1533' : '#F3F0FA'),
         }}>
             <View style={{ flex: 1, height: WHEEL_ITEM_H, overflow: 'hidden' }}>
                 <ScrollView
