@@ -27,8 +27,9 @@ export function assignSubjectColor(index: number): string {
 // Unlike indexing by array position, this never changes when a sibling
 // subject is deleted, since it depends only on the subject's own id.
 function hashToIndex(id: string): number {
+    const safeId = id ?? '';
     let h = 0;
-    for (let i = 0; i < id.length; i++) h = (Math.imul(h, 31) + id.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < safeId.length; i++) h = (Math.imul(h, 31) + safeId.charCodeAt(i)) >>> 0;
     return h;
 }
 

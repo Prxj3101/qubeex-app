@@ -169,21 +169,24 @@ export default function LoginScreen() {
                 institution: { type?: InstitutionType | null } | null;
             };
 
-            if (user.role !== 'STUDENT') {
-                setError('This app is for students only. Please use the web portal.');
+            if (user.role !== 'STUDENT' && user.role !== 'TEACHER') {
+                setError('This app is for students and teachers only. Please use the web portal.');
                 shake();
                 return;
             }
 
             await AsyncStorage.setItem('userToken', token);
             await AsyncStorage.setItem('mustChangePassword', user.mustChangePassword ? 'true' : 'false');
+            await AsyncStorage.setItem('userRole', user.role);
 
             if (institution?.type) setInstitution(institution.type);
+
+            const homeRoute = user.role === 'TEACHER' ? '/(teacher)' : '/(tabs)';
 
             if (user.mustChangePassword) {
                 router.replace('/setup-required');
             } else {
-                router.replace('/(tabs)');
+                router.replace(homeRoute);
             }
         } catch (err: unknown) {
             const e = err as { response?: { data?: { error?: string } }; message?: string };

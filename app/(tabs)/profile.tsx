@@ -1105,12 +1105,21 @@ export default function Profile() {
 
                         {/* Logout */}
                         <TouchableOpacity
-                            onPress={async () => {
-                                await AsyncStorage.removeItem('userToken');
-                                await AsyncStorage.removeItem('institutionType');
-                                clearInstitution();
-                                clearBranding();
-                                router.replace('/login');
+                            onPress={() => {
+                                Alert.alert('Logout', 'Are you sure you want to logout?', [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                        text: 'Logout',
+                                        style: 'destructive',
+                                        onPress: async () => {
+                                            await AsyncStorage.removeItem('userToken');
+                                            await AsyncStorage.removeItem('institutionType');
+                                            clearInstitution();
+                                            clearBranding();
+                                            router.replace('/login');
+                                        },
+                                    },
+                                ]);
                             }}
                             style={{
                                 flexDirection: 'row',
