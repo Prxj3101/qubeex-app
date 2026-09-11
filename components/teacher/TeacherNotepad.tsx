@@ -50,7 +50,7 @@ export const TeacherNotepad = forwardRef<TeacherNotepadHandle>(function TeacherN
     const text = isDark ? '#F1F5F9' : '#0F172A';
     const subText = isDark ? '#94A3B8' : '#64748B';
     const inputBg = isDark ? '#1E1E1E' : '#F8FAFC';
-    const tabTrackBg = isDark ? '#000000' : '#E2E8F0';
+    const tabTrackBg = isDark ? '#000000' : '#EDEFF3';
     const tabActiveBg = isDark ? '#2A2A2A' : '#FFFFFF';
 
     const [tab, setTab] = useState<'tasks' | 'notes'>('tasks');

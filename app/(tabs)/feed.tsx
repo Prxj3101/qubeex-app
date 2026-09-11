@@ -650,7 +650,7 @@ export default function Feed() {
                         <ScrollView
                             ref={feedScrollRef}
                             style={{ flex: 1, backgroundColor: theme.bg }}
-                            contentContainerStyle={{ padding: 14, gap: 12, flexGrow: 1 }}
+                            contentContainerStyle={{ paddingHorizontal: 11, paddingVertical: 14, gap: 12, flexGrow: 1 }}
                             nestedScrollEnabled
                             showsVerticalScrollIndicator={false}
                             onScroll={e => setShowScrollTop(e.nativeEvent.contentOffset.y > 200)}
