@@ -1,6 +1,8 @@
 import { useBranding } from '@/context/BrandingContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Bell, Moon, Sun } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,6 +17,8 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
     const shadowAnim = useRef(new Animated.Value(isParentView ? 1 : 0)).current;
     const { isDark, toggleTheme, accent } = useTheme();
     const { branding } = useBranding();
+    const { unreadCount } = useUnreadNotifications();
+    const router = useRouter();
 
     const brandAnim = useRef(new Animated.Value(0)).current;
     const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,10 +190,16 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                 <View style={styles.rightRow}>
 
                     {/* Bell */}
-                    <View style={[styles.bellBtn, { backgroundColor: iconBg }]}>
+                    <Pressable
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/notifications');
+                        }}
+                        style={({ pressed }) => [styles.bellBtn, { backgroundColor: iconBg, opacity: pressed ? 0.6 : 1 }]}
+                    >
                         <Bell size={20} color={iconColor} strokeWidth={1.5} />
-                        <View style={styles.bellDot} />
-                    </View>
+                        {unreadCount > 0 && <View style={styles.bellDot} />}
+                    </Pressable>
 
                     {/* Dark/Light Mode Toggle — Pressable instead of TouchableOpacity here
                         specifically, because toggling theme re-renders this whole tree with

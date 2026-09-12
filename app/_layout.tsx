@@ -10,7 +10,8 @@ import { RobotoMono_600SemiBold } from '@expo-google-fonts/roboto-mono';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { registerForPushNotifications } from '@/lib/pushNotifications';
+import { useEffect, useRef, useState } from 'react';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
@@ -20,6 +21,20 @@ function AuthGate() {
     const router = useRouter();
     const segments = useSegments();
     const { refreshBranding } = useBranding();
+    const pushRegistered = useRef(false);
+
+    // Re-register the push token once per app session on launch (not on every
+    // navigation, unlike the effect below) — covers token rotation and
+    // reinstalls for a user who's already logged in from a previous session.
+    useEffect(() => {
+        (async () => {
+            if (pushRegistered.current) return;
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return;
+            pushRegistered.current = true;
+            void registerForPushNotifications();
+        })();
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -30,7 +45,7 @@ function AuthGate() {
             const mustChangePassword = mustChange === 'true';
             const homeRoute = role === 'TEACHER' ? '/(teacher)' : '/(tabs)';
 
-            const AUTHENTICATED_SCREENS = new Set(['(tabs)', '(teacher)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card', 'test-webview', 'assignment-webview', 'teacher_settings']);
+            const AUTHENTICATED_SCREENS = new Set(['(tabs)', '(teacher)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card', 'test-webview', 'assignment-webview', 'teacher_settings', 'notifications']);
             const inSetup = segments[0] === 'setup-required';
             const inAuthenticatedScreen = AUTHENTICATED_SCREENS.has(segments[0]);
 

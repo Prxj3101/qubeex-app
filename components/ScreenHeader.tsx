@@ -1,4 +1,5 @@
 import { useTheme } from '@/context/ThemeContext';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Bell, Moon, Sun } from 'lucide-react-native';
@@ -13,6 +14,7 @@ interface ScreenHeaderProps {
 export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
     const { isDark, toggleTheme, accent } = useTheme();
     const router = useRouter();
+    const { unreadCount } = useUnreadNotifications();
     // Was hardcoded to purple's own dark-mode accent (#A78BFA) regardless of
     // the institution's chosen theme — same fix as TopBar.tsx's icon/shadow colors.
     const iconColor = isDark ? accent.purple : '#374151';
@@ -38,10 +40,16 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
 
             <View style={styles.rightRow}>
                 {/* Bell */}
-                <View style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}>
+                <TouchableOpacity
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push('/notifications');
+                    }}
+                    style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
+                >
                     <Bell size={20} color={iconColor} strokeWidth={1.5} />
-                    <View style={styles.bellDot} />
-                </View>
+                    {unreadCount > 0 && <View style={styles.bellDot} />}
+                </TouchableOpacity>
 
                 {/* Dark/Light Toggle */}
                 <TouchableOpacity

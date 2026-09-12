@@ -8,6 +8,7 @@ import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Flag as FlagItem } from '@/data/flags';
 import api from '@/lib/api';
+import { unregisterCurrentPushToken } from '@/lib/pushNotifications';
 import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1081,7 +1082,7 @@ export default function Profile() {
                             Settings
                         </Text>
 
-                        <TouchableOpacity style={{
+                        <TouchableOpacity onPress={() => router.push('/notifications')} style={{
                             flexDirection: 'row',
                             alignItems: 'center',
                             gap: 12,
@@ -1112,6 +1113,7 @@ export default function Profile() {
                                         text: 'Logout',
                                         style: 'destructive',
                                         onPress: async () => {
+                                            await unregisterCurrentPushToken();
                                             await AsyncStorage.removeItem('userToken');
                                             await AsyncStorage.removeItem('institutionType');
                                             clearInstitution();

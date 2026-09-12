@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { AtSign, ChevronRight, Eye, EyeOff, Lock, LogIn } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -178,6 +179,9 @@ export default function LoginScreen() {
             await AsyncStorage.setItem('userToken', token);
             await AsyncStorage.setItem('mustChangePassword', user.mustChangePassword ? 'true' : 'false');
             await AsyncStorage.setItem('userRole', user.role);
+
+            // Fire-and-forget — permission prompt/registration must never block login navigation.
+            void registerForPushNotifications();
 
             if (institution?.type) setInstitution(institution.type);
 

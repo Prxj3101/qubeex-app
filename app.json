@@ -43,7 +43,14 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#DA7756"
+        }
+      ]
     ],
     "extra": {
       "eas": {

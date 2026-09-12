@@ -4,6 +4,7 @@ import { useInstitution } from '@/context/InstitutionContext';
 import { useTeacher } from '@/context/TeacherContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
+import { unregisterCurrentPushToken } from '@/lib/pushNotifications';
 import { colorForSubject } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -951,7 +952,7 @@ export default function TeacherProfileScreen() {
                         <ChevronRight size={16} color={subText} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 4 }}>
+                    <TouchableOpacity onPress={() => router.push('/notifications')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 4 }}>
                         <View style={{
                             width: 36, height: 36, borderRadius: 10,
                             backgroundColor: blueColor + '20',
@@ -973,6 +974,7 @@ export default function TeacherProfileScreen() {
                                     text: 'Logout',
                                     style: 'destructive',
                                     onPress: async () => {
+                                        await unregisterCurrentPushToken();
                                         await AsyncStorage.removeItem('userToken');
                                         await AsyncStorage.removeItem('institutionType');
                                         clearInstitution();

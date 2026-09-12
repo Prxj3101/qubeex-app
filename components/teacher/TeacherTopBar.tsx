@@ -1,6 +1,8 @@
 import { useBranding } from '@/context/BrandingContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Bell, Moon, Sun } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +13,8 @@ import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-nat
 export function TeacherTopBar() {
     const { isDark, toggleTheme, accent } = useTheme();
     const { branding } = useBranding();
+    const { unreadCount } = useUnreadNotifications();
+    const router = useRouter();
 
     const brandAnim = useRef(new Animated.Value(0)).current;
     const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,10 +104,16 @@ export function TeacherTopBar() {
             </View>
 
             <View style={styles.rightRow}>
-                <View style={[styles.iconBtn, { backgroundColor: iconBg }]}>
+                <Pressable
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push('/notifications');
+                    }}
+                    style={({ pressed }) => [styles.iconBtn, { backgroundColor: iconBg, opacity: pressed ? 0.6 : 1 }]}
+                >
                     <Bell size={20} color={iconColor} strokeWidth={1.5} />
-                    <View style={styles.bellDot} />
-                </View>
+                    {unreadCount > 0 && <View style={styles.bellDot} />}
+                </Pressable>
                 <Pressable
                     onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
