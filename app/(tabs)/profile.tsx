@@ -11,19 +11,22 @@ import api from '@/lib/api';
 import { unregisterCurrentPushToken } from '@/lib/pushNotifications';
 import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAppIconSafe as getAppIcon, setAppIconSafe as setAppIcon } from '@/lib/appIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter, useNavigation } from 'expo-router';
 import {
     Award,
     BarChart2, Bell, CalendarDays,
+    Check,
     ChevronRight,
     Flag, IndianRupee, LogOut,
+    ImageIcon,
     Star,
     Trophy,
     User
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 
 import Constants from 'expo-constants';
@@ -336,6 +339,38 @@ export default function Profile() {
     const [attendanceApiData, setAttendanceApiData] = useState<AttendanceData | null>(null);
     const [marksheetData, setMarksheetData] = useState<{ subjects: MarksheetSubject[]; grandPct: number | null; classRank: number | null; offlineClassRank?: number | null; onlineClassRank?: number | null; combinedClassRank?: number | null; classSize: number | null } | null>(null);
     const [flags, setFlags] = useState<FlagItem[]>([]);
+
+    // ── App icon (same 3 launcher variants as the teacher app) ──
+    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('black');
+    const [iconPickerOpen, setIconPickerOpen] = useState(false);
+    const [iconSwitching, setIconSwitching] = useState<string | null>(null);
+
+    useEffect(() => {
+        try {
+            const current = getAppIcon();
+            if (current === 'white' || current === 'transparent') setAppIconState(current);
+            else setAppIconState('black');
+        } catch {
+            // dev client not rebuilt yet with the icon plugin — keep the default
+        }
+    }, []);
+
+    const handlePickAppIcon = async (key: 'black' | 'white' | 'transparent') => {
+        if (key === appIcon || iconSwitching) return;
+        setIconSwitching(key);
+        try {
+            const result = setAppIcon(key === 'black' ? null : key);
+            if (result === false) {
+                Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
+            } else {
+                setAppIconState(key);
+            }
+        } catch {
+            Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
+        } finally {
+            setIconSwitching(null);
+        }
+    };
 
     // ── Fees overview — same derivation as the Fee Details screen ──
     const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
@@ -1103,6 +1138,72 @@ export default function Profile() {
                             </Text>
                             <ChevronRight size={16} color={theme.muted} />
                         </TouchableOpacity>
+
+                        {/* App Icon */}
+                        <TouchableOpacity onPress={() => setIconPickerOpen((v) => !v)} style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: 4,
+                        }}>
+                            <View style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 10,
+                                backgroundColor: theme.purple + '20',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}>
+                                <ImageIcon size={16} color={theme.purple} />
+                            </View>
+                            <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>
+                                App Icon
+                            </Text>
+                            <ChevronRight size={16} color={theme.muted} style={{ transform: [{ rotate: iconPickerOpen ? '90deg' : '0deg' }] }} />
+                        </TouchableOpacity>
+
+                        {iconPickerOpen && (
+                            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 4, paddingBottom: 10, paddingTop: 2 }}>
+                                {([
+                                    { key: 'black' as const, label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
+                                    { key: 'white' as const, label: 'White', image: require('@/assets/icon-white.png'), swatchBg: '#FFFFFF' },
+                                    { key: 'transparent' as const, label: 'Transparent', image: require('@/assets/icon-transparent-fg.png'), swatchBg: '#F1F5F9' },
+                                ]).map((opt) => {
+                                    const selected = appIcon === opt.key;
+                                    const busy = iconSwitching === opt.key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={opt.key}
+                                            onPress={() => handlePickAppIcon(opt.key)}
+                                            disabled={!!iconSwitching}
+                                            style={{ flex: 1, alignItems: 'center', gap: 6, opacity: iconSwitching && !busy ? 0.5 : 1 }}
+                                        >
+                                            <View style={{
+                                                width: 48, height: 48, borderRadius: 14,
+                                                backgroundColor: opt.swatchBg,
+                                                borderWidth: selected ? 2.5 : 1,
+                                                borderColor: selected ? theme.purple : theme.cardBorder,
+                                                alignItems: 'center', justifyContent: 'center',
+                                                overflow: 'hidden',
+                                            }}>
+                                                <Image source={opt.image} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                                                {busy && (
+                                                    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <ActivityIndicator size="small" color="#fff" />
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                {selected && <Check size={10} color={theme.purple} />}
+                                                <Text style={{ fontSize: 10.5, fontFamily: selected ? 'Poppins_600SemiBold' : 'Poppins_400Regular', color: selected ? theme.purple : theme.subText }}>
+                                                    {opt.label}
+                                                </Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        )}
 
                         {/* Logout */}
                         <TouchableOpacity

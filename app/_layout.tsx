@@ -12,9 +12,19 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { useEffect, useRef, useState } from 'react';
+import { LogBox } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
+
+// The app-icon switcher (@g9k/expo-dynamic-app-icon) resolves its native
+// module the moment it's touched, which is unavailable in Expo Go and in any
+// dev client built before this feature was added — lib/appIcon.ts already
+// catches the throw so the app keeps working, but the underlying library
+// still logs it via console.error on its way out, which Metro's LogBox would
+// otherwise surface as a red screen on every load. Silencing just this one
+// known, non-fatal message.
+LogBox.ignoreLogs(["Cannot find native module 'ExpoDynamicAppIcon'"]);
 
 function AuthGate() {
     const [ready, setReady] = useState(false);

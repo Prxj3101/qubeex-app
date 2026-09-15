@@ -3,6 +3,7 @@ import { useBranding } from '@/context/BrandingContext';
 import { useInstitution } from '@/context/InstitutionContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
+import { getAppIconSafe as getAppIcon, setAppIconSafe as setAppIcon } from '@/lib/appIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
@@ -13,6 +14,7 @@ import {
     Eye,
     EyeOff,
     Hash,
+    ImageIcon,
     KeyRound,
     Lock,
     Mail,
@@ -23,9 +25,21 @@ import {
     User as UserIcon,
     X,
 } from 'lucide-react-native';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// App-icon variants bundled via the @g9k/expo-dynamic-app-icon config plugin
+// (see app.json). "black" is the app's shipped default — passing that name
+// to setAppIcon() is equivalent to null/reset here since it matches the
+// icon already declared at the top level, so it doubles as the "reset" option.
+// The swatch shows the actual icon artwork (not a flat color) so it reads as
+// a live preview rather than an abstract color picker.
+const APP_ICON_OPTIONS: { key: 'black' | 'white' | 'transparent'; label: string; image: number; swatchBg: string; swatchBorder?: string }[] = [
+    { key: 'black', label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
+    { key: 'white', label: 'White', image: require('@/assets/icon-white.png'), swatchBg: '#FFFFFF', swatchBorder: '#E2E8F0' },
+    { key: 'transparent', label: 'Transparent', image: require('@/assets/icon-transparent-fg.png'), swatchBg: '#F1F5F9', swatchBorder: '#E2E8F0' },
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function toIST(iso?: string | null) {
@@ -117,6 +131,37 @@ export default function TeacherSettingsScreen() {
         !samePwd &&
         (strength.level === 'medium' || strength.level === 'strong' || strength.level === 'very-strong');
 
+    // ── App icon ──
+    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('black');
+    const [iconSwitching, setIconSwitching] = useState<string | null>(null);
+
+    useEffect(() => {
+        try {
+            const current = getAppIcon();
+            if (current === 'white' || current === 'transparent') setAppIconState(current);
+            else setAppIconState('black'); // "DEFAULT"/null/"black" all mean the shipped black icon
+        } catch {
+            // dev client not rebuilt yet with the icon plugin — keep the default
+        }
+    }, []);
+
+    const handlePickAppIcon = async (key: 'black' | 'white' | 'transparent') => {
+        if (key === appIcon || iconSwitching) return;
+        setIconSwitching(key);
+        try {
+            const result = setAppIcon(key === 'black' ? null : key);
+            if (result === false) {
+                Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
+            } else {
+                setAppIconState(key);
+            }
+        } catch {
+            Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
+        } finally {
+            setIconSwitching(null);
+        }
+    };
+
     const fetchedProfile = useRef(false);
     const fetchedActivity = useRef(false);
 
@@ -132,7 +177,6 @@ export default function TeacherSettingsScreen() {
                     setName(p.name ?? '');
                     setEmail(p.email ?? '');
                     setCreatedAt(p.createdAt ?? null);
-                    setSnapshot({ name: p.name ?? '', email: p.email ?? '' });
                 } catch {
                     // keep blank on failure
                 } finally {
@@ -267,6 +311,64 @@ export default function TeacherSettingsScreen() {
                                 <Text style={[styles.infoValue, { color: text, fontFamily: 'RobotoMono_600SemiBold' }]}>{activityLoading ? '…' : (loginActivity[0]?.ip ?? '—')}</Text>
                             </View>
                         </View>
+                    </View>
+                </View>
+
+                {/* App Icon */}
+                <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+                    <View style={{ borderRadius: 20, overflow: 'hidden' }}>
+                        <View style={[styles.sectionHeader, { borderBottomColor: cardBorder, backgroundColor: isDark ? '#1A1A1A' : '#FAFAFF' }]}>
+                            <View style={styles.sectionHeaderLeft}>
+                                <View style={[styles.iconBox, { backgroundColor: accent.purpleLight }]}>
+                                    <ImageIcon size={15} color={accent.purple} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.sectionTitle, { color: text }]}>App Icon</Text>
+                                    <Text style={[styles.sectionDesc, { color: subText }]}>Choose the QubeEx icon on your home screen</Text>
+                                </View>
+                            </View>
+                        </View>
+                        <View style={[styles.sectionContent, { flexDirection: 'row', gap: 12 }]}>
+                            {APP_ICON_OPTIONS.map((opt) => {
+                                const selected = appIcon === opt.key;
+                                const busy = iconSwitching === opt.key;
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.key}
+                                        onPress={() => handlePickAppIcon(opt.key)}
+                                        disabled={!!iconSwitching}
+                                        style={{ flex: 1, alignItems: 'center', gap: 6, opacity: iconSwitching && !busy ? 0.5 : 1 }}
+                                    >
+                                        <View
+                                            style={[
+                                                styles.iconSwatch,
+                                                {
+                                                    backgroundColor: opt.swatchBg,
+                                                    borderColor: selected ? accent.purple : (opt.swatchBorder ?? 'transparent'),
+                                                    borderWidth: selected ? 2.5 : (opt.swatchBorder ? 1 : 0),
+                                                },
+                                            ]}
+                                        >
+                                            <Image source={opt.image} style={styles.iconSwatchImage} resizeMode="cover" />
+                                            {busy && (
+                                                <View style={styles.iconSwatchOverlay}>
+                                                    <ActivityIndicator size="small" color="#fff" />
+                                                </View>
+                                            )}
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            {selected && <Check size={11} color={accent.purple} />}
+                                            <Text style={[styles.sectionDesc, { color: selected ? accent.purple : subText, fontFamily: selected ? 'Poppins_600SemiBold' : 'Poppins_400Regular' }]}>
+                                                {opt.label}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: subText, paddingHorizontal: 16, paddingBottom: 14, marginTop: -6 }}>
+                            On Android the icon updates as soon as the app goes to background; on iOS it applies instantly with a one-time system confirmation.
+                        </Text>
                     </View>
                 </View>
 
@@ -676,5 +778,30 @@ const styles = StyleSheet.create({
         fontSize: 11.5,
         fontFamily: 'Poppins_600SemiBold',
         color: '#fff',
+    },
+    iconSwatch: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    iconSwatchImage: {
+        width: '100%',
+        height: '100%',
+    },
+    iconSwatchOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.25)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    iconSwatchCheck: {
+        width: 20,
+        height: 20,
+        borderRadius: 99,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

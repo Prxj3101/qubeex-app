@@ -51,6 +51,26 @@
           "icon": "./assets/icon.png",
           "color": "#DA7756"
         }
+      ],
+      [
+        "@g9k/expo-dynamic-app-icon",
+        {
+          "black": {
+            "ios": "./assets/icon-black.png",
+            "android": "./assets/icon-black.png"
+          },
+          "white": {
+            "ios": "./assets/icon-white.png",
+            "android": "./assets/icon-white.png"
+          },
+          "transparent": {
+            "ios": "./assets/icon-black.png",
+            "android": {
+              "foregroundImage": "./assets/icon-transparent-fg.png",
+              "backgroundColor": "#FFFFFF"
+            }
+          }
+        }
       ]
     ],
     "extra": {
