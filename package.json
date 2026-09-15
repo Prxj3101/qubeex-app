@@ -70,5 +70,10 @@
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
+  "pnpm": {
+    "overrides": {
+      "expo-modules-core": "57.0.16"
+    }
+  },
   "private": true
 }
