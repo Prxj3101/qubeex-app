@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+
+// Slightly smaller text sizes across the board — now applied on both platforms.
+const IS_ANDROID = true;
 import Svg, { Circle, Defs, Line, Pattern, Rect } from 'react-native-svg';
 
 // Same source as qubeex-web's teacher overview Blackboard widget (THOUGHTS + getTodaysThought)
@@ -131,7 +134,7 @@ export function TeacherThoughtOfTheDay() {
                     {/* Date */}
                     <View style={{ position: 'absolute', top: 7, left: 14 }}>
                         <Text style={{
-                            fontSize: 13,
+                            fontSize: IS_ANDROID ? 12 : 13,
                             color: 'rgba(255,255,255,0.5)',
                             fontFamily: 'Caveat_400Regular',
                             letterSpacing: 0.5,
@@ -259,7 +262,7 @@ const styles = StyleSheet.create({
     headerArea: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 14,
+        marginTop: Platform.OS === 'android' ? 20 : 14,
         paddingHorizontal: 14,
         gap: 8,
     },
@@ -276,7 +279,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     headerText: {
-        fontSize: 13,
+        fontSize: Platform.OS === 'android' ? 12 : 13,
         color: CHALK_DIM,
         fontFamily: 'Caveat_700Bold',
         letterSpacing: 1.8,
@@ -288,14 +291,14 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     quoteOpen: {
-        fontSize: 52,
+        fontSize: IS_ANDROID ? 51 : 52,
         color: 'rgba(255,255,255,0.12)',
         fontFamily: 'Poppins_800ExtraBold',
         lineHeight: 42,
         marginBottom: -8,
     },
     thoughtText: {
-        fontSize: 22,
+        fontSize: IS_ANDROID ? 21 : 22,
         color: CHALK_WHITE,
         fontFamily: 'Caveat_400Regular',
         lineHeight: 22,
@@ -318,7 +321,7 @@ const styles = StyleSheet.create({
         opacity: 0.4,
     },
     authorText: {
-        fontSize: 15,
+        fontSize: IS_ANDROID ? 14 : 15,
         color: CHALK_DIM,
         fontFamily: 'Caveat_700Bold',
         letterSpacing: 0.3,

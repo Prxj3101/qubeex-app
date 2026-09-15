@@ -105,7 +105,7 @@ export default function ReportCard() {
 
     if (loading) {
         return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
                 <ScreenHeader title="Report Card" showBack />
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                     <ActivityIndicator size="large" color={theme.purple} />
@@ -116,7 +116,7 @@ export default function ReportCard() {
 
     if (!data) {
         return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
                 <ScreenHeader title="Report Card" showBack />
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
                     <Text style={{ fontSize: 14, fontFamily: 'Poppins_500Medium', color: theme.muted, textAlign: 'center' }}>
@@ -142,7 +142,7 @@ export default function ReportCard() {
     const overallPct = combinedMax > 0 ? Math.round((combinedScored / combinedMax) * 100) : null;
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Report Card" showBack />
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never" contentContainerStyle={{ padding: 14, gap: 14 }}>
 

@@ -3,7 +3,7 @@ import { SillyStringOverlay } from '@/components/SillyStringOverlay';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDisplayName } from '@/lib/displayName';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 
 // Same rotating casual line as the web teacher overview hero
 // (CASUAL_MESSAGES / getCasualMessage in qubeex-web's app/teacher/overview/page.tsx)
@@ -247,21 +247,21 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   greetingText: {
-    fontSize: 17,
+    fontSize: Platform.OS === 'android' ? 15 : 16,
     color: 'rgba(255,255,255,0.7)',
   },
   nameText: {
-    fontSize: 24,
+    fontSize: Platform.OS === 'android' ? 22 : 23,
     fontWeight: '400',
     color: 'white',
     lineHeight: 26,
   },
   subText: {
-    fontSize: 13.5,
+    fontSize: Platform.OS === 'android' ? 11.5 : 12.5,
     color: 'rgba(255,255,255,0.65)',
   },
   dateText: {
-    fontSize: 12,
+    fontSize: Platform.OS === 'android' ? 10 : 11,
     color: 'rgba(255,255,255,0.5)',
     marginTop: 3,
   },

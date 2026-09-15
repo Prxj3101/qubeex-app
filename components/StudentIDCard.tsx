@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ChevronRight, Copy, Hash } from 'lucide-react-native';
 import { useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const LIGHT = {
     card: '#FFFFFF', cardBorder: '#EDE9FE',
@@ -114,8 +114,8 @@ export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean
                         onPress={() => router.push('/student_detail')}
                         style={{
                             backgroundColor: 'rgba(255,255,255,0.2)',
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
+                            paddingHorizontal: Platform.OS === 'android' ? 9 : 10,
+                            paddingVertical: Platform.OS === 'android' ? 4 : 5,
                             borderRadius: 99,
                             flexDirection: 'row',
                             alignItems: 'center',
@@ -123,7 +123,7 @@ export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean
                             flexShrink: 0,
                         }}
                     >
-                        <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: 'white', top: 1 }}>
+                        <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: 'white', top: Platform.OS === 'android' ? -1 : 1 }}>
                             View
                         </Text>
                         <ChevronRight size={12} color="white" />
@@ -205,7 +205,7 @@ export function StudentIDCard({ isDark, noHorizontalPadding }: { isDark: boolean
 const idStyles = StyleSheet.create({
     card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
     strip: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    instituteName: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: 'white' },
+    instituteName: { fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: 'white' },
     instituteTag: { fontSize: 10, fontFamily: 'Poppins_400Regular', color: 'rgba(255,255,255,0.75)' },
     logoWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     logoImage: { width: '100%', height: '100%' },

@@ -367,7 +367,7 @@ export default function TeacherSettingsScreen() {
                             })}
                         </View>
                         <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: subText, paddingHorizontal: 16, paddingBottom: 14, marginTop: -6 }}>
-                            On Android the icon updates as soon as the app goes to background; on iOS it applies instantly with a one-time system confirmation.
+                            On Android, after picking an icon press Home and wait about 10 seconds before checking your home screen. On iOS it applies instantly with a one-time system confirmation.
                         </Text>
                     </View>
                 </View>

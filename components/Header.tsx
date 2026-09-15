@@ -209,21 +209,21 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   greetingText: {
-    fontSize: 17,
+    fontSize: 16,
     color: 'rgba(255,255,255,0.7)',
   },
   nameText: {
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: '400',
     color: 'white',
     lineHeight: 26,
   },
   subText: {
-    fontSize: 14.5,
+    fontSize: 13.5,
     color: 'rgba(255,255,255,0.65)',
   },
   dateText: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.5)',
   },
   charImage: {

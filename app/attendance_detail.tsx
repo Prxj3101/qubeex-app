@@ -14,6 +14,7 @@ import {
     TouchableOpacity,
     View,
     ActivityIndicator,
+    Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -118,7 +119,7 @@ export default function AttendanceDetail() {
 
     if (loading) {
         return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
                 <ScreenHeader title="Attendance Details" showBack />
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                     <ActivityIndicator size="large" color={theme.purple} />
@@ -128,7 +129,7 @@ export default function AttendanceDetail() {
     }
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Attendance Details" showBack />
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never" contentContainerStyle={{ paddingBottom: 40 }}>
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, Pattern, Rect } from 'react-native-svg';
 
 const THOUGHTS = [
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     headerArea: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 14,
+        marginTop: Platform.OS === 'android' ? 20 : 14,
         paddingHorizontal: 14,
         gap: 8,
     },
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     headerText: {
-        fontSize: 13,
+        fontSize: Platform.OS === 'android' ? 12 : 13,
         color: CHALK_DIM,
         fontFamily: 'Caveat_700Bold',
         letterSpacing: 1.8,

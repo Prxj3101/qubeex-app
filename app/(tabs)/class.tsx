@@ -5,7 +5,16 @@ import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
+// Loaded lazily — see the same note in fees_detail.tsx. Expo Go doesn't have
+// this native module and throws the instant it's statically imported.
+function loadMediaLibrary(): typeof import('expo-media-library') | null {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        return require('expo-media-library');
+    } catch {
+        return null;
+    }
+}
 import {
     BookOpen,
     Calendar,
@@ -216,6 +225,8 @@ function TimetableImageCard({ theme, isDark, timetableUrl }: { theme: typeof LIG
 
     const handleDownload = async () => {
         if (!timetableUrl) return;
+        const MediaLibrary = loadMediaLibrary();
+        if (!MediaLibrary) { setDownloadMsg('Needs a full app build'); setTimeout(() => setDownloadMsg(''), 2500); return; }
         try {
             const { status } = await MediaLibrary.requestPermissionsAsync();
             if (status !== 'granted') { setDownloadMsg('Permission denied'); setTimeout(() => setDownloadMsg(''), 2500); return; }

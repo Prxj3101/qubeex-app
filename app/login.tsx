@@ -259,7 +259,7 @@ export default function LoginScreen() {
                                                 <AtSign size={15} color={focused === 'id' ? '#71717A' : 'rgba(255,255,255,0.25)'} style={styles.leftIcon} />
                                                 <TextInput
                                                     style={styles.input}
-                                                    placeholder="you@example.com or INST-0001"
+                                                    placeholder="you@gmail.com or INST-0001"
                                                     placeholderTextColor="rgba(255,255,255,0.2)"
                                                     value={identifier}
                                                     onChangeText={handleIdentifierChange}

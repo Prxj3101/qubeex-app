@@ -4,10 +4,7 @@ import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import api from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import {
-    AlertTriangle, Bell, Bug, Calendar, CreditCard, IndianRupee,
-    Megaphone, ShieldAlert, Sparkles, Wrench, type LucideIcon,
-} from 'lucide-react-native';
+import { Bell } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,10 +30,10 @@ type Notif = {
     isRead: boolean;
 };
 
-const TAG_ICONS: Record<string, LucideIcon> = {
-    ANNOUNCEMENT: Megaphone, MAINTENANCE: Wrench, UPDATE: Bell, FEATURE: Sparkles,
-    BUG_FIXED: Bug, PLAN_EXPIRY: CreditCard, SECURITY: ShieldAlert,
-    FEE_DUE: IndianRupee, EXAM_REMINDER: Calendar, ATTENDANCE_WARNING: AlertTriangle,
+const TAG_EMOJI: Record<string, string> = {
+    ANNOUNCEMENT: '📢', MAINTENANCE: '🛠️', UPDATE: '🔔', FEATURE: '✨',
+    BUG_FIXED: '🐛', PLAN_EXPIRY: '💳', SECURITY: '🛡️',
+    FEE_DUE: '💰', EXAM_REMINDER: '📅', ATTENDANCE_WARNING: '⚠️',
 };
 
 function relativeTime(dateStr: string): string {
@@ -164,7 +161,7 @@ export default function NotificationsScreen() {
                         ) : (
                             <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                                 {notifs.map((n, i) => {
-                                    const Icon = TAG_ICONS[n.tag] ?? Bell;
+                                    const emoji = TAG_EMOJI[n.tag] ?? '🔔';
                                     return (
                                         <Pressable
                                             key={n.recipientId}
@@ -176,7 +173,7 @@ export default function NotificationsScreen() {
                                             ]}
                                         >
                                             <View style={[styles.iconWrap, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}>
-                                                <Icon size={16} color={theme.purple} strokeWidth={1.5} />
+                                                <Text style={{ fontSize: 16 }}>{emoji}</Text>
                                             </View>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={[styles.title, { color: theme.text, fontFamily: n.isRead ? 'Poppins_600SemiBold' : 'Poppins_700Bold' }]}>

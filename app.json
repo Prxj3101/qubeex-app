@@ -57,7 +57,10 @@
         {
           "black": {
             "ios": "./assets/icon-black.png",
-            "android": "./assets/icon-black.png"
+            "android": {
+              "foregroundImage": "./assets/icon-transparent-fg.png",
+              "backgroundColor": "#000000"
+            }
           },
           "white": {
             "ios": "./assets/icon-white.png",
@@ -71,7 +74,8 @@
             }
           }
         }
-      ]
+      ],
+      "expo-image"
     ],
     "extra": {
       "eas": {

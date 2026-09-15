@@ -2,7 +2,20 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
+// expo-media-library's newer native module isn't present in the Expo Go
+// client (throws "Cannot find native module 'ExpoMediaLibraryNext'" the
+// instant it's imported), which would crash this whole screen on load in
+// Expo Go. Loaded lazily inside downloadQrCode() instead, where it's the
+// only thing that uses it — real builds (dev client / EAS) have the module
+// and work exactly as before.
+function loadMediaLibrary(): typeof import('expo-media-library') | null {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        return require('expo-media-library');
+    } catch {
+        return null;
+    }
+}
 import {
     Building2, ChevronDown, CreditCard, Download, ImagePlus, Landmark, QrCode, Wallet, X,
 } from 'lucide-react-native';
@@ -423,7 +436,7 @@ function FeeFlipCard({
                                 {/* Header row */}
                                 <View style={{ flexDirection: 'row', backgroundColor: fc.bg, borderBottomWidth: 1, borderBottomColor: fc.border }}>
                                     {[
-                                        ['Month', 80], ['Fee Structures', 185], ['Amount (₹)', 80],
+                                        ['Month', 96], ['Fee Structures', 185], ['Amount (₹)', 80],
                                         ['Due Date', 100], ['Paid Date', 100], ['Status', 100], ['Remark', 90],
                                     ].map(([col, w], i, arr) => (
                                         <Text key={i} style={{ width: w as number, paddingHorizontal: 8, paddingVertical: 8, fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: '#000000', borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: fc.border }}>{col}</Text>
@@ -447,7 +460,7 @@ function FeeFlipCard({
                                                 activeOpacity={0.7}
                                                 onPress={() => setSelectedMonth(isSelected ? null : m.id)}
                                                 style={{ flexDirection: 'row', borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: fc.border, backgroundColor: isSelected ? `${fc.border}80` : i % 2 === 1 ? fc.bg : 'transparent' }}>
-                                                <Text style={{ width: 80,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_600SemiBold', color: '#000000', borderRightWidth: 1, borderRightColor: fc.border }}>{m.month}</Text>
+                                                <Text style={{ width: 96,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_600SemiBold', color: '#000000', borderRightWidth: 1, borderRightColor: fc.border }}>{m.month}</Text>
                                                 <View style={{ width: 185, paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 3, alignItems: 'center', borderRightWidth: 1, borderRightColor: fc.border }}>
                                                     {assigned.length === 0 && extraStructures.length === 0 && !autoLateFee && !autoBusFee
                                                         ? <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: '#000000', opacity: 0.4 }}>—</Text>
@@ -490,7 +503,7 @@ function FeeFlipCard({
                                     })}
                                     {/* Annual Total row */}
                                     <View style={{ flexDirection: 'row', borderTopWidth: 2, borderTopColor: fc.border, backgroundColor: fc.bg }}>
-                                        <Text style={{ width: 80,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_700Bold', color: '#000000' }}>Annual Total</Text>
+                                        <Text style={{ width: 96,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_700Bold', color: '#000000' }}>Annual Total</Text>
                                         <View style={{ width: 185 }} />
                                         <Text style={{ width: 80,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_800ExtraBold', color: '#000000' }}>
                                             ₹{feeMonths.reduce((n, m) => n + studentMonthTotal(m), 0).toLocaleString()}
@@ -719,6 +732,11 @@ export default function FeesDetail() {
 
     const downloadQrCode = async () => {
         if (!qrImageUrl) return;
+        const MediaLibrary = loadMediaLibrary();
+        if (!MediaLibrary) {
+            Alert.alert('Not available here', 'Saving to photos needs a full app build — this preview (Expo Go) doesn’t support it.');
+            return;
+        }
         setQrDownloading(true);
         try {
             const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -776,14 +794,14 @@ export default function FeesDetail() {
 
     if (loading) {
         return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
                 <ScreenHeader title="Fee Details" showBack />
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Fee Details" showBack />
 
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 40 }}>

@@ -233,7 +233,14 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                                 { transform: [{ translateX }] }
                             ]}>
                                 <Text style={styles.knobEmoji}>
-                                    {isParentView ? '👨‍👩‍👦' : '🧑‍🎓'}
+                                    {isParentView
+                                        ? '👨‍👩‍👦'
+                                        // '🧑‍🎓' is a ZWJ sequence (person + graduation cap joined
+                                        // via a zero-width joiner). Some Android emoji fonts don't
+                                        // support that join and render it as two separate emoji
+                                        // side by side instead of one combined glyph. '🎓' alone is
+                                        // a single codepoint, so it always renders as one emoji.
+                                        : (Platform.OS === 'android' ? '🎓' : '🧑‍🎓')}
                                 </Text>
                             </Animated.View>
                         </Animated.View>
@@ -287,7 +294,7 @@ const styles = StyleSheet.create({
         marginLeft: 0,
     },
     brandName: {
-        fontSize: 25,
+        fontSize: 23,
         letterSpacing: 0.2,
         fontFamily: 'Poppins_800ExtraBold',
         zIndex: 1,

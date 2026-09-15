@@ -7,6 +7,7 @@ import {
     ActivityIndicator,
     Alert,
     Keyboard,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -260,7 +261,7 @@ export const TeacherNotepad = forwardRef<TeacherNotepadHandle>(function TeacherN
                         </View>
                     )}
 
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
                         {tasks.filter((t) => !t.done).map((task) => (
                             <View key={task.id} style={styles.taskRow}>
                                 <TouchableOpacity
@@ -383,7 +384,7 @@ export const TeacherNotepad = forwardRef<TeacherNotepadHandle>(function TeacherN
                         </View>
                     )}
 
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
                         {notes.length === 0 ? (
                             <View style={styles.emptyBox}>
                                 <StickyNote size={20} color={subText} />
@@ -548,6 +549,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         fontSize: 12,
         fontFamily: 'Poppins_400Regular',
+        ...(Platform.OS === 'android' ? { textAlignVertical: 'center', includeFontPadding: false, paddingTop: 0, paddingBottom: 0 } : null),
     },
     addTextBtn: {
         height: 32,

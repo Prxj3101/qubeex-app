@@ -15,7 +15,18 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
+
+// Loaded lazily — see the same note in fees_detail.tsx / class.tsx. Expo Go
+// doesn't have this native module and throws the instant it's statically
+// imported, which would crash any screen that renders an attachment preview.
+function loadMediaLibrary(): typeof import('expo-media-library') | null {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        return require('expo-media-library');
+    } catch {
+        return null;
+    }
+}
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -38,6 +49,8 @@ function isVideo(type: string, name: string) {
 
 // ── Download helper ───────────────────────────────────────────────────────────
 async function downloadAttachment(url: string, name: string, onDone: () => void) {
+    const MediaLibrary = loadMediaLibrary();
+    if (!MediaLibrary) return; // Expo Go — no media library module available
     try {
         const { status } = await MediaLibrary.requestPermissionsAsync();
         const dest = (FileSystem.cacheDirectory ?? '') + name;

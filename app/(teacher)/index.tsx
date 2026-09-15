@@ -12,7 +12,7 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import Constants from 'expo-constants';
 import { AlertTriangle, BookOpen, ClipboardList, LayoutGrid, TrendingUp } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8' };
 const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     body: { padding: 14, gap: 14 },
     statGrid: { flexDirection: 'row', gap: 10, paddingHorizontal: 2 },
-    statCard: { width: 156, borderRadius: 16, borderWidth: 1, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    statCard: { width: 172, borderRadius: 16, borderWidth: 1, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
     statIconWrap: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
     statValue: { fontSize: 18, fontFamily: 'Poppins_700Bold', lineHeight: 20 },
     statLabel: { fontSize: 11.5, fontFamily: 'Poppins_400Regular' },

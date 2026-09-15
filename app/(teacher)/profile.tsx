@@ -17,6 +17,7 @@ import {
     Alert,
     Image,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -74,7 +75,7 @@ function getInitials(name: string) {
 }
 function formatDate(iso?: string | null) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function formatTokens(n: number, decimals: number = 1): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(decimals)}M`;
@@ -819,7 +820,12 @@ export default function TeacherProfileScreen() {
                                     <View style={styles.infoRow}>
                                         <Mail size={14} color={subText} />
                                         <Text style={[styles.infoLabel, { color: subText }]}>Email</Text>
-                                        <Text style={[styles.infoValue, { color: text }]} numberOfLines={1}>{teacher.user.email}</Text>
+                                        <Text
+                                            style={[styles.infoValue, { color: text }, Platform.OS === 'android' && { fontSize: 11.5 }]}
+                                            numberOfLines={Platform.OS === 'android' ? 2 : 1}
+                                        >
+                                            {teacher.user.email}
+                                        </Text>
                                     </View>
                                     <View style={styles.infoRow}>
                                         <Phone size={14} color={subText} />
@@ -1156,7 +1162,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     statValue: {
-        fontSize: 13.5,
+        fontSize: 11.5,
         fontFamily: 'Poppins_700Bold',
     },
     statLabel: {
@@ -1278,6 +1284,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         fontSize: 12,
         fontFamily: 'Poppins_400Regular',
+        ...(Platform.OS === 'android' ? { textAlignVertical: 'center', includeFontPadding: false, paddingTop: 0, paddingBottom: 0 } : null),
     },
     chipsWrap: {
         flexDirection: 'row',

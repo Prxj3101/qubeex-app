@@ -95,13 +95,13 @@ export interface MarksheetData {
 
 // Sheet layout constants
 const ROW_H = 32;
-const SUBJ_COL_W = 110;
-const EXAM_COL_W = 56;
+const SUBJ_COL_W = 128;
+const EXAM_COL_W = 68;
 const TOTAL_COL_W = 64;
 const PCT_COL_W = 46;
 const GRADE_COL_W = 48;
 const TESTS_MARKS_COL_W = 210;
-const GRADED_NAME_W = 100;
+const GRADED_NAME_W = 115;
 const GRADED_TERM_W = 64;
 
 const SHEET_HEADER_BG = '#EDE4D6';

@@ -619,7 +619,7 @@ export default function Profile() {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <BarChart2 size={16} color={theme.purple} />
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Subject Performance</Text>
+                                <Text style={{ fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: Platform.OS === 'android' ? 5 : 0 }}>Subject Performance</Text>
                             </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/report_card')}
@@ -628,8 +628,8 @@ export default function Profile() {
                                     // lavender in light mode, which looked colored regardless
                                     // of the institution's actual theme.
                                     backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
+                                    paddingHorizontal: Platform.OS === 'android' ? 9 : 10,
+                                    paddingVertical: Platform.OS === 'android' ? 4 : 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -637,7 +637,7 @@ export default function Profile() {
                                     flexShrink: 0,
                                 }}
                             >
-                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View Report Card</Text>
+                                <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: Platform.OS === 'android' ? 0 : 1 }}>View Report Card</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -660,14 +660,14 @@ export default function Profile() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <CalendarDays size={16} color={theme.green} />
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}> Attendance</Text>
+                                <Text style={{ fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: Platform.OS === 'android' ? 3 : 0 }}> Attendance</Text>
                             </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/attendance_detail')}
                                 style={{
                                     backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
+                                    paddingHorizontal: Platform.OS === 'android' ? 9 : 10,
+                                    paddingVertical: Platform.OS === 'android' ? 4 : 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -675,7 +675,7 @@ export default function Profile() {
                                     flexShrink: 0,
                                 }}
                             >
-                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View Details</Text>
+                                <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: Platform.OS === 'android' ? 0 : 1 }}>View Details</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -913,14 +913,14 @@ export default function Profile() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <Flag size={16} color={theme.red} />
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Remarks: Flags & Warnings</Text>
+                                <Text style={{ fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: Platform.OS === 'android' ? 1 : 0 }}>Remarks: Flags & Warnings</Text>
                             </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/flags')}
                                 style={{
                                     backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9',
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
+                                    paddingHorizontal: Platform.OS === 'android' ? 9 : 10,
+                                    paddingVertical: Platform.OS === 'android' ? 4 : 5,
                                     borderRadius: 99,
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -928,7 +928,7 @@ export default function Profile() {
                                     flexShrink: 0,
                                 }}
                             >
-                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>View All</Text>
+                                <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: Platform.OS === 'android' ? 0 : 1 }}>View All</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -993,13 +993,13 @@ export default function Profile() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <IndianRupee size={16} color={theme.green} />
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Fees</Text>
+                                <Text style={{ fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: Platform.OS === 'android' ? 2 : 0 }}>Fees</Text>
                             </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/fees_detail')}
-                                style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                                style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: Platform.OS === 'android' ? 9 : 10, paddingVertical: Platform.OS === 'android' ? 4 : 5, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}
                             >
-                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>Pay Fees</Text>
+                                <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: Platform.OS === 'android' ? -1 : 1 }}>Pay Fees</Text>
                                 <ChevronRight size={12} color={theme.text} />
                             </TouchableOpacity>
                         </View>
@@ -1036,7 +1036,7 @@ export default function Profile() {
                                 <View>
                                     {/* Header — fixed */}
                                     <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
-                                        {[['Month', 75], ['Amount', 75], ['Due Date', 95], ['Paid Date', 95], ['Status', 100]].map(([col, w], i) => (
+                                        {[['Month', 90], ['Amount', 75], ['Due Date', 95], ['Paid Date', 95], ['Status', 100]].map(([col, w], i) => (
                                             <Text key={i} style={{ width: w as number, paddingHorizontal: 8, paddingVertical: 8, fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>{col}</Text>
                                         ))}
                                     </View>
@@ -1048,7 +1048,7 @@ export default function Profile() {
                                             </View>
                                         ) : feeMonthsProfile.map((m, i, arr) => (
                                             <View key={i} style={{ flexDirection: 'row', borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: theme.cardBorder }}>
-                                                <Text style={{ width: 75,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{m.month}</Text>
+                                                <Text style={{ width: 90,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{m.month}</Text>
                                                 <Text style={{ width: 75,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_400Regular',  color: theme.text }}>₹{m.amount.toLocaleString()}</Text>
                                                 <Text style={{ width: 95,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_400Regular',  color: theme.muted }}>{m.dueDate}</Text>
                                                 <Text style={{ width: 95,  paddingHorizontal: 8, paddingVertical: 8, fontSize: Platform.OS === 'ios' ? 12 : 11, fontFamily: 'Poppins_400Regular',  color: theme.muted }}>{m.paidDate ?? '—'}</Text>
@@ -1078,10 +1078,10 @@ export default function Profile() {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <Award size={16} color={theme.amber} />
-                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>Projects & Achievements</Text>
+                                <Text style={{ fontSize: Platform.OS === 'android' ? 13 : 14, fontFamily: 'Poppins_700Bold', color: theme.text, marginTop: Platform.OS === 'android' ? 3 : 0 }}>Projects & Achievements</Text>
                             </View>
-                            <View style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, opacity: 0.7, flexShrink: 0 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: 1 }}>Coming Soon</Text>
+                            <View style={{ backgroundColor: isDark ? '#2A2A2A' : '#F1F5F9', paddingHorizontal: Platform.OS === 'android' ? 9 : 10, paddingVertical: Platform.OS === 'android' ? 4 : 5, borderRadius: 99, opacity: 0.7, flexShrink: 0 }}>
+                                <Text numberOfLines={1} style={{ fontSize: Platform.OS === 'android' ? 10 : 11, lineHeight: 13, includeFontPadding: false, fontFamily: 'Poppins_600SemiBold', color: theme.text, top: Platform.OS === 'android' ? -1 : 1 }}>Coming Soon</Text>
                             </View>
                         </View>
                         <View style={{ gap: 8 }}>
@@ -1203,6 +1203,11 @@ export default function Profile() {
                                     );
                                 })}
                             </View>
+                        )}
+                        {iconPickerOpen && (
+                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.subText, paddingHorizontal: 4, marginTop: -6, marginBottom: 4 }}>
+                                On Android, after picking an icon press Home and wait about 10 seconds before checking your home screen.
+                            </Text>
                         )}
 
                         {/* Logout */}

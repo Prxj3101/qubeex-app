@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     logo: { width: 38, height: 38, borderRadius: 10, zIndex: 2, marginLeft: -4 },
     logoNoOffset: { marginLeft: 0 },
     brandName: {
-        fontSize: 25,
+        fontSize: 23,
         letterSpacing: 0.2,
         fontFamily: 'Poppins_800ExtraBold',
         zIndex: 1,

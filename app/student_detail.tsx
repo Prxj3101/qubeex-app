@@ -25,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Alert, Animated, Image, ScrollView,
+    Alert, Animated, Image, Platform, ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -729,6 +729,18 @@ function GuardianCard({
 export default function StudentDetail() {
     const { isDark, accent, themeColor } = useTheme();
     const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
+    // Address and Parents/Guardian fields shouldn't carry the institution's
+    // purple accent — only Student Info does — so their input borders/tints
+    // use a neutral gray instead, everything else about `theme` unchanged.
+    // (LIGHT.cardBorder happens to equal LIGHT.purpleLight, so reusing
+    // cardBorder as the neutral fill would be invisible in light mode —
+    // using an explicit gray that's distinct from both purpleLight and
+    // cardBorder in either mode.)
+    const neutralFieldTheme = {
+        ...theme,
+        purple: theme.muted,
+        purpleLight: isDark ? '#2A2A2A' : '#F1F5F9',
+    };
     const stripBase = isDark ? (STRIP_DARK_BASE[themeColor] ?? STRIP_DARK_BASE.purple) : theme.purple;
     const router = useRouter();
     const { photo, setPhoto, profile, fetchProfile, saveProfile, uploadPhoto, isSaving } = useStudent();
@@ -855,7 +867,7 @@ export default function StudentDetail() {
     const initials = data.name.split(' ').map(n => n[0]).join('');
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="My Profile" showBack />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
@@ -1099,21 +1111,21 @@ export default function StudentDetail() {
                         <EditableTextBlock
                             label="Address"
                             value={isEditing('address') ? draft.address : data.address}
-                            theme={theme}
+                            theme={neutralFieldTheme}
                             isEditing={isEditing('address')}
                             onChangeText={t => setDraft(d => ({ ...d, address: t }))}
                             placeholder="Street / Area"
                         />
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                             <BoxField
-                                label="City" theme={theme}
+                                label="City" theme={neutralFieldTheme}
                                 value={isEditing('address') ? draft.city : data.city}
                                 isEditing={isEditing('address')}
                                 placeholder="Mumbai"
                                 onChangeText={t => setDraft(d => ({ ...d, city: t }))}
                             />
                             <BoxField
-                                label="State" theme={theme}
+                                label="State" theme={neutralFieldTheme}
                                 value={isEditing('address') ? draft.state : data.state}
                                 isEditing={isEditing('address')}
                                 placeholder="Maharashtra"
@@ -1122,14 +1134,14 @@ export default function StudentDetail() {
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                             <BoxField
-                                label="Pincode" theme={theme}
+                                label="Pincode" theme={neutralFieldTheme}
                                 value={isEditing('address') ? draft.pincode : data.pincode}
                                 isEditing={isEditing('address')}
                                 placeholder="400001"
                                 onChangeText={t => setDraft(d => ({ ...d, pincode: t }))}
                             />
                             <BoxField
-                                label="Country" theme={theme}
+                                label="Country" theme={neutralFieldTheme}
                                 value={isEditing('address') ? draft.country : data.country}
                                 isEditing={isEditing('address')}
                                 placeholder="India"
@@ -1158,7 +1170,7 @@ export default function StudentDetail() {
                                     <GuardianCard
                                         guardian={g}
                                         index={i}
-                                        theme={theme}
+                                        theme={neutralFieldTheme}
                                         isEditing={isEditing('parents')}
                                         onChange={(field, value) => updateGuardian(i, field, value)}
                                     />

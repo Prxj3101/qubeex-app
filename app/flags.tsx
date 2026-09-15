@@ -35,7 +35,7 @@ export default function Flags() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}
-            edges={Platform.OS === 'android' ? ['top', 'bottom'] : ['top']}>
+            edges={['top', 'bottom']}>
             <ScreenHeader title="Flags & Warnings" showBack />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 36 }}>
                 <View style={styles.body}>
