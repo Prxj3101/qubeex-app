@@ -9,9 +9,12 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 interface ScreenHeaderProps {
     title: string;
     showBack?: boolean;
+    /** Hide the bell on the notifications screen itself — it would just link
+     *  back to the page you're already on. */
+    hideBell?: boolean;
 }
 
-export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
+export function ScreenHeader({ title, showBack, hideBell }: ScreenHeaderProps) {
     const { isDark, toggleTheme, accent } = useTheme();
     const router = useRouter();
     const { unreadCount } = useUnreadNotifications();
@@ -40,16 +43,18 @@ export function ScreenHeader({ title, showBack }: ScreenHeaderProps) {
 
             <View style={styles.rightRow}>
                 {/* Bell */}
-                <TouchableOpacity
-                    onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.push('/notifications');
-                    }}
-                    style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
-                >
-                    <Bell size={20} color={iconColor} strokeWidth={1.5} />
-                    {unreadCount > 0 && <View style={styles.bellDot} />}
-                </TouchableOpacity>
+                {!hideBell && (
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/notifications');
+                        }}
+                        style={[styles.btn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
+                    >
+                        <Bell size={20} color={iconColor} strokeWidth={1.5} />
+                        {unreadCount > 0 && <View style={styles.bellDot} />}
+                    </TouchableOpacity>
+                )}
 
                 {/* Dark/Light Toggle */}
                 <TouchableOpacity

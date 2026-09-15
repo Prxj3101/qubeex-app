@@ -36,6 +36,7 @@ import {
     Image,
     Keyboard,
     Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -823,6 +824,26 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     const threadsListRef = useRef<FlatList>(null);
     const dmChatRef = useRef<DmChatHandle>(null);
 
+    // Staffroom feed and the DM thread list sit side by side in a paging
+    // ScrollView so they can be swiped between, Instagram-style, as well as
+    // switched with the icons up in the nav row. The two stay in sync: a swipe
+    // reports the new page up through onInnerTabChange, and a tap on the icons
+    // comes back down as an `innerTab` change that scrolls the pager.
+    //
+    // `currentPageRef` tracks which page the pager is actually showing, so the
+    // effect below can tell "the user tapped the switcher" (needs a scroll)
+    // from "the user just swiped" (already there — scrolling again would fight
+    // the gesture).
+    const pagerRef = useRef<ScrollView>(null);
+    const [pagerWidth, setPagerWidth] = useState(Dimensions.get('window').width);
+    const currentPageRef = useRef<'feed' | 'dms'>(innerTab);
+
+    useEffect(() => {
+        if (currentPageRef.current === innerTab) return;
+        currentPageRef.current = innerTab;
+        pagerRef.current?.scrollTo({ x: innerTab === 'dms' ? pagerWidth : 0, animated: true });
+    }, [innerTab, pagerWidth]);
+
     // Report unread-DM state upward so the parent screen can show the dot
     // on its own Staffroom/DM switcher (now rendered in the top nav row).
     useEffect(() => {
@@ -1040,8 +1061,42 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                 )}
             </View>
 
-            {innerTab === 'feed' ? (
-                <View style={{ flex: 1, paddingBottom: kbHeight }}>
+            {activeDm ? (
+                <View style={{ flex: 1 }}>
+                    <DmChat ref={dmChatRef} thread={activeDm} isOnline={activeIsOnline} onBack={() => setActiveDm(null)} />
+                </View>
+            ) : (
+            <ScrollView
+                ref={pagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="none"
+                style={{ flex: 1 }}
+                // flexGrow makes the content row fill the pager's height, which
+                // is what the pages' `height: '100%'` resolves against — without
+                // it the row would size to its content and collapse.
+                contentContainerStyle={{ flexGrow: 1 }}
+                onLayout={(e) => {
+                    const w = e.nativeEvent.layout.width;
+                    setPagerWidth(w);
+                    // Also covers coming back from an open DM chat, which
+                    // remounts the pager at offset 0 regardless of which page
+                    // the user was on.
+                    currentPageRef.current = innerTab;
+                    requestAnimationFrame(() => {
+                        pagerRef.current?.scrollTo({ x: innerTab === 'dms' ? w : 0, animated: false });
+                    });
+                }}
+                onMomentumScrollEnd={(e) => {
+                    const page = pagerWidth ? Math.round(e.nativeEvent.contentOffset.x / pagerWidth) : 0;
+                    const next = page >= 1 ? 'dms' : 'feed';
+                    currentPageRef.current = next;
+                    if (next !== innerTab) onInnerTabChange(next);
+                }}
+            >
+                <View style={{ width: pagerWidth, height: '100%', paddingBottom: kbHeight }}>
                     <FlatList
                         ref={postsListRef}
                         data={[...posts].reverse()}
@@ -1111,12 +1166,8 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                         </TouchableOpacity>
                     </View>
                 </View>
-            ) : activeDm ? (
-                <View style={{ flex: 1 }}>
-                    <DmChat ref={dmChatRef} thread={activeDm} isOnline={activeIsOnline} onBack={() => setActiveDm(null)} />
-                </View>
-            ) : (
-                <View style={{ flex: 1 }}>
+
+                <View style={{ width: pagerWidth, height: '100%' }}>
                     {showDmSearch && (
                         <View style={{ paddingHorizontal: 14, marginTop: 8, marginBottom: 8 }}>
                             <View style={[styles.dmSearchBar, { backgroundColor: isDark ? '#1E1E1E' : '#F1F5F9' }]}>
@@ -1173,6 +1224,7 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                         )}
                     />
                 </View>
+            </ScrollView>
             )}
         </View>
     );

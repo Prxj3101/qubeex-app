@@ -13,18 +13,21 @@ const CAMPUS_TABS = [
     { key: 'staffroom' as const, label: 'Staffroom', icon: MessageSquare },
 ];
 
-// Matches the web's Feed/Staffroom pill, which uses framer-motion's
-// `{ type: 'spring', bounce: 0.2, duration: 0.4 }` — a ~0.8 damping ratio over
-// roughly 400ms, i.e. one gentle overshoot before it settles. In RN terms:
-// damping / (2 * sqrt(stiffness * mass)) = 20 / (2 * sqrt(160)) ≈ 0.79.
+// Same character as the web's Feed/Staffroom pill (framer-motion's
+// `{ type: 'spring', bounce: 0.2 }`) — one gentle overshoot before it settles —
+// just quicker. What matters for the feel is the damping ratio,
+// damping / (2 * sqrt(stiffness * mass)) = 27 / (2 * sqrt(300)) ≈ 0.78; raising
+// stiffness and damping together speeds the whole thing up without turning the
+// bounce into either a wobble or a dead stop.
+//
 // Rest thresholds are left at their defaults on purpose. Loosening them cuts
 // the spring off early — it snaps to the target while still visibly moving,
 // which reads as a small jerk right at the end of the slide. Since this runs on
 // the native driver, letting the tail decay naturally costs the JS thread
 // nothing.
 const PILL_SPRING = {
-    stiffness: 160,
-    damping: 20,
+    stiffness: 300,
+    damping: 27,
     mass: 1,
 } as const;
 

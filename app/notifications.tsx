@@ -128,7 +128,7 @@ export default function NotificationsScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}
             edges={Platform.OS === 'android' ? ['top', 'bottom'] : ['top']}>
-            <ScreenHeader title="Notifications" showBack />
+            <ScreenHeader title="Notifications" showBack hideBell />
 
             {unreadCount > 0 && (
                 <View style={styles.markAllRow}>
