@@ -34,6 +34,7 @@ const TAG_EMOJI: Record<string, string> = {
     ANNOUNCEMENT: '📢', MAINTENANCE: '🛠️', UPDATE: '🔔', FEATURE: '✨',
     BUG_FIXED: '🐛', PLAN_EXPIRY: '💳', SECURITY: '🛡️',
     FEE_DUE: '💰', EXAM_REMINDER: '📅', ATTENDANCE_WARNING: '⚠️',
+    RESULT_PUBLISHED: '📊', TEST_PUBLISHED: '📝', ASSIGNMENT_PUBLISHED: '📋',
 };
 
 function relativeTime(dateStr: string): string {
