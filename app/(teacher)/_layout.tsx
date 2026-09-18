@@ -3,7 +3,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts } from '@expo-google-fonts/poppins';
 import { Tabs } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { Building2, Home, User } from 'lucide-react-native';
+import { Building2, Home, LayoutGrid, User } from 'lucide-react-native';
 import { useEffect } from 'react';
 import { Image, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,6 +56,10 @@ function TeacherTabLayout() {
             <Tabs.Screen name="index" options={{
                 title: 'Home',
                 tabBarIcon: ({ color }) => <Home size={22} color={color} />,
+            }} />
+            <Tabs.Screen name="classes" options={{
+                title: 'Classes',
+                tabBarIcon: ({ color }) => <LayoutGrid size={22} color={color} />,
             }} />
             <Tabs.Screen name="campus" options={{
                 title: 'Campus',

@@ -119,6 +119,7 @@ function VerifiedBadge() {
             />
             <Path
                 d="M13 21l5 5 9-10"
+                fill="none"
                 stroke="white"
                 strokeWidth={3.5}
                 strokeLinecap="round"
@@ -377,7 +378,9 @@ export default function TeacherProfileScreen() {
                                     </Text>
                                     <View style={styles.titleRow}>
                                         <Text style={[styles.titleText, { color: subText }]}>{teacher.title || 'Teacher'}</Text>
-                                        <VerifiedBadge />
+                                        <View style={Platform.OS === 'android' ? { top: -2 } : null}>
+                                            <VerifiedBadge />
+                                        </View>
                                     </View>
                                     <Text style={styles.teacherIdText}>{teacher.teacherId}</Text>
                                 </View>

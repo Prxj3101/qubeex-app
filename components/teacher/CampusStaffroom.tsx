@@ -23,7 +23,7 @@ import {
     Users,
     X,
 } from 'lucide-react-native';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     ActivityIndicator,
@@ -760,15 +760,32 @@ const DmChat = forwardRef<DmChatHandle, { thread: DmThread; isOnline: boolean; o
 // the Home tab does for the home screen.
 export type CampusStaffroomHandle = { scrollToTopAndRefresh: () => void };
 
+// The Campus tab's three pages live in one flat pager owned by this component:
+// the Campus feed (handed in as `leadingPage`), the Staffroom feed, and the DM
+// thread list. They used to be two nested pagers — one here, one wrapping this
+// component — which meant two same-direction scroll views fighting over every
+// horizontal drag: Android gave the gesture to the outer one (so the DM swipe
+// never worked) and iOS handed it over as soon as the inner one hit its edge
+// (so swiping back from DMs shot straight past Staffroom to the feed). One
+// pager, one gesture owner, no fight.
+export type CampusPage = 'campus' | 'staffroom' | 'dms';
+
 export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
-    innerTab: 'feed' | 'dms';
-    onInnerTabChange: (tab: 'feed' | 'dms') => void;
+    page: CampusPage;
+    onPageChange: (page: CampusPage) => void;
     onUnreadChange?: (hasUnread: boolean) => void;
+    leadingPage?: ReactNode;
 }>(function CampusStaffroom({
-    innerTab,
-    onInnerTabChange,
+    page,
+    onPageChange,
     onUnreadChange,
+    leadingPage,
 }, ref) {
+    // Everything below still thinks in terms of "which Staffroom pane is
+    // showing", so keep that shape rather than rewriting each usage.
+    const innerTab: 'feed' | 'dms' = page === 'dms' ? 'dms' : 'feed';
+    const PAGE_ORDER: CampusPage[] = leadingPage ? ['campus', 'staffroom', 'dms'] : ['staffroom', 'dms'];
+    const pageIndex = Math.max(0, PAGE_ORDER.indexOf(page));
     const { isDark, accent } = useTheme();
     const bg = isDark ? '#000000' : '#FAF8FF';
     const cardBg = isDark ? '#141414' : '#FFFFFF';
@@ -824,25 +841,32 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     const threadsListRef = useRef<FlatList>(null);
     const dmChatRef = useRef<DmChatHandle>(null);
 
-    // Staffroom feed and the DM thread list sit side by side in a paging
-    // ScrollView so they can be swiped between, Instagram-style, as well as
-    // switched with the icons up in the nav row. The two stay in sync: a swipe
-    // reports the new page up through onInnerTabChange, and a tap on the icons
-    // comes back down as an `innerTab` change that scrolls the pager.
+    // The pages sit side by side in a paging ScrollView so they can be swiped
+    // between, Instagram-style, as well as switched from the nav row up in
+    // campus.tsx. The two stay in sync: a swipe reports the page it landed on
+    // up through onPageChange, and a tap on the nav comes back down as a
+    // `page` change that scrolls the pager.
     //
     // `currentPageRef` tracks which page the pager is actually showing, so the
-    // effect below can tell "the user tapped the switcher" (needs a scroll)
+    // effect below can tell "the user tapped the nav" (needs a scroll)
     // from "the user just swiped" (already there — scrolling again would fight
     // the gesture).
     const pagerRef = useRef<ScrollView>(null);
     const [pagerWidth, setPagerWidth] = useState(Dimensions.get('window').width);
-    const currentPageRef = useRef<'feed' | 'dms'>(innerTab);
+    const lastPagerWidthRef = useRef(0);
+    const currentPageRef = useRef<CampusPage>(page);
+    const pageRef = useRef(page);
+    pageRef.current = page;
+    // Which page a drag started from, and whether a finger is still down —
+    // together they keep the 30% commit below from oscillating.
+    const dragFromIndexRef = useRef(0);
+    const draggingRef = useRef(false);
 
     useEffect(() => {
-        if (currentPageRef.current === innerTab) return;
-        currentPageRef.current = innerTab;
-        pagerRef.current?.scrollTo({ x: innerTab === 'dms' ? pagerWidth : 0, animated: true });
-    }, [innerTab, pagerWidth]);
+        if (currentPageRef.current === page) return;
+        currentPageRef.current = page;
+        pagerRef.current?.scrollTo({ x: pageIndex * pagerWidth, animated: true });
+    }, [page, pageIndex, pagerWidth]);
 
     // Report unread-DM state upward so the parent screen can show the dot
     // on its own Staffroom/DM switcher (now rendered in the top nav row).
@@ -1040,32 +1064,31 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     const filteredThreads = dmSearch.trim() ? threads.filter((t) => t.name.toLowerCase().includes(dmSearch.toLowerCase())) : threads;
     const activeIsOnline = activeDm ? (threads.find((t) => t.teacherUserId === activeDm.teacherUserId)?.isActive ?? activeDm.isActive) : false;
 
+    // The heading rides inside each Staffroom page rather than sitting above
+    // the pager: the Campus feed page brings its own header, and a shared
+    // heading that had to appear and disappear as you swiped between them
+    // would resize the pager mid-gesture.
+    const paneHeading = (kind: 'staffroom' | 'dms') => (
+        <View style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: cardBorder }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {kind === 'staffroom' ? <Users size={15} color={text} /> : <User size={15} color={text} />}
+                <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: text }}>
+                    {kind === 'staffroom' ? 'Staffroom' : 'Direct Messages'}
+                </Text>
+            </View>
+            {kind === 'dms' && (
+                <TouchableOpacity
+                    onPress={() => { setShowDmSearch((v) => !v); setDmSearch(''); }}
+                    style={{ position: 'absolute', right: 14, top: 0, bottom: 0, width: 28, alignItems: 'center', justifyContent: 'center' }}
+                >
+                    {showDmSearch ? <X size={16} color={subText} /> : <Search size={16} color={subText} />}
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+
     return (
         <View style={{ flex: 1 }}>
-            {/* Heading — the Staffroom/DM switch itself now lives in the top
-                nav row (campus.tsx), right next to the Feed/Staffroom pill. */}
-            <View style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: cardBorder }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    {innerTab === 'feed' ? <Users size={15} color={text} /> : <User size={15} color={text} />}
-                    <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: text }}>
-                        {innerTab === 'feed' ? 'Staffroom' : 'Direct Messages'}
-                    </Text>
-                </View>
-                {innerTab === 'dms' && (
-                    <TouchableOpacity
-                        onPress={() => { setShowDmSearch((v) => !v); setDmSearch(''); }}
-                        style={{ position: 'absolute', right: 14, top: 0, bottom: 0, width: 28, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        {showDmSearch ? <X size={16} color={subText} /> : <Search size={16} color={subText} />}
-                    </TouchableOpacity>
-                )}
-            </View>
-
-            {activeDm ? (
-                <View style={{ flex: 1 }}>
-                    <DmChat ref={dmChatRef} thread={activeDm} isOnline={activeIsOnline} onBack={() => setActiveDm(null)} />
-                </View>
-            ) : (
             <ScrollView
                 ref={pagerRef}
                 horizontal
@@ -1080,23 +1103,62 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                 contentContainerStyle={{ flexGrow: 1 }}
                 onLayout={(e) => {
                     const w = e.nativeEvent.layout.width;
+                    // Only re-snap on a real width change (first measure,
+                    // rotation). Re-snapping on every layout pass fires a
+                    // scroll back to whatever page this closure was built
+                    // with, which yanks the pager around mid-transition.
+                    if (w === lastPagerWidthRef.current) return;
+                    lastPagerWidthRef.current = w;
                     setPagerWidth(w);
-                    // Also covers coming back from an open DM chat, which
-                    // remounts the pager at offset 0 regardless of which page
-                    // the user was on.
-                    currentPageRef.current = innerTab;
+                    const p = pageRef.current;
+                    currentPageRef.current = p;
                     requestAnimationFrame(() => {
-                        pagerRef.current?.scrollTo({ x: innerTab === 'dms' ? w : 0, animated: false });
+                        pagerRef.current?.scrollTo({ x: Math.max(0, PAGE_ORDER.indexOf(p)) * w, animated: false });
                     });
                 }}
+                onScrollBeginDrag={() => {
+                    dragFromIndexRef.current = Math.max(0, PAGE_ORDER.indexOf(currentPageRef.current));
+                    draggingRef.current = true;
+                }}
+                onScrollEndDrag={() => { draggingRef.current = false; }}
+                // Report the landing page once the drag is ~30% of the way
+                // there, rather than waiting for the paging deceleration to
+                // finish — that wait is what made the nav up top look like it
+                // switched a beat after the page did.
+                //
+                // Measured from where the drag *started*, not from the page
+                // we've since committed to. Measuring from the committed page
+                // put the commit point inside the threshold for going back the
+                // other way, so holding a finger at 30% flipped the page
+                // forward, then back, then forward again, forever.
+                onScroll={(e) => {
+                    if (!draggingRef.current || !pagerWidth) return;
+                    const from = dragFromIndexRef.current;
+                    const delta = e.nativeEvent.contentOffset.x / pagerWidth - from;
+                    let idx = from;
+                    if (delta >= 0.3) idx = Math.min(from + 1, PAGE_ORDER.length - 1);
+                    else if (delta <= -0.3) idx = Math.max(from - 1, 0);
+                    const next = PAGE_ORDER[idx];
+                    if (next && next !== currentPageRef.current) {
+                        currentPageRef.current = next;
+                        onPageChange(next);
+                    }
+                }}
+                scrollEventThrottle={16}
                 onMomentumScrollEnd={(e) => {
-                    const page = pagerWidth ? Math.round(e.nativeEvent.contentOffset.x / pagerWidth) : 0;
-                    const next = page >= 1 ? 'dms' : 'feed';
-                    currentPageRef.current = next;
-                    if (next !== innerTab) onInnerTabChange(next);
+                    const next = PAGE_ORDER[pagerWidth ? Math.round(e.nativeEvent.contentOffset.x / pagerWidth) : 0];
+                    if (next && next !== currentPageRef.current) {
+                        currentPageRef.current = next;
+                        onPageChange(next);
+                    }
                 }}
             >
+                {leadingPage && (
+                    <View style={{ width: pagerWidth, height: '100%' }}>{leadingPage}</View>
+                )}
+
                 <View style={{ width: pagerWidth, height: '100%', paddingBottom: kbHeight }}>
+                    {paneHeading('staffroom')}
                     <FlatList
                         ref={postsListRef}
                         data={[...posts].reverse()}
@@ -1168,6 +1230,7 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                 </View>
 
                 <View style={{ width: pagerWidth, height: '100%' }}>
+                    {paneHeading('dms')}
                     {showDmSearch && (
                         <View style={{ paddingHorizontal: 14, marginTop: 8, marginBottom: 8 }}>
                             <View style={[styles.dmSearchBar, { backgroundColor: isDark ? '#1E1E1E' : '#F1F5F9' }]}>
@@ -1225,6 +1288,14 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                     />
                 </View>
             </ScrollView>
+
+            {/* An open DM chat covers the pager instead of replacing it, so the
+                Campus feed and the two Staffroom panes keep their state, scroll
+                position and fetched data while you're inside a conversation. */}
+            {activeDm && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: bg }]}>
+                    <DmChat ref={dmChatRef} thread={activeDm} isOnline={activeIsOnline} onBack={() => setActiveDm(null)} />
+                </View>
             )}
         </View>
     );

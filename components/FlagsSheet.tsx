@@ -6,7 +6,7 @@ import { CardType, Flag } from '@/data/flags';
 import api from '@/lib/api';
 import { useDynamicTranslation } from '@/lib/dynamicTranslate';
 import { n, ParentLang, t } from '@/lib/parentModeI18n';
-import { BookOpen, Calendar, ChevronDown, ChevronUp, GraduationCap, ShieldAlert, User } from 'lucide-react-native';
+import { BookOpen, Calendar, ChevronDown, ChevronUp, GraduationCap, Pencil, ShieldAlert, User } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -92,18 +92,33 @@ interface FlagCardProps {
     displayTitle?: string;
     displayDetail?: string;
     displayActionTaken?: string;
+    // Teacher/admin-only — mirrors qubeex-web's FlagsBoard.tsx FlagCard:
+    // the Edit button only shows when a handler is passed AND this specific
+    // flag's `canEdit` is true (the viewer is who originally filed it).
+    onEdit?: (flag: Flag) => void;
 }
 
-function FlagCard({ flag, isDark, classLabel, lang, displayCategory, displayTitle, displayDetail, displayActionTaken }: FlagCardProps) {
+function FlagCard({ flag, isDark, classLabel, lang, displayCategory, displayTitle, displayDetail, displayActionTaken, onEdit }: FlagCardProps) {
     const [expanded, setExpanded] = useState(false);
     const cfg = flag.type === 'yellow' ? YELLOW : RED;
     const mode = isDark ? 'dark' : 'light';
+    const showEdit = !!onEdit && !!flag.canEdit;
 
     return (
         <View style={[styles.flagCard, {
             backgroundColor: cfg.card[mode],
             borderColor: cfg.border[mode],
+            paddingBottom: showEdit ? 34 : 12,
         }]}>
+            {showEdit && (
+                <TouchableOpacity
+                    onPress={() => onEdit?.(flag)}
+                    activeOpacity={0.7}
+                    style={[styles.editBtn, { backgroundColor: cfg.badge[mode] }]}
+                >
+                    <Pencil size={13} color={cfg.icon[mode]} />
+                </TouchableOpacity>
+            )}
             <TouchableOpacity
                 style={styles.flagCardHeader}
                 onPress={() => setExpanded(e => !e)}
@@ -209,9 +224,19 @@ interface FlagsSheetProps {
     // Defaults to true (the standalone app/flags.tsx screen keeps it);
     // Parent Mode hides it since the appeal action is student/teacher-facing.
     showAppealNote?: boolean;
+    // Overrides the line under "Want to appeal a flag?" — mirrors
+    // qubeex-web's FlagsBoard `appealNote` prop (default there is "Contact
+    // your class teacher or Principal."; the teacher page passes its own
+    // "Discuss with the student directly, or escalate to the admin."
+    // instead). Falls back to the translated student-facing copy when
+    // omitted.
+    appealNote?: string;
+    // Teacher/admin-only — mirrors qubeex-web's FlagsBoard `onEdit` prop.
+    // Omitted entirely for the student view, which stays read-only.
+    onEdit?: (flag: Flag) => void;
 }
 
-export function FlagsSheet({ isDark, data: providedData, showAppealNote = true }: FlagsSheetProps) {
+export function FlagsSheet({ isDark, data: providedData, showAppealNote = true, appealNote, onEdit }: FlagsSheetProps) {
     const { accent } = useTheme();
     const theme = { ...(isDark ? DARK : LIGHT), purple: accent.purple, purpleLight: accent.purpleLight };
     const { lang } = useParentModeLanguage();
@@ -368,6 +393,7 @@ export function FlagsSheet({ isDark, data: providedData, showAppealNote = true }
                         displayTitle={displayTitle}
                         displayDetail={displayDetail}
                         displayActionTaken={displayActionTaken}
+                        onEdit={onEdit}
                     />
                 ))}
                 {activeFlags.length === 0 && (
@@ -389,7 +415,7 @@ export function FlagsSheet({ isDark, data: providedData, showAppealNote = true }
                             {t('wantToAppeal', lang)}
                         </Text>
                         <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.purple, lineHeight: 16 }}>
-                            {t('contactTeacherPrincipal', lang)}
+                            {appealNote ?? t('contactTeacherPrincipal', lang)}
                         </Text>
                     </View>
                 </View>
@@ -408,6 +434,11 @@ const styles = StyleSheet.create({
     tabCount: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
 
     flagCard: { borderRadius: 16, borderWidth: 1.5, padding: 12, gap: 8 },
+    editBtn: {
+        position: 'absolute', bottom: 10, right: 10, zIndex: 1,
+        width: 24, height: 24, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+    },
     flagCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     flagCardLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     categoryBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 },

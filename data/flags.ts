@@ -15,6 +15,12 @@ export interface Flag {
     status: Status;
     actionTaken?: string;
     attachments: FlagAttachment[];
+    // Teacher/admin-only fields — absent for the student view. `canEdit` is
+    // true only for the person who originally filed that specific report
+    // (mirrors qubeex-web's FlagsBoard.tsx FlagCard `showEdit` check).
+    canEdit?: boolean;
+    reviewRemark?: string;
+    reviewedBy?: string;
 }
 export const FLAGS: Flag[] = [
     {

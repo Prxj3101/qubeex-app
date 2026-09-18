@@ -102,12 +102,12 @@ function getInitials(name: string) {
 
 function VerifiedBadge() {
     return (
-        <Svg width={11} height={11} viewBox="0 0 40 40">
+        <Svg width={11} height={11} viewBox="0 0 40 40" style={Platform.OS === 'android' ? { marginTop: -2 } : undefined}>
             <Path
                 d="M20 2 L23.5 6.5 L29 5 L31.5 10.5 L37.5 12 L36 18 L40 22 L36 26 L37.5 32 L31.5 33.5 L29 39 L23.5 37.5 L20 42 L16.5 37.5 L11 39 L8.5 33.5 L2.5 32 L4 26 L0 22 L4 18 L2.5 12 L8.5 10.5 L11 5 L16.5 6.5 Z"
                 fill="#DA7756"
             />
-            <Path d="M13 21l5 5 9-10" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
+            <Path d="M13 21l5 5 9-10" fill="none" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
     );
 }

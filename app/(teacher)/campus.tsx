@@ -1,6 +1,6 @@
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { CampusFeed, CampusFeedHandle } from '@/components/teacher/CampusFeed';
-import { CampusStaffroom, CampusStaffroomHandle } from '@/components/teacher/CampusStaffroom';
+import { CampusPage, CampusStaffroom, CampusStaffroomHandle } from '@/components/teacher/CampusStaffroom';
 import { useTheme } from '@/context/ThemeContext';
 import Constants from 'expo-constants';
 import { useNavigation } from 'expo-router';
@@ -39,93 +39,94 @@ export default function TeacherCampusScreen() {
     const subText = isDark ? '#94A3B8' : '#64748B';
     const trackBg = isDark ? '#1A1A1A' : '#EDEFF3';
 
-    const [tab, setTab] = useState<'feed' | 'staffroom'>('feed');
-    const [staffroomInnerTab, setStaffroomInnerTab] = useState<'feed' | 'dms'>('feed');
+    // One flat pager holds all three pages — Campus feed, Staffroom, DMs — and
+    // CampusStaffroom owns it (see the note on its `CampusPage` type for why
+    // they aren't two nested pagers any more). This screen just keeps the nav
+    // row in step with it: `page` drives the pill and the Staffroom/DM icons,
+    // and a swipe reports its landing page back through `onPageChange`.
+    const [page, setPage] = useState<CampusPage>('campus');
     const [staffroomHasUnread, setStaffroomHasUnread] = useState(false);
+
+    // The pill still only has two positions: the Campus feed sits under "Feed",
+    // and both Staffroom pages sit under "Staffroom".
+    const tab: 'feed' | 'staffroom' = page === 'campus' ? 'feed' : 'staffroom';
 
     // Sliding pill behind the active tab — measured per-button so it exactly
     // matches each label's width instead of a fixed-size highlight.
     //
     // Only the position is animated, and it runs on the native driver, so the
     // spring lives on the UI thread and is completely immune to whatever the JS
-    // thread is doing — which is the whole ballgame here, because revealing the
-    // other screen costs a layout pass and any JS-driven animation visibly
-    // stalls when that lands.
+    // thread is doing.
     //
     // The width is set outright instead of animated. `width` can't run on the
     // native driver at all, and faking it with scaleX squashes the stadium's
     // rounded end caps into ellipses on the narrower Feed tab. Snapping it
     // mid-slide is imperceptible next to either of those.
+    //
+    // It's an Animated.Value rather than React state so setting it doesn't
+    // re-render anything: as state, the re-render it caused landed a frame
+    // after the spring had started and replaced the props on the very view the
+    // spring was animating, which on Android made the slide hitch just before
+    // it settled. Two nested views because the outer transform runs on the
+    // native driver and width can't — one value per view, no mixing.
     const pillX = useRef(new Animated.Value(0)).current;
-    const [pillWidth, setPillWidth] = useState(0);
+    const pillW = useRef(new Animated.Value(0)).current;
     const layoutsRef = useRef<Record<string, { x: number; width: number }>>({});
 
-    // Both screens are mounted the whole time and switching only toggles which
-    // one is `display: 'none'`. A conditional render instead meant every switch
-    // paid for a full unmount + remount — fresh fetches, a loading spinner, the
-    // calendar rebuilding — which is what made the page land a second or two
-    // after the button did.
-    //
-    // The swap happens immediately on tap. Deferring it — first to the spring's
-    // completion, then to a timer — was an attempt to keep its layout pass off
-    // the JS thread mid-animation, but that just moved the visible stall from
-    // the start of the slide to the middle of it. With the spring on the native
-    // driver there's nothing left to protect, so the page can appear at once.
-    //
-    // Stacking the panes absolutely and crossfading opacity instead of using
-    // `display` was also tried, and left Staffroom rendering completely blank —
-    // don't reach for that again.
+    // Driven off `tab` rather than the tap handler so a swipe moves the pill
+    // too — by the time this runs the page has already been reported up, so
+    // taps and swipes both land here through the same path. The spring starts
+    // in the same tick rather than behind a requestAnimationFrame: the page is
+    // already sliding natively by now, so there's no layout pass left to wait
+    // out, and deferring only made the pill trail the page.
+    useEffect(() => {
+        const layout = layoutsRef.current[tab];
+        if (!layout) return;
+        pillW.setValue(layout.width);
+        Animated.spring(pillX, { toValue: layout.x, useNativeDriver: true, ...PILL_SPRING }).start();
+    }, [tab, pillX, pillW]);
 
     // Tapping the active Campus footer tab again — same as the Home tab's
     // tap-to-refresh — scrolls whatever's currently showing back to the top
-    // and refetches it, regardless of which of Campus's own sub-tabs
-    // (Feed / Staffroom feed / DM thread list / an open DM chat) is active.
+    // and refetches it, regardless of which of Campus's own pages
+    // (Feed / Staffroom / DM thread list / an open DM chat) is active.
     const campusFeedRef = useRef<CampusFeedHandle>(null);
     const campusStaffroomRef = useRef<CampusStaffroomHandle>(null);
+
+    // Built once. Recreating this element on every render made React re-render
+    // the whole Campus feed each time the page changed — and since the page now
+    // changes mid-swipe, that re-render landed right in the middle of the
+    // gesture and held the nav up for a beat. A stable element lets React skip
+    // the subtree entirely.
+    const feedPage = useMemo(() => <CampusFeed ref={campusFeedRef} />, []);
+
     const navigation = useNavigation<any>();
     useEffect(() => {
         const unsubscribe = navigation.addListener('tabPress', () => {
             if (!navigation.isFocused()) return;
-            if (tab === 'feed') campusFeedRef.current?.scrollToTopAndRefresh();
+            if (page === 'campus') campusFeedRef.current?.scrollToTopAndRefresh();
             else campusStaffroomRef.current?.scrollToTopAndRefresh();
         });
         return unsubscribe;
-    }, [navigation, tab]);
+    }, [navigation, page]);
 
-    const animateToTab = (key: 'feed' | 'staffroom') => {
-        const layout = layoutsRef.current[key];
-        if (!layout) return;
-        setPillWidth(layout.width);
-        // The pill is deliberately decoupled from the page swap: the spring is
-        // kicked off only once React has committed that swap and the layout
-        // work it costs is done. Starting it in the same tick means its opening
-        // frames land inside that stall — even a native animation reads as
-        // janky when it begins mid-freeze. Letting the page arrive first and
-        // the pill follow a beat later is how this reads on the web too.
-        requestAnimationFrame(() => {
-            Animated.spring(pillX, { toValue: layout.x, useNativeDriver: true, ...PILL_SPRING }).start();
-        });
-    };
-
-    // Memoised so unrelated re-renders — the tab flip itself, the DM unread dot
+    // Memoised so unrelated re-renders — the page flip itself, the DM unread dot
     // ticking over from Staffroom's polling — don't push new props onto a view
-    // with a native animation running on it, which interrupts it visibly.
+    // with a native animation running on it, which interrupts it visibly. With
+    // the width living in an Animated.Value, nothing here changes between
+    // renders any more, so the element really is built once.
     const pill = useMemo(() => (
-        <Animated.View
-            pointerEvents="none"
-            style={[
-                styles.tabPill,
-                { backgroundColor: accent.purple, width: pillWidth, transform: [{ translateX: pillX }] },
-            ]}
-        />
-    ), [accent.purple, pillWidth, pillX]);
+        <Animated.View pointerEvents="none" style={[styles.tabPillTrack, { transform: [{ translateX: pillX }] }]}>
+            <Animated.View style={[styles.tabPillFill, { backgroundColor: accent.purple, width: pillW }]} />
+        </Animated.View>
+    ), [accent.purple, pillX, pillW]);
 
     const handleTabLayout = (key: string, e: LayoutChangeEvent) => {
         const { x, width } = e.nativeEvent.layout;
         layoutsRef.current[key] = { x, width };
         if (key === tab) {
             pillX.setValue(x);
-            setPillWidth(width);
+            pillW.setValue(width);
         }
     };
 
@@ -142,14 +143,13 @@ export default function TeacherCampusScreen() {
                         return (
                             <TouchableOpacity
                                 key={t.key}
-                                // Animation first, state second, so the spring
-                                // is handed to the UI thread before React does
-                                // the render that swaps the panes. Tapping the
-                                // already-active tab is a no-op.
+                                // Tapping the already-active tab is a no-op —
+                                // including tapping "Staffroom" while on DMs,
+                                // which stays where it is rather than jumping
+                                // back a page.
                                 onPress={() => {
                                     if (t.key === tab) return;
-                                    animateToTab(t.key);
-                                    setTab(t.key);
+                                    setPage(t.key === 'feed' ? 'campus' : 'staffroom');
                                 }}
                                 onLayout={(e) => handleTabLayout(t.key, e)}
                                 style={styles.tabBtn}
@@ -164,49 +164,39 @@ export default function TeacherCampusScreen() {
                 {tab === 'staffroom' && (
                     <View style={[styles.innerSwitchTrack, { backgroundColor: trackBg }]}>
                         <TouchableOpacity
-                            onPress={() => setStaffroomInnerTab('feed')}
-                            style={[styles.innerSwitchBtn, staffroomInnerTab === 'feed' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
+                            onPress={() => setPage('staffroom')}
+                            style={[styles.innerSwitchBtn, page === 'staffroom' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
                         >
-                            <Users size={12} color={staffroomInnerTab === 'feed' ? text : subText} />
+                            <Users size={12} color={page === 'staffroom' ? text : subText} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={() => setStaffroomInnerTab('dms')}
-                            style={[styles.innerSwitchBtn, staffroomInnerTab === 'dms' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
+                            onPress={() => setPage('dms')}
+                            style={[styles.innerSwitchBtn, page === 'dms' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
                         >
-                            <User size={12} color={staffroomInnerTab === 'dms' ? text : subText} />
+                            <User size={12} color={page === 'dms' ? text : subText} />
                             {staffroomHasUnread && <View style={styles.dmUnreadDot} />}
                         </TouchableOpacity>
                     </View>
                 )}
             </View>
 
-            <View style={{ flex: 1 }}>
-                <View style={[styles.pane, tab !== 'feed' && styles.paneHidden]}>
-                    <CampusFeed ref={campusFeedRef} />
-                </View>
-                <View style={[styles.pane, tab !== 'staffroom' && styles.paneHidden]}>
-                    <CampusStaffroom
-                        ref={campusStaffroomRef}
-                        innerTab={staffroomInnerTab}
-                        onInnerTabChange={setStaffroomInnerTab}
-                        onUnreadChange={setStaffroomHasUnread}
-                    />
-                </View>
-            </View>
+            <CampusStaffroom
+                ref={campusStaffroomRef}
+                page={page}
+                onPageChange={setPage}
+                onUnreadChange={setStaffroomHasUnread}
+                leadingPage={feedPage}
+            />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    // `display: 'none'` takes the inactive pane out of layout without
-    // unmounting it, so its state, scroll position and fetched data all
-    // survive and it comes straight back.
-    pane: { flex: 1 },
-    paneHidden: { display: 'none' },
     tabRow: { paddingHorizontal: 14, paddingTop: 6, paddingBottom: 6 },
     tabTrack: { flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 99, padding: 3, gap: 3 },
-    tabPill: { position: 'absolute', top: 3, bottom: 3, borderRadius: 99 },
+    tabPillTrack: { position: 'absolute', top: 3, bottom: 3 },
+    tabPillFill: { height: '100%', borderRadius: 99 },
     tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
     innerSwitchTrack: { flexDirection: 'row', borderRadius: 10, padding: 3, gap: 3 },
     innerSwitchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
