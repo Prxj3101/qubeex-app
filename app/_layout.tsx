@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { createElement, forwardRef, useEffect, useRef, useState } from 'react';
 import { LogBox } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
@@ -151,7 +152,15 @@ function AuthGate() {
     }, [segments]);
 
     if (!ready) return null;
-    return <Stack screenOptions={{ headerShown: false }} />;
+    return (
+        <Stack screenOptions={{ headerShown: false }}>
+            {/* Explicit slide-from-right push/pop for the class detail screen
+                (opened from the class card's arrow button in Classes) — makes
+                sure it's a real slide in both directions rather than whatever
+                native-stack's platform default animation happens to be. */}
+            <Stack.Screen name="teacher_class_detail" options={{ animation: 'slide_from_right' }} />
+        </Stack>
+    );
 }
 
 export default function RootLayout() {
@@ -168,18 +177,26 @@ export default function RootLayout() {
     if (!fontsLoaded) return null;
 
     return (
-        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-            <ThemeProvider>
-                <BrandingProvider>
-                    <InstitutionProvider>
-                        <StudentProvider>
-                            <TeacherProvider>
-                                <AuthGate />
-                            </TeacherProvider>
-                        </StudentProvider>
-                    </InstitutionProvider>
-                </BrandingProvider>
-            </ThemeProvider>
-        </SafeAreaProvider>
+        // The documented root for react-native-gesture-handler (a dependency
+        // here, and what react-navigation's gestures run on). Anything from
+        // that library throws "NativeViewGestureHandler must be used as a
+        // descendant of GestureHandlerRootView" without this, and it has to
+        // sit above the Stack rather than around an individual screen, since
+        // it sets up the native gesture root the whole tree renders into.
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+                <ThemeProvider>
+                    <BrandingProvider>
+                        <InstitutionProvider>
+                            <StudentProvider>
+                                <TeacherProvider>
+                                    <AuthGate />
+                                </TeacherProvider>
+                            </StudentProvider>
+                        </InstitutionProvider>
+                    </BrandingProvider>
+                </ThemeProvider>
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
     );
 }

@@ -28,7 +28,7 @@ const ALLOWED_TYPES_SUBJECT_TEACHER: CalEventType[] = ['test', 'submission'];
 // endpoint as the Campus tab's read-only AcademicCalendar) that a class or
 // subject teacher can add/remove events on, directly from the class's own
 // View tab.
-export function ClassCalendar({ divisionId, divisionName, isClassTeacher }: { divisionId: string; divisionName: string; isClassTeacher: boolean }) {
+export function ClassCalendar({ divisionId, divisionName, isClassTeacher, isSubjectTeacher }: { divisionId: string; divisionName: string; isClassTeacher: boolean; isSubjectTeacher?: boolean }) {
     const { isDark, accent } = useTheme();
     const cardBg = isDark ? '#141414' : '#FFFFFF';
     const cardBorder = isDark ? '#2A2A2A' : '#EDE9FE';
@@ -60,7 +60,7 @@ export function ClassCalendar({ divisionId, divisionName, isClassTeacher }: { di
     const cells: (number | null)[] = [...Array(startOffset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
     while (cells.length % 7 !== 0) cells.push(null);
 
-    const canEdit = isClassTeacher;
+    const canEdit = isClassTeacher || !!isSubjectTeacher;
     const allowedTypes = isClassTeacher ? ALLOWED_TYPES_CLASS_TEACHER : ALLOWED_TYPES_SUBJECT_TEACHER;
     const eventsOn = (d: number) => events.filter((e) => e.date === d);
     const prevMonth = () => { if (month === 0) { setMonth(11); setYear((y) => y - 1); } else setMonth((m) => m - 1); setSelectedDate(null); };
@@ -184,7 +184,7 @@ export function ClassCalendar({ divisionId, divisionName, isClassTeacher }: { di
             </View>
             {canEdit && (
                 <Text style={{ fontSize: 9.5, color: subText, opacity: 0.6, textAlign: 'center', marginTop: 8, fontFamily: 'Poppins_400Regular' }}>
-                    Tap any date to add an event
+                    {isClassTeacher ? 'Tap any date to add an event' : 'Tap any date to add a test'}
                 </Text>
             )}
 

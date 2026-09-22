@@ -204,7 +204,7 @@ function SectionCard({ icon, title, theme, isDark, children }: {
 
 // ─── Fee Flip Card ────────────────────────────────────────────────────────────
 
-function FeeFlipCard({
+export function FeeFlipCard({
     theme, isDark, selectedMonth, setSelectedMonth, fc, schoolLogoUrl, schoolName, studentName,
     feeStructures, feeMonths, feePayments, studentFields, extraDetailFields, rulesAndRegs,
 }: {
@@ -431,7 +431,12 @@ function FeeFlipCard({
                         </View>
                     ) : (
                     <View style={{ borderRadius: 12, borderWidth: 1, borderColor: fc.border, overflow: 'hidden' }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false}>
+                        {/* Nested inside a vertical ScrollView (this screen's own,
+                            and now the teacher app's detail scroll too, since it
+                            reuses this component) — needs nestedScrollEnabled on
+                            Android or the outer scroll swallows the horizontal
+                            drag instead of scrolling this table. */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false} nestedScrollEnabled>
                             <View>
                                 {/* Header row */}
                                 <View style={{ flexDirection: 'row', backgroundColor: fc.bg, borderBottomWidth: 1, borderBottomColor: fc.border }}>

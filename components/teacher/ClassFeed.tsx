@@ -206,6 +206,11 @@ type ClassFeedProps = {
     mainContentHRef: MutableRefObject<number>;
     mainContainerHRef: MutableRefObject<number>;
     setKbPad: (v: number) => void;
+    // Set for a subject-teacher (their own subjectId) — mirrors web's
+    // ViewTab.tsx restrictToSubjectId: the composer's subject locks to this
+    // one subject (shown as plain text, not a picker) instead of defaulting
+    // to General with a free choice of any subject in the division.
+    restrictToSubjectId?: string | null;
 };
 
 export type ClassFeedHandle = {
@@ -217,7 +222,7 @@ export type ClassFeedHandle = {
 };
 
 export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function ClassFeed(
-    { divisionId, divisionName, subjects, mainScrollRef, mainScrollYRef, mainContentHRef, mainContainerHRef, setKbPad },
+    { divisionId, divisionName, subjects, mainScrollRef, mainScrollYRef, mainContentHRef, mainContainerHRef, setKbPad, restrictToSubjectId },
     ref
 ) {
     const { isDark, accent } = useTheme();
@@ -233,7 +238,7 @@ export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function Cl
     const [postInput, setPostInput] = useState('');
     const [postType, setPostType] = useState<PostType | null>(null);
     const [typePickerOpen, setTypePickerOpen] = useState(false);
-    const [postSubjectId, setPostSubjectId] = useState<string>('');
+    const [postSubjectId, setPostSubjectId] = useState<string>(restrictToSubjectId ?? '');
     const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
     const [postBody, setPostBody] = useState('');
     const [bodyInputKey, setBodyInputKey] = useState(0);
@@ -394,7 +399,7 @@ export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function Cl
                 } : {}),
             });
             setPosts((prev) => [res.data.data, ...prev]);
-            setPostInput(''); setPostBody(''); setPostSubjectId(''); setPostAttachment(null); setPostType(null);
+            setPostInput(''); setPostBody(''); setPostSubjectId(restrictToSubjectId ?? ''); setPostAttachment(null); setPostType(null);
             setBodyInputKey((k) => k + 1);
         } catch {
             Alert.alert('Error', 'Failed to post');
@@ -513,12 +518,16 @@ export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function Cl
                                     placeholderTextColor={subText}
                                     style={[styles.composerTitleInput, { color: text }]}
                                 />
-                                <TouchableOpacity onPress={() => setSubjectPickerOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                {restrictToSubjectId ? (
                                     <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: subText }} numberOfLines={1}>{selectedSubjectName}</Text>
-                                    {subjectPickerOpen ? <ChevronUp size={11} color={subText} /> : <ChevronDown size={11} color={subText} />}
-                                </TouchableOpacity>
+                                ) : (
+                                    <TouchableOpacity onPress={() => setSubjectPickerOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: subText }} numberOfLines={1}>{selectedSubjectName}</Text>
+                                        {subjectPickerOpen ? <ChevronUp size={11} color={subText} /> : <ChevronDown size={11} color={subText} />}
+                                    </TouchableOpacity>
+                                )}
                             </View>
-                            {subjectPickerOpen && (
+                            {!restrictToSubjectId && subjectPickerOpen && (
                                 <View style={[styles.subjectPickerDropdown, { backgroundColor: cardBg, borderColor: cardBorder }]}>
                                 <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
                                     <TouchableOpacity

@@ -1071,7 +1071,9 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     const paneHeading = (kind: 'staffroom' | 'dms') => (
         <View style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: cardBorder }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {kind === 'staffroom' ? <Users size={15} color={text} /> : <User size={15} color={text} />}
+                {kind === 'staffroom'
+                    ? <Users size={15} color={text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
+                    : <User size={15} color={text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />}
                 <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: text }}>
                     {kind === 'staffroom' ? 'Staffroom' : 'Direct Messages'}
                 </Text>

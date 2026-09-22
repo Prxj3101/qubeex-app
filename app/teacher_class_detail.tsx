@@ -13,12 +13,29 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import {
-    ArrowLeft, BookOpen, Calendar, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-    Download, Eye, EyeOff, ExternalLink, FileText, Flag, FolderOpen, Heart, MapPin, MessageSquare,
-    Moon, Pencil, Plus, Power, PowerOff, RotateCcw, Save, Shield, Sun, Trash2, Trophy, Upload, User,
+    ArrowLeft, BarChart2, BookOpen, Calendar, CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+    Clock, Copy, Download, Eye, EyeOff, ExternalLink, FileText, Flag, FolderOpen, Heart, ImagePlus, MapPin, MessageSquare,
+    Moon, Pencil, Play, Plus, Power, PowerOff, RotateCcw, Save, Shield, ShieldAlert, Square, Sun, Trash2, TrendingDown, Trophy, Upload, User,
     Users, X,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
+import * as XLSX from 'xlsx';
+import { LineChart } from 'react-native-chart-kit';
+// The exact same Fee Card component the student app renders in its own
+// Fees screen (front/back 3D flip, month table, structure breakdown) — the
+// teacher Fees tab reuses it as-is instead of a hand-built lookalike, per
+// direct request ("vohi same exact as it is idr chaiye pura same").
+import { FeeFlipCard } from './fees_detail';
+
+// Same constant test-webview.tsx already uses to build student-facing quiz
+// URLs — the teacher's "copy link" needs the same public /quiz/:testLink
+// route (mirrors web's getQuizUrl, which uses window.location.origin).
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://www.qubeex.in';
+// Same base URL api.ts builds its axios instance from — needed here too since
+// CSV/PDF downloads use FileSystem.downloadAsync directly (RN has no
+// browser-style automatic download the way web's fetch+blob approach does).
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 // Loaded lazily — same note as class.tsx / fees_detail.tsx. Expo Go doesn't
 // have this native module and throws the instant it's statically imported.
@@ -30,9 +47,22 @@ function loadMediaLibrary(): typeof import('expo-media-library') | null {
         return null;
     }
 }
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+// Same story as expo-media-library above — expo-sharing is a native module
+// too, and a static `import * as Sharing from 'expo-sharing'` was throwing
+// at module-load time in Expo Go, which on iOS specifically left the Export
+// button's spinner stuck forever (the throw happened before any of
+// attShareWorkbook's own try/catch could run).
+function loadSharing(): typeof import('expo-sharing') | null {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        return require('expo-sharing');
+    } catch {
+        return null;
+    }
+}
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
-    ActivityIndicator, Alert, Animated, BackHandler, Dimensions, Image, Keyboard, LayoutChangeEvent, Modal, Platform, Pressable,
+    ActivityIndicator, Alert, Animated, BackHandler, Dimensions, Image, Keyboard, LayoutChangeEvent, Linking, Modal, Platform, Pressable, RefreshControl,
     ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -53,6 +83,18 @@ interface Division {
     assignments: Assignment[];
     timetableUrl: string | null;
 }
+
+// ── Marksheet types — mirrors qubeex-web's MarksTab.tsx / useMarksheet.ts ──
+// The class teacher's view only: read-only exam marks (subject teachers own
+// those), editable Graded Subjects (term1/term2), no exam/column management
+// (add/edit/reorder exams and graded subjects stays web-only — see the
+// Offline tab's own header comment for why).
+interface MarksExamColumn { id: string; subjectId: string; name: string; maxMarks: number; order: number; examDate?: string | null }
+interface MarksScoreEntry { score: number | null; isAbsent: boolean }
+interface MarksGradedSubject { id: string; name: string; order: number }
+interface MarksGradedScoreEntry { term1Grade: string | null; term2Grade: string | null }
+interface MarksGradeScaleEntry { grade: string; minPct: number }
+interface MarksStudent { id: string; name: string | null; rollNo: string; avatarUrl: string | null }
 
 // ── Manage tab — mirrors qubeex-web's ManageTab.tsx ─────────────────────────
 interface ManageGuardian { name: string; number: string; relation: string }
@@ -107,6 +149,82 @@ interface FlagItem {
     canEdit: boolean;
 }
 const REPORT_CATEGORIES = ['Attendance', 'Discipline', 'Poor Performance', 'Assignment Not Submitted', 'Misconduct', 'Other'];
+// ── Tasks tab — Tests, mirrors web's TasksTab.tsx Tests sub-tab (list +
+// activate/stop/delete/copy-link/results) exactly. The question bank, Paper
+// Builder (drag-drop test/assignment creation with AI-generated questions),
+// and Modules stay web-only — same judgment call already made for Attendance
+// Sheet setup and Marksheet column management: a once-in-a-while authoring
+// job best done at a desk, not something to shrink onto a phone.
+type TaskTestStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED';
+interface TaskTest {
+    id: string; title: string; description: string | null; testLink: string;
+    status: TaskTestStatus; durationMinutes: number; totalMarks: number;
+    numberOfQuestions: number; maxAttempts: number;
+    startDate: string | null; validUntil: string | null; createdAt?: string;
+    _count: { attempts: number; submitted?: number };
+}
+// ── Tasks tab — Test Results panel, mirrors web's TestResultsPanel exactly
+// (same grouping-by-student-with-all-attempts logic, same stats, same
+// highest/lowest scorer cards) — web's wide table becomes a per-student card
+// list here, same adaptation already made for Attendance/Marksheet Overall
+// and Manage's student rows.
+interface TaskTestAttemptResult {
+    id: string; studentName: string; rollNo: string; attemptNumber: number;
+    totalScore: number; maxScore: number; tabChangeCount: number; malpracticeFlag: boolean;
+    startTime: string | null; endTime: string | null; student: { id: string } | null;
+}
+interface TaskTestResultData {
+    test: { title: string; subject: { name: string }; division: { name: string }; totalMarks: number; status: string; validUntil: string | null; maxAttempts: number };
+    attempts: TaskTestAttemptResult[];
+    roster: { id: string; name: string; rollNo: string }[];
+}
+function fmtTaskDateTime(iso: string | null): string {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+// ── Tasks tab — Assignments, mirrors web's AssignmentCard + Submissions
+// table exactly (same fields, same activate/stop/delete/review/offline
+// flows). Same web-only exclusions as Tests: no create/edit (Paper Builder).
+type TaskAssignmentStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED';
+interface TaskAssignment {
+    id: string; title: string; description: string | null; status: TaskAssignmentStatus;
+    totalMarks: number; numberOfQuestions: number; dueDate: string | null; completedAt?: string | null;
+    submissionType: 'OFFLINE' | 'ONLINE'; createdAt?: string;
+    _count: { submissions: number; totalStudents?: number };
+}
+interface TaskAssignmentSubmissionAttempt {
+    id: string; attemptNumber: number; fileUrl: string | null; submittedAt: string;
+    reviewStatus: string | null; reviewNote: string | null; reviewedAt: string | null;
+}
+interface TaskAssignmentSubmission {
+    student: { id: string; name: string | null; rollNo: string | null };
+    submission: {
+        id: string; fileUrl: string | null; submittedAt: string | null; resubmitCount: number;
+        reviewStatus: string | null; reviewNote: string | null; reviewedAt: string | null;
+        offlineSubmittedAt: string | null; offlineMarkedLate: boolean;
+    } | null;
+    attempts: TaskAssignmentSubmissionAttempt[];
+}
+interface TaskAssignmentSubmissionsData {
+    assignment: { id: string; title: string; submissionType: 'OFFLINE' | 'ONLINE'; dueDate: string | null; totalMarks: number; status: TaskAssignmentStatus; completedAt: string | null };
+    students: TaskAssignmentSubmission[];
+}
+// Same 11 columns web's results table has, in the same order — the table is
+// wider than the screen so it scrolls horizontally instead of being
+// reshaped into cards, per explicit request to keep it identical to web.
+const TASK_RESULTS_COLS: { key: string; label: string; width: number }[] = [
+    { key: 'roll', label: 'Roll No', width: 55 },
+    { key: 'name', label: 'Name', width: 120 },
+    { key: 'status', label: 'Status', width: 95 },
+    { key: 'attempt', label: 'Attempt', width: 60 },
+    { key: 'given', label: 'Given At', width: 135 },
+    { key: 'submitted', label: 'Submitted At', width: 135 },
+    { key: 'score', label: 'Score', width: 60 },
+    { key: 'pct', label: '%', width: 45 },
+    { key: 'tabChanges', label: 'Tab Changes', width: 90 },
+    { key: 'malpractice', label: 'Malpractice', width: 85 },
+    { key: 'result', label: 'Result', width: 55 },
+];
 interface ManageReportFormState {
     type: 'yellow' | 'red'; category: string; customCategory: string;
     title: string; detail: string; subject: string; actionTaken: string;
@@ -166,6 +284,98 @@ function getInitials(name: string) { return name.split(' ').slice(0, 2).map((w) 
 const AVATAR_COLORS = ['#DA7756', '#0891B2', '#059669', '#D97706', '#DC2626', '#2563EB', '#8B5CF6'];
 function getAvatarColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]; }
 
+// ── Fees — mirrors qubeex-web's teacher FeesTab.tsx (read-only for teachers;
+// only admins edit fee structure/payments) ─────────────────────────────────
+const FEE_CARD_THEMES = {
+    yellow: { name: 'Yellow', bg: '#FFF9E0', border: '#EEDD9B' },
+    green: { name: 'Pista', bg: '#F1F6E1', border: '#CBDCA0' },
+    blue: { name: 'Blue', bg: '#EEF6FB', border: '#CBE2EF' },
+    pink: { name: 'Pink', bg: '#FCF1F4', border: '#EDCED8' },
+} as const;
+type FeeCardThemeKey = keyof typeof FEE_CARD_THEMES;
+const FEE_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Parses flexible free-text dates like "10 Aug 26", "Aug 10 2026", "10 August"
+// (year defaults to current year if omitted) into a comparable Date — same
+// parsing rule as web's parseFlexDate, since due/paid dates are stored as
+// free text, not real date columns.
+function feeParseFlexDate(input: string | null | undefined): Date | null {
+    if (!input) return null;
+    const str = input.trim();
+    if (!str) return null;
+    const monthIdx = FEE_MONTHS.findIndex((m) => new RegExp(`\\b${m.slice(0, 3)}`, 'i').test(str));
+    if (monthIdx === -1) return null;
+    const nums = str.match(/\d+/g);
+    if (!nums || nums.length === 0) return null;
+    const day = parseInt(nums[0], 10);
+    if (Number.isNaN(day) || day < 1 || day > 31) return null;
+    let year = new Date().getFullYear();
+    if (nums.length > 1) {
+        const y = parseInt(nums[1], 10);
+        if (!Number.isNaN(y)) year = y < 100 ? 2000 + y : y;
+    }
+    const d = new Date(year, monthIdx, day);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+function feeIsPaidLate(dueDate: string | null | undefined, paidDate: string | null | undefined): boolean {
+    const due = feeParseFlexDate(dueDate);
+    const paid = feeParseFlexDate(paidDate);
+    if (!due || !paid) return false;
+    return paid.getTime() > due.getTime();
+}
+function feeIsLateFeeApplicable(dueDate: string | null | undefined, paidDate: string | null | undefined): boolean {
+    const due = feeParseFlexDate(dueDate);
+    if (!due) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+    if (today.getTime() <= due.getTime()) return false;
+    if (!paidDate || !paidDate.trim()) return true;
+    const paid = feeParseFlexDate(paidDate);
+    if (!paid) return true;
+    paid.setHours(0, 0, 0, 0);
+    return paid.getTime() > due.getTime();
+}
+
+type FeeStructureType = 'REGULAR' | 'ADDON' | 'PENALTY' | 'ONE_TIME' | 'BUS' | 'LATE_FEE';
+interface FeeSubItem { id: string; label: string; amount: number }
+interface FeeItem { id: string; label: string; amount: number; subItems: FeeSubItem[] }
+interface FeeStructure { id: string; name: string; type: FeeStructureType; color: string; items: FeeItem[] }
+interface FeeMonth { id: string; month: string; dueDate: string; assignedStructureIds: string[]; remark: string }
+interface FeePayment { studentId: string; feeMonthId: string; status: 'PAID' | 'PENDING'; paidDate: string | null; remark: string | null; extraFields: Record<string, string> | null; extraStructureIds: string[] | null }
+interface FeesRosterStudent { id: string; studentId: string; name: string; rollNo: string; extraDetailFields: Record<string, string> | null; avatarUrl: string | null }
+type FeeStudentDetailField = { id: string; kind: 'default' | 'custom'; defaultKey?: 'name' | 'rollNo' | 'studentId' | 'class' | 'division' | 'bus'; label: string; value?: string };
+const DEFAULT_FEE_STUDENT_FIELDS: FeeStudentDetailField[] = [
+    { id: 'f-name', kind: 'default', defaultKey: 'name', label: 'Name' },
+    { id: 'f-rollno', kind: 'default', defaultKey: 'rollNo', label: 'Roll No' },
+    { id: 'f-studentid', kind: 'default', defaultKey: 'studentId', label: 'Student ID' },
+    { id: 'f-class', kind: 'default', defaultKey: 'class', label: 'Class' },
+    { id: 'f-division', kind: 'default', defaultKey: 'division', label: 'Division' },
+    { id: 'f-bus', kind: 'default', defaultKey: 'bus', label: 'Bus' },
+];
+const FEE_TYPE_CFG: Record<FeeStructureType, { label: string; color: string; emoji: string }> = {
+    REGULAR: { label: 'Regular Monthly', color: '#7C3AED', emoji: '📅' },
+    ADDON: { label: 'Add-on', color: '#DA7756', emoji: '➕' },
+    PENALTY: { label: 'Penalty / Fine', color: '#DC2626', emoji: '⚠️' },
+    ONE_TIME: { label: 'One-time', color: '#059669', emoji: '⭐' },
+    BUS: { label: 'Bus Fee', color: '#0891B2', emoji: '🚌' },
+    LATE_FEE: { label: 'Late Fee Fine', color: '#DC2626', emoji: '⚠️' },
+};
+function feeStructureTotal(s: FeeStructure) {
+    return s.items.reduce((n, item) => {
+        const sub = item.subItems.reduce((m, si) => m + si.amount, 0);
+        return n + (sub > 0 ? sub : item.amount);
+    }, 0);
+}
+// Bus Fee / Late Fee Fine are fixed system types with a fixed color — older
+// saved structures may still carry a stale hex, so normalize against the
+// current config on load rather than showing a stale color.
+function feeNormalizeStructureColors(structures: FeeStructure[]): FeeStructure[] {
+    return structures.map((s) => ((s.type === 'BUS' || s.type === 'LATE_FEE') && s.color !== FEE_TYPE_CFG[s.type].color
+        ? { ...s, color: FEE_TYPE_CFG[s.type].color }
+        : s));
+}
+
 // ── Materials & Results — mirrors qubeex-web's ViewTab.tsx ─────────────────
 type FeedPostType = 'announcement' | 'notice' | 'material' | 'result';
 interface FeedPostLite {
@@ -192,7 +402,7 @@ const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0
 const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
 type Theme = typeof LIGHT & { purple: string };
 
-type TabKey = 'view' | 'manage' | 'attendance' | 'marks' | 'fees';
+type TabKey = 'view' | 'manage' | 'attendance' | 'marks' | 'fees' | 'students' | 'tasks';
 
 // ── Manage tab — small reusable field components (module-level so they
 // don't get recreated, and re-rendering them doesn't depend on the parent's
@@ -685,6 +895,795 @@ function ManageReportForm({
     );
 }
 
+// Tasks tab — Test card, mirrors web's TestCard: same derived UPCOMING
+// status, same meta/actions, same disabled-activate reasons. Web's hover
+// popovers for Activate's two-choice menu and the Stop/Delete confirms
+// become native Alerts here — same copy, same steps, just a different
+// widget since there's no hover state on mobile.
+function TaskTestCard({
+    theme, isDark, test, onActivate, onStopNow, onDelete, onCopyLink, onResults, copied,
+}: {
+    theme: Theme; isDark: boolean; test: TaskTest;
+    onActivate: () => void; onStopNow: () => void; onDelete: () => void; onCopyLink: () => void; onResults: () => void;
+    copied: boolean;
+}) {
+    const effectiveStatus: TaskTestStatus = (test.validUntil && new Date(test.validUntil) < new Date()) ? 'COMPLETED' : test.status;
+    const isUpcoming = effectiveStatus === 'ACTIVE' && !!test.startDate && new Date(test.startDate) > new Date();
+    const displayStatus = isUpcoming ? 'UPCOMING' : effectiveStatus;
+    const statusCfg = {
+        DRAFT: { bg: isDark ? 'rgba(148,163,184,0.15)' : '#F1F5F9', fg: theme.muted },
+        UPCOMING: { bg: isDark ? '#451A03' : '#FEF3C7', fg: isDark ? '#FCD34D' : '#B45309' },
+        ACTIVE: { bg: isDark ? '#052E16' : '#D1FAE5', fg: isDark ? '#6EE7B7' : '#047857' },
+        COMPLETED: { bg: isDark ? '#1E3A8A' : '#DBEAFE', fg: isDark ? '#93C5FD' : '#1D4ED8' },
+    }[displayStatus];
+    const fmt = (iso: string | null) => iso
+        ? `${new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} ${new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+        : '—';
+
+    return (
+        <View style={styles.cardShadowWrap}>
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, padding: 14, gap: 10 }]}>
+            <View style={{ gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <View style={{ paddingHorizontal: 5, paddingVertical: 2.5, borderRadius: 7, backgroundColor: statusCfg.bg }}>
+                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: statusCfg.fg }}>{displayStatus}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }} numberOfLines={1}>
+                            <Text style={{ color: theme.subText }}>Created at:</Text> {fmt(test.createdAt ?? null)}
+                        </Text>
+                        {effectiveStatus === 'ACTIVE' && (
+                            <TouchableOpacity onPress={onCopyLink} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined}>
+                                {copied ? <CheckCircle2 size={15} color="#10B981" /> : <Copy size={15} color={theme.muted} />}
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginTop: -3 }}>
+                            <Trash2 size={15} color={theme.muted} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <BookOpen size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{test.numberOfQuestions} questions</Text>
+                    </View>
+                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.4 }}>·</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <Users size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{test._count.attempts} attempts</Text>
+                    </View>
+                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.4 }}>·</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <CheckCircle2 size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{test._count.submitted ?? 0} submitted</Text>
+                    </View>
+                </View>
+                <Text style={{ fontSize: 13.5, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{test.title}</Text>
+                {!!test.description && (
+                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.subText }}>{test.description}</Text>
+                )}
+            </View>
+
+            <View style={{ gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                    <Clock size={11} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -4 } : undefined} />
+                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{test.durationMinutes} min · {test.totalMarks} marks</Text>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                        <Text style={{ color: theme.subText }}>{(displayStatus === 'DRAFT' || displayStatus === 'UPCOMING') ? 'Starts:' : 'Started:'}</Text> {fmt(test.startDate)}
+                    </Text>
+                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                        <Text style={{ color: theme.subText }}>{effectiveStatus === 'COMPLETED' ? 'Ended:' : 'Ends:'}</Text> {fmt(test.validUntil)}
+                    </Text>
+                </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+                {effectiveStatus === 'DRAFT' && (
+                    <TouchableOpacity onPress={onActivate} disabled={test.numberOfQuestions === 0 || !test.validUntil}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5', opacity: (test.numberOfQuestions === 0 || !test.validUntil) ? 0.4 : 1 }}>
+                        <Play size={11} color="#10B981" />
+                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#10B981' }}>Activate</Text>
+                    </TouchableOpacity>
+                )}
+                {displayStatus === 'ACTIVE' && (
+                    <TouchableOpacity onPress={onStopNow}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2' }}>
+                        <Square size={10} color="#EF4444" />
+                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#EF4444' }}>Stop Now</Text>
+                    </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={onResults}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, borderWidth: 1, borderColor: theme.cardBorder }}>
+                    <BarChart2 size={11} color={theme.subText} />
+                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Results</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+        </View>
+    );
+}
+
+// Tasks tab — Test Results panel. Full-screen slide-in overlay, same
+// treatment as ManageReportBoard (absolute, zIndex 20, translateX-driven).
+function TaskResultsPanel({
+    theme, isDark, testId, onClose, slideX,
+}: { theme: Theme; isDark: boolean; testId: string; onClose: () => void; slideX: Animated.Value }) {
+    const [data, setData] = useState<TaskTestResultData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [downloadingCsv, setDownloadingCsv] = useState(false);
+    const [downloadingAttemptId, setDownloadingAttemptId] = useState<string | null>(null);
+
+    useEffect(() => {
+        setLoading(true);
+        api.get(`/teacher/tasks/tests/${testId}/results`)
+            .then((res) => setData(res.data.data as TaskTestResultData))
+            .catch(() => setData(null))
+            .finally(() => setLoading(false));
+    }, [testId]);
+
+    type ResultRow = { student: { id: string; name: string; rollNo: string }; attempt: TaskTestAttemptResult | null; isFirstOfGroup: boolean; isLastOfGroup: boolean };
+
+    const studentGroups = useMemo(() => {
+        if (!data) return [];
+        const rosterIds = new Set(data.roster.map((s) => s.id));
+        const groups = data.roster.map((s) => ({
+            student: s,
+            attempts: data.attempts.filter((a) => a.student?.id === s.id).sort((a, b) => a.attemptNumber - b.attemptNumber),
+        }));
+        const extraByKey = new Map<string, TaskTestAttemptResult[]>();
+        data.attempts.filter((a) => !rosterIds.has(a.student?.id ?? '')).forEach((a) => {
+            const key = a.student?.id || a.studentName;
+            if (!extraByKey.has(key)) extraByKey.set(key, []);
+            extraByKey.get(key)!.push(a);
+        });
+        extraByKey.forEach((list) => {
+            const sorted = list.slice().sort((a, b) => a.attemptNumber - b.attemptNumber);
+            groups.push({ student: { id: sorted[0].student?.id ?? sorted[0].studentName, name: sorted[0].studentName, rollNo: sorted[0].rollNo }, attempts: sorted });
+        });
+        return groups;
+    }, [data]);
+
+    const rows: ResultRow[] = useMemo(() => studentGroups.flatMap((g): ResultRow[] =>
+        g.attempts.length > 0
+            ? g.attempts.map((a, i) => ({ student: g.student, attempt: a, isFirstOfGroup: i === 0, isLastOfGroup: i === g.attempts.length - 1 }))
+            : [{ student: g.student, attempt: null, isFirstOfGroup: true, isLastOfGroup: true }]
+    ), [studentGroups]);
+
+    const bestRows: ResultRow[] = useMemo(() => studentGroups.map((g) => ({
+        student: g.student,
+        attempt: g.attempts.length > 0 ? g.attempts.reduce((best, a) => (a.totalScore > best.totalScore ? a : best)) : null,
+        isFirstOfGroup: true, isLastOfGroup: true,
+    })), [studentGroups]);
+
+    const notSubmittedCount = bestRows.filter((r) => !r.attempt).length;
+    const isTestCompleted = !!data && (data.test.status === 'COMPLETED' || (!!data.test.validUntil && new Date(data.test.validUntil) < new Date()));
+    const scoredRows = bestRows.filter((r): r is ResultRow & { attempt: TaskTestAttemptResult } => !!r.attempt);
+    const pct = (a: TaskTestAttemptResult) => (a.maxScore > 0 ? (a.totalScore / a.maxScore) * 100 : 0);
+    const highestRow = scoredRows.length > 0 ? scoredRows.reduce((best, r) => (pct(r.attempt) > pct(best.attempt) ? r : best)) : null;
+    const lowestRow = scoredRows.length > 0 ? scoredRows.reduce((worst, r) => (pct(r.attempt) < pct(worst.attempt) ? r : worst)) : null;
+
+    const handleDownloadCsv = useCallback(async () => {
+        setDownloadingCsv(true);
+        try {
+            const Sharing = loadSharing();
+            if (!Sharing) { Alert.alert('Needs a full app build', "Downloading isn't available in Expo Go — needs a full app build."); return; }
+            const token = await AsyncStorage.getItem('userToken');
+            const fileUri = `${FileSystem.cacheDirectory}results_${testId}.csv`;
+            const dl = await FileSystem.downloadAsync(`${API_BASE_URL}/teacher/tasks/tests/${testId}/results/download`, fileUri, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!(await Sharing.isAvailableAsync())) { Alert.alert('Sharing not available', 'This device cannot share files.'); return; }
+            await Sharing.shareAsync(dl.uri, { mimeType: 'text/csv', dialogTitle: 'Test Results', UTI: 'public.comma-separated-values-text' });
+        } catch {
+            Alert.alert('Download failed', 'Could not download results.');
+        } finally {
+            setDownloadingCsv(false);
+        }
+    }, [testId]);
+
+    const handleDownloadAttemptPdf = useCallback(async (attemptId: string, studentName: string) => {
+        setDownloadingAttemptId(attemptId);
+        try {
+            const Sharing = loadSharing();
+            if (!Sharing) { Alert.alert('Needs a full app build', "Downloading isn't available in Expo Go — needs a full app build."); return; }
+            const token = await AsyncStorage.getItem('userToken');
+            const fileUri = `${FileSystem.cacheDirectory}Result_${studentName.replace(/\s+/g, '_')}.pdf`;
+            const dl = await FileSystem.downloadAsync(`${API_BASE_URL}/teacher/tasks/attempts/${attemptId}/pdf`, fileUri, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!(await Sharing.isAvailableAsync())) { Alert.alert('Sharing not available', 'This device cannot share files.'); return; }
+            await Sharing.shareAsync(dl.uri, { mimeType: 'application/pdf', dialogTitle: `Result_${studentName}`, UTI: 'com.adobe.pdf' });
+        } catch {
+            Alert.alert('Download failed', 'Could not download the PDF.');
+        } finally {
+            setDownloadingAttemptId(null);
+        }
+    }, []);
+
+    return (
+        <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, zIndex: 20, transform: [{ translateX: slideX }] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: Platform.OS === 'android' ? 6.5 : 10.5, paddingBottom: 10, paddingHorizontal: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
+                <TouchableOpacity onPress={onClose} style={[styles.manageBackBtn, { borderColor: theme.cardBorder }]}>
+                    <ArrowLeft size={15} color={theme.text} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{data?.test.title ?? 'Results'}</Text>
+                    {!!data && (
+                        <Text style={[{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.subText }, Platform.OS === 'android' ? { marginTop: -4 } : undefined]} numberOfLines={1}>{data.test.subject.name} · {data.test.division.name}</Text>
+                    )}
+                </View>
+                {!!data && data.attempts.length > 0 && (
+                    <TouchableOpacity onPress={handleDownloadCsv} disabled={downloadingCsv}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 10, borderRadius: 9, backgroundColor: '#DA7756', opacity: downloadingCsv ? 0.6 : 1 }}>
+                        {downloadingCsv ? <ActivityIndicator size="small" color="#fff" /> : <Download size={12} color="#fff" />}
+                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>CSV</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {loading ? (
+                <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+            ) : !data || rows.length === 0 ? (
+                <View style={styles.centerFill}>
+                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students in this class yet.</Text>
+                </View>
+            ) : (
+                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 8, paddingBottom: 24, gap: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {[
+                            { label: 'Submitted', value: String(data.attempts.length), color: theme.text },
+                            { label: 'Not Submitted', value: String(notSubmittedCount), color: isTestCompleted ? '#EF4444' : '#F59E0B' },
+                            { label: 'Avg Score', value: `${data.attempts.length > 0 ? Math.round(data.attempts.reduce((s, a) => s + (a.maxScore > 0 ? (a.totalScore / a.maxScore) * 100 : 0), 0) / data.attempts.length) : 0}%`, color: theme.text },
+                            { label: 'Malpractice', value: String(data.attempts.filter((a) => a.malpracticeFlag).length), color: '#EF4444' },
+                        ].map((stat) => (
+                            <View key={stat.label} style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.card }}>
+                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_800ExtraBold', color: stat.color }} numberOfLines={1} adjustsFontSizeToFit>{stat.value}</Text>
+                                <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_600SemiBold', color: theme.subText }} numberOfLines={1} adjustsFontSizeToFit>{stat.label}</Text>
+                            </View>
+                        ))}
+                    </View>
+
+                    {!!highestRow && !!lowestRow && (
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <View style={{ flex: 1, gap: 4, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0', backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : '#ECFDF5' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <Trophy size={13} color="#10B981" />
+                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: '#10B981', textTransform: 'uppercase' }}>Highest</Text>
+                                </View>
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{highestRow.student.name}</Text>
+                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll {highestRow.student.rollNo}</Text>
+                                <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: '#10B981' }}>{Math.round(pct(highestRow.attempt))}% <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>({highestRow.attempt.totalScore}/{highestRow.attempt.maxScore})</Text></Text>
+                            </View>
+                            <View style={{ flex: 1, gap: 4, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.3)' : '#FECACA', backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : '#FEF2F2' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <TrendingDown size={13} color="#EF4444" />
+                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: '#EF4444', textTransform: 'uppercase' }}>Lowest</Text>
+                                </View>
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{lowestRow.student.name}</Text>
+                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll {lowestRow.student.rollNo}</Text>
+                                <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: '#EF4444' }}>{Math.round(pct(lowestRow.attempt))}% <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>({lowestRow.attempt.totalScore}/{lowestRow.attempt.maxScore})</Text></Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Same table web shows — Roll/Name/Status/Attempt/Given At/Submitted
+                        At/Score/%/Tab Changes/Malpractice/Result, one row per attempt (a
+                        student's own attempts share Roll/Name, borderless between them,
+                        exactly like web's rowspan-style grouping). Wide, so it scrolls
+                        horizontally rather than being reshaped into cards. */}
+                    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder }}>
+                        <View style={{ backgroundColor: theme.card }}>
+                            <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
+                                {TASK_RESULTS_COLS.map((c) => (
+                                    <View key={c.key} style={{ width: c.width, paddingHorizontal: 8, paddingVertical: 8 }}>
+                                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }} numberOfLines={1}>{c.label}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                            {rows.map((r, i) => {
+                                const a = r.attempt;
+                                const p = a && a.maxScore > 0 ? Math.round((a.totalScore / a.maxScore) * 100) : 0;
+                                const rowBorder = r.isLastOfGroup ? { borderBottomWidth: 1, borderBottomColor: theme.cardBorder } : undefined;
+                                const cellText = (v: string, color: string, bold = false) => (
+                                    <Text style={{ fontSize: 10.5, fontFamily: bold ? 'Poppins_700Bold' : 'Poppins_400Regular', color }} numberOfLines={1}>{v}</Text>
+                                );
+                                return (
+                                    <View key={i} style={{ flexDirection: 'row' }}>
+                                        <View style={[{ width: TASK_RESULTS_COLS[0].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {cellText(r.isFirstOfGroup ? r.student.rollNo : '', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[1].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {cellText(r.student.name, a ? theme.text : theme.muted, true)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[2].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            <View style={{ alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: a ? (isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5') : isTestCompleted ? (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2') : (isDark ? 'rgba(245,158,11,0.15)' : '#FEF3C7') }}>
+                                                <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: a ? '#10B981' : isTestCompleted ? '#EF4444' : '#F59E0B' }} numberOfLines={1}>{a ? 'Submitted' : 'Not Submitted'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[3].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {cellText(a ? `${a.attemptNumber}/${data.test.maxAttempts}` : '—', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[4].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{a ? fmtTaskDateTime(a.startTime) : '—'}</Text>
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[5].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{a ? fmtTaskDateTime(a.endTime) : '—'}</Text>
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[6].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {a ? cellText(`${a.totalScore}/${a.maxScore}`, theme.text) : isTestCompleted ? cellText(`0/${data.test.totalMarks}`, '#EF4444') : cellText('—', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[7].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {a ? cellText(`${p}%`, p >= 60 ? '#10B981' : '#EF4444', true) : isTestCompleted ? cellText('0%', '#EF4444', true) : cellText('—', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[8].width, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {cellText(a ? String(a.tabChangeCount) : '—', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[9].width, paddingHorizontal: 8, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 3 }, rowBorder]}>
+                                            {a?.malpracticeFlag ? (
+                                                <>
+                                                    <ShieldAlert size={10} color="#EF4444" />
+                                                    {cellText('Yes', '#EF4444', true)}
+                                                </>
+                                            ) : cellText('—', theme.muted)}
+                                        </View>
+                                        <View style={[{ width: TASK_RESULTS_COLS[10].width, paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center' }, rowBorder]}>
+                                            {a ? (
+                                                <TouchableOpacity onPress={() => handleDownloadAttemptPdf(a.id, r.student.name)} disabled={downloadingAttemptId === a.id}>
+                                                    {downloadingAttemptId === a.id ? <ActivityIndicator size="small" color={theme.muted} /> : <Download size={13} color={theme.muted} />}
+                                                </TouchableOpacity>
+                                            ) : cellText('—', theme.muted)}
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </ScrollView>
+                </ScrollView>
+            )}
+        </Animated.View>
+    );
+}
+
+// Tasks tab — Assignment card, mirrors web's AssignmentCard exactly (status
+// badge, Overdue tag, Online/Offline badge, activate/stop/delete confirms as
+// native Alerts same as TaskTestCard).
+function TaskAssignmentCard({
+    theme, isDark, assignment, onActivate, onStopNow, onDelete, onSubmissions,
+}: {
+    theme: Theme; isDark: boolean; assignment: TaskAssignment;
+    onActivate: () => void; onStopNow: () => void; onDelete: () => void; onSubmissions: () => void;
+}) {
+    const isOverdue = assignment.status === 'ACTIVE' && !!assignment.dueDate && new Date(assignment.dueDate) < new Date();
+    const statusCfg = {
+        DRAFT: { bg: isDark ? 'rgba(148,163,184,0.15)' : '#F1F5F9', fg: theme.muted },
+        ACTIVE: { bg: isDark ? '#052E16' : '#D1FAE5', fg: isDark ? '#6EE7B7' : '#047857' },
+        COMPLETED: { bg: isDark ? '#1E3A8A' : '#DBEAFE', fg: isDark ? '#93C5FD' : '#1D4ED8' },
+    }[assignment.status];
+    const fmt = (iso: string | null | undefined) => iso
+        ? `${new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} ${new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+        : '—';
+
+    return (
+        <View style={styles.cardShadowWrap}>
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, padding: 14, gap: 10 }]}>
+            <View style={{ gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <View style={{ paddingHorizontal: 5, paddingVertical: 2.5, borderRadius: 7, backgroundColor: statusCfg.bg }}>
+                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: statusCfg.fg }}>{assignment.status}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }} numberOfLines={1}>
+                            <Text style={{ color: theme.subText }}>Created at:</Text> {fmt(assignment.createdAt)}
+                        </Text>
+                        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginTop: -3 }}>
+                            <Trash2 size={15} color={theme.muted} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {isOverdue && (
+                        <View style={{ paddingHorizontal: 5, paddingVertical: 2.5, borderRadius: 7, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2' }}>
+                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#EF4444' }}>⚠️ Overdue</Text>
+                        </View>
+                    )}
+                    <View style={{ paddingHorizontal: 5, paddingVertical: 2.5, borderRadius: 7, backgroundColor: assignment.submissionType === 'ONLINE' ? (isDark ? 'rgba(59,130,246,0.15)' : '#DBEAFE') : (isDark ? 'rgba(148,163,184,0.15)' : '#F1F5F9') }}>
+                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: assignment.submissionType === 'ONLINE' ? (isDark ? '#93C5FD' : '#1D4ED8') : theme.muted }}>{assignment.submissionType === 'ONLINE' ? '📤 Online' : '📝 Offline'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <FileText size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{assignment.totalMarks} marks</Text>
+                    </View>
+                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.4 }}>·</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <BookOpen size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{assignment.numberOfQuestions} questions</Text>
+                    </View>
+                    {assignment._count.totalStudents != null && (
+                        <>
+                            <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, opacity: 0.4 }}>·</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                <Users size={12.5} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{assignment._count.totalStudents} students</Text>
+                            </View>
+                        </>
+                    )}
+                </View>
+                <Text style={{ fontSize: 13.5, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{assignment.title}</Text>
+                {!!assignment.description && (
+                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.subText }}>{assignment.description}</Text>
+                )}
+            </View>
+
+            <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                    <Text style={{ color: theme.subText }}>Started at:</Text> {fmt(assignment.createdAt)}
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                        <Text style={{ color: theme.subText }}>Due:</Text> {fmt(assignment.dueDate)}
+                    </Text>
+                    {assignment.status === 'COMPLETED' && assignment.completedAt && (
+                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                            <Text style={{ color: theme.subText }}>Ended at:</Text> {fmt(assignment.completedAt)}
+                        </Text>
+                    )}
+                </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+                {assignment.status === 'DRAFT' && (
+                    <TouchableOpacity onPress={onActivate} disabled={assignment.numberOfQuestions === 0 || !assignment.dueDate}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5', opacity: (assignment.numberOfQuestions === 0 || !assignment.dueDate) ? 0.4 : 1 }}>
+                        <Play size={11} color="#10B981" />
+                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#10B981' }}>Activate</Text>
+                    </TouchableOpacity>
+                )}
+                {assignment.status === 'ACTIVE' && (
+                    <TouchableOpacity onPress={onStopNow}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2' }}>
+                        <Square size={10} color="#EF4444" />
+                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#EF4444' }}>Stop Now</Text>
+                    </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={onSubmissions}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 28, borderRadius: 9, borderWidth: 1, borderColor: theme.cardBorder }}>
+                    <BarChart2 size={11} color={theme.subText} />
+                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Submissions</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+        </View>
+    );
+}
+
+// Tests/Assignments list — "Live"/"History" section header, mirrors web's
+// exactly: an icon + label + count, then a horizontal rule filling the rest
+// of the row. Live's dot pulses the same way web's animate-pulse does.
+function TasksLiveDot() {
+    const pulse = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+        const anim = Animated.loop(Animated.sequence([
+            Animated.timing(pulse, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ]));
+        anim.start();
+        return () => anim.stop();
+    }, [pulse]);
+    return <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', opacity: pulse }} />;
+}
+function TasksSectionHeader({ theme, icon, label, count }: { theme: Theme; icon: ReactNode; label: string; count: number }) {
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {icon}
+                <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: theme.subText, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</Text>
+                <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{count}</Text>
+            </View>
+            <View style={{ flex: 1, height: 1, backgroundColor: theme.cardBorder }} />
+        </View>
+    );
+}
+
+// Small pill used in the Assignment Submissions table's Status column.
+function StatusChip({ label, color, isDark }: { label: string; color: string; isDark: boolean }) {
+    return (
+        <View style={{ alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: isDark ? `${color}26` : `${color}1A` }}>
+            <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color }} numberOfLines={1}>{label}</Text>
+        </View>
+    );
+}
+
+// Tasks tab — Assignment Submissions panel, mirrors web's
+// AssignmentSubmissionsPanel exactly (same review/offline/late flows, same
+// resubmission history) — a table like the Results panel, since the user
+// asked for these to match web's table structure rather than being reshaped
+// into cards.
+function TaskAssignmentSubmissionsPanel({
+    theme, isDark, assignmentId, onClose, slideX,
+}: { theme: Theme; isDark: boolean; assignmentId: string; onClose: () => void; slideX: Animated.Value }) {
+    const [data, setData] = useState<TaskAssignmentSubmissionsData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [reviewing, setReviewing] = useState<string | null>(null);
+    const [reviewNote, setReviewNote] = useState('');
+    const [toggling, setToggling] = useState<string | null>(null);
+    const [confirmReview, setConfirmReview] = useState<{ studentId: string; status: 'CORRECT' | 'WRITE_AGAIN' } | null>(null);
+    const [historyOpenFor, setHistoryOpenFor] = useState<Set<string>>(new Set());
+
+    const fetchData = useCallback(async () => {
+        try {
+            const res = await api.get(`/teacher/tasks/assignments/${assignmentId}/submissions`);
+            setData(res.data.data as TaskAssignmentSubmissionsData);
+        } catch {
+            setData(null);
+        }
+    }, [assignmentId]);
+
+    useEffect(() => {
+        setLoading(true);
+        fetchData().finally(() => setLoading(false));
+    }, [fetchData]);
+
+    const handleReview = useCallback(async (studentId: string, reviewStatus: 'CORRECT' | 'WRITE_AGAIN') => {
+        setConfirmReview(null);
+        setReviewing(studentId + reviewStatus);
+        try {
+            await api.patch(`/teacher/tasks/assignments/${assignmentId}/submissions/${studentId}/review`, { reviewStatus, reviewNote: reviewNote || null });
+            await fetchData();
+            setReviewNote('');
+        } catch {
+            Alert.alert('Error', 'Failed to update review');
+        } finally {
+            setReviewing(null);
+        }
+    }, [assignmentId, reviewNote, fetchData]);
+
+    const handleToggleOffline = useCallback(async (studentId: string, currentlySubmitted: boolean) => {
+        setToggling(studentId);
+        try {
+            await api.patch(`/teacher/tasks/assignments/${assignmentId}/submissions/${studentId}/offline`, { submitted: !currentlySubmitted });
+            await fetchData();
+        } catch {
+            Alert.alert('Error', 'Failed to update offline status');
+        } finally {
+            setToggling(null);
+        }
+    }, [assignmentId, fetchData]);
+
+    const handleToggleLate = useCallback(async (studentId: string, currentlyLate: boolean) => {
+        setToggling(studentId);
+        try {
+            await api.patch(`/teacher/tasks/assignments/${assignmentId}/submissions/${studentId}/offline-late`, { late: !currentlyLate });
+            await fetchData();
+        } catch {
+            Alert.alert('Error', 'Failed to update late status');
+        } finally {
+            setToggling(null);
+        }
+    }, [assignmentId, fetchData]);
+
+    const isOnline = data?.assignment.submissionType === 'ONLINE';
+    const submittedOnline = data?.students.filter((s) => s.submission?.submittedAt).length ?? 0;
+    const submittedOffline = data?.students.filter((s) => s.submission?.offlineSubmittedAt).length ?? 0;
+    const total = data?.students.length ?? 0;
+    const submittedCount = isOnline ? submittedOnline : submittedOffline;
+    const pendingCount = total - submittedCount;
+    const correctCount = data?.students.filter((s) => s.submission?.reviewStatus === 'CORRECT').length ?? 0;
+    const isAssignmentOverdue = !!data && !!data.assignment.dueDate && new Date(data.assignment.dueDate) < new Date();
+
+    return (
+        <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, zIndex: 20, transform: [{ translateX: slideX }] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: Platform.OS === 'android' ? 6.5 : 10.5, paddingBottom: 10, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
+                <TouchableOpacity onPress={onClose} style={[styles.manageBackBtn, { borderColor: theme.cardBorder }]}>
+                    <ArrowLeft size={15} color={theme.text} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{data?.assignment.title ?? 'Submissions'}</Text>
+                    {!!data && (
+                        <Text style={[{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.subText }, Platform.OS === 'android' ? { marginTop: -4 } : undefined]} numberOfLines={1}>
+                            {data.assignment.submissionType === 'ONLINE' ? '📤 Online' : '📝 Offline'} · {data.assignment.totalMarks} marks
+                        </Text>
+                    )}
+                </View>
+            </View>
+
+            {loading ? (
+                <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+            ) : !data || data.students.length === 0 ? (
+                <View style={styles.centerFill}>
+                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students in this class yet.</Text>
+                </View>
+            ) : (
+                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 8, paddingBottom: 24, gap: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {[
+                            { label: 'Submitted', value: String(submittedCount), color: theme.text },
+                            { label: 'Pending', value: String(pendingCount), color: isAssignmentOverdue && isOnline ? '#EF4444' : '#F59E0B' },
+                            ...(isOnline ? [{ label: 'Reviewed', value: String(correctCount), color: '#10B981' }] : []),
+                            { label: 'Total', value: String(total), color: theme.text },
+                        ].map((stat) => (
+                            <View key={stat.label} style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.card }}>
+                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_800ExtraBold', color: stat.color }} numberOfLines={1} adjustsFontSizeToFit>{stat.value}</Text>
+                                <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_600SemiBold', color: theme.subText }} numberOfLines={1} adjustsFontSizeToFit>{stat.label}</Text>
+                            </View>
+                        ))}
+                    </View>
+
+                    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder }}>
+                        <View style={{ backgroundColor: theme.card }}>
+                            <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
+                                <View style={{ width: 55, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Roll No</Text></View>
+                                <View style={{ width: 110, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Name</Text></View>
+                                <View style={{ width: 100, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Status</Text></View>
+                                {isOnline && (
+                                    <View style={{ width: 260, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Online Submission</Text></View>
+                                )}
+                                <View style={{ width: 200, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Offline Copy</Text></View>
+                                {!isOnline && (
+                                    <View style={{ width: 90, paddingHorizontal: 8, paddingVertical: 8 }}><Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.subText }}>Late</Text></View>
+                                )}
+                            </View>
+
+                            {data.students.map(({ student, submission, attempts }) => {
+                                const isOnlineAssignment = data.assignment.submissionType === 'ONLINE';
+                                const hasOnline = !!submission?.submittedAt;
+                                const hasOffline = !!submission?.offlineSubmittedAt;
+                                const reviewStatus = submission?.reviewStatus;
+                                const lateSubmission = isOnlineAssignment && !!(attempts[0]?.submittedAt ?? submission?.submittedAt) && !!data.assignment.dueDate &&
+                                    new Date(attempts[0]?.submittedAt ?? submission!.submittedAt!) > new Date(data.assignment.dueDate);
+                                const rowBorder = { borderBottomWidth: 1, borderBottomColor: theme.cardBorder };
+
+                                return (
+                                    <View key={student.id} style={{ flexDirection: 'row' }}>
+                                        <View style={[{ width: 55, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{student.rollNo ?? '—'}</Text>
+                                        </View>
+                                        <View style={[{ width: 110, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={2}>{student.name ?? '—'}</Text>
+                                        </View>
+                                        <View style={[{ width: 100, paddingHorizontal: 8, paddingVertical: 8 }, rowBorder]}>
+                                            {reviewStatus === 'CORRECT' && lateSubmission ? (
+                                                <StatusChip label="⚠️ Late" color="#EF4444" isDark={isDark} />
+                                            ) : reviewStatus === 'CORRECT' || (!isOnlineAssignment && hasOffline) ? (
+                                                <View style={{ gap: 3 }}>
+                                                    <StatusChip label="✅ Submitted" color="#10B981" isDark={isDark} />
+                                                    {!isOnlineAssignment && submission?.offlineMarkedLate && <StatusChip label="⚠️ Late" color="#EF4444" isDark={isDark} />}
+                                                </View>
+                                            ) : reviewStatus === 'WRITE_AGAIN' ? (
+                                                <StatusChip label="✍️ Write Again" color="#EF4444" isDark={isDark} />
+                                            ) : hasOnline ? (
+                                                <StatusChip label="👀 In Review" color="#F59E0B" isDark={isDark} />
+                                            ) : isOnlineAssignment && data.assignment.status !== 'ACTIVE' ? (
+                                                <StatusChip label="❌ Missed" color="#EF4444" isDark={isDark} />
+                                            ) : (
+                                                <StatusChip label="⏳ Pending" color="#F59E0B" isDark={isDark} />
+                                            )}
+                                        </View>
+                                        {isOnline && (
+                                            <View style={[{ width: 260, paddingHorizontal: 8, paddingVertical: 8, gap: 6 }, rowBorder]}>
+                                                {isOnlineAssignment && hasOnline ? (
+                                                    <>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                                            <Text style={{ flex: 1, fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }} numberOfLines={1}>
+                                                                {(attempts[0]?.attemptNumber ?? 1) > 1 ? `Submission #${attempts[0]?.attemptNumber} · ` : 'Submission · '}
+                                                                {fmtTaskDateTime(submission!.submittedAt)}
+                                                            </Text>
+                                                            {!!submission?.fileUrl && (
+                                                                <TouchableOpacity onPress={() => Linking.openURL(submission.fileUrl!)}
+                                                                    style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 7, backgroundColor: isDark ? 'rgba(124,58,237,0.15)' : '#EDE9FE' }}>
+                                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: theme.purple }}>View PDF</Text>
+                                                                </TouchableOpacity>
+                                                            )}
+                                                        </View>
+
+                                                        {(attempts[0]?.reviewStatus === 'CORRECT' || attempts[0]?.reviewStatus === 'WRITE_AGAIN') && (
+                                                            <View>
+                                                                <View style={{ alignSelf: 'flex-start', paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 5, backgroundColor: attempts[0].reviewStatus === 'CORRECT' ? (isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2') }}>
+                                                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_700Bold', color: attempts[0].reviewStatus === 'CORRECT' ? '#10B981' : '#EF4444' }}>{attempts[0].reviewStatus === 'CORRECT' ? 'Approved' : 'Write Again'}</Text>
+                                                                </View>
+                                                                {!!attempts[0].reviewNote && (
+                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: theme.subText, marginTop: 3 }}>{attempts[0].reviewNote}</Text>
+                                                                )}
+                                                            </View>
+                                                        )}
+
+                                                        {!reviewStatus && (
+                                                            confirmReview?.studentId === student.id ? (
+                                                                <View style={{ gap: 5, padding: 6, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC' }}>
+                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                                                                        {confirmReview.status === 'CORRECT' ? 'Approve this submission?' : 'Ask the student to write again?'}
+                                                                    </Text>
+                                                                    <View style={{ flexDirection: 'row', gap: 5 }}>
+                                                                        <TouchableOpacity onPress={() => setConfirmReview(null)} style={{ flex: 1, paddingVertical: 5, borderRadius: 7, borderWidth: 1, borderColor: theme.cardBorder, alignItems: 'center' }}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Cancel</Text>
+                                                                        </TouchableOpacity>
+                                                                        <TouchableOpacity onPress={() => handleReview(student.id, confirmReview.status)} disabled={!!reviewing}
+                                                                            style={{ flex: 1, paddingVertical: 5, borderRadius: 7, alignItems: 'center', backgroundColor: confirmReview.status === 'CORRECT' ? '#10B981' : '#EF4444' }}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{reviewing === student.id + confirmReview.status ? '…' : 'Confirm'}</Text>
+                                                                        </TouchableOpacity>
+                                                                    </View>
+                                                                </View>
+                                                            ) : (
+                                                                <View style={{ gap: 5, padding: 6, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC' }}>
+                                                                    <TextInput value={reviewNote} onChangeText={setReviewNote} placeholder="Optional feedback note…" placeholderTextColor={theme.muted}
+                                                                        style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.text, height: 28, paddingHorizontal: 8, borderRadius: 7, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg }} />
+                                                                    <View style={{ flexDirection: 'row', gap: 5 }}>
+                                                                        <TouchableOpacity onPress={() => setConfirmReview({ studentId: student.id, status: 'CORRECT' })} disabled={!!reviewing}
+                                                                            style={{ flex: 1, paddingVertical: 5, borderRadius: 7, alignItems: 'center', backgroundColor: '#10B981' }}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>✓ Approve</Text>
+                                                                        </TouchableOpacity>
+                                                                        <TouchableOpacity onPress={() => setConfirmReview({ studentId: student.id, status: 'WRITE_AGAIN' })} disabled={!!reviewing}
+                                                                            style={{ flex: 1, paddingVertical: 5, borderRadius: 7, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444', backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2' }}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#EF4444' }}>↩ Write Again</Text>
+                                                                        </TouchableOpacity>
+                                                                    </View>
+                                                                </View>
+                                                            )
+                                                        )}
+
+                                                        {attempts.length > 1 && (
+                                                            <View>
+                                                                <TouchableOpacity onPress={() => setHistoryOpenFor((prev) => {
+                                                                        const next = new Set(prev);
+                                                                        if (next.has(student.id)) next.delete(student.id); else next.add(student.id);
+                                                                        return next;
+                                                                    })}
+                                                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                                    {historyOpenFor.has(student.id) ? <ChevronUp size={11} color={theme.muted} /> : <ChevronDown size={11} color={theme.muted} />}
+                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>{attempts.length - 1} earlier submission{attempts.length - 1 > 1 ? 's' : ''}</Text>
+                                                                </TouchableOpacity>
+                                                                {historyOpenFor.has(student.id) && (
+                                                                    <View style={{ gap: 5, marginTop: 5 }}>
+                                                                        {attempts.slice(1).map((at) => (
+                                                                            <View key={at.id} style={{ padding: 6, borderRadius: 7, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC' }}>
+                                                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                                                                    <Text style={{ flex: 1, fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }} numberOfLines={1}>#{at.attemptNumber} · {fmtTaskDateTime(at.submittedAt)}</Text>
+                                                                                    {!!at.fileUrl && (
+                                                                                        <TouchableOpacity onPress={() => Linking.openURL(at.fileUrl!)} style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 7, backgroundColor: isDark ? 'rgba(124,58,237,0.15)' : '#EDE9FE' }}>
+                                                                                            <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: theme.purple }}>View PDF</Text>
+                                                                                        </TouchableOpacity>
+                                                                                    )}
+                                                                                </View>
+                                                                                {at.reviewStatus === 'CORRECT' && <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: '#10B981', marginTop: 2 }}>Approved</Text>}
+                                                                                {at.reviewStatus === 'WRITE_AGAIN' && <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: '#EF4444', marginTop: 2 }}>Write Again</Text>}
+                                                                                {!!at.reviewNote && <Text style={{ fontSize: 9, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: theme.subText, marginTop: 2 }}>{at.reviewNote}</Text>}
+                                                                            </View>
+                                                                        ))}
+                                                                    </View>
+                                                                )}
+                                                            </View>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>—</Text>
+                                                )}
+                                            </View>
+                                        )}
+                                        <View style={[{ width: 200, paddingHorizontal: 8, paddingVertical: 8, gap: 6, justifyContent: 'center' }, rowBorder]}>
+                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }} numberOfLines={1}>
+                                                {hasOffline ? `Received ${fmtTaskDateTime(submission!.offlineSubmittedAt)}` : 'Not received'}
+                                            </Text>
+                                            <TouchableOpacity onPress={() => handleToggleOffline(student.id, hasOffline)} disabled={toggling === student.id}
+                                                style={{ alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: hasOffline ? '#10B981' : theme.purple, backgroundColor: hasOffline ? (isDark ? 'rgba(16,185,129,0.1)' : '#ECFDF5') : (isDark ? 'rgba(124,58,237,0.1)' : '#EDE9FE') }}>
+                                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: hasOffline ? '#10B981' : theme.purple }}>{toggling === student.id ? '…' : hasOffline ? '✓ Received' : 'Mark Received'}</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                        {!isOnline && (
+                                            <View style={[{ width: 90, paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' }, rowBorder]}>
+                                                <TouchableOpacity onPress={() => handleToggleLate(student.id, !!submission?.offlineMarkedLate)} disabled={toggling === student.id}
+                                                    style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: submission?.offlineMarkedLate ? '#EF4444' : theme.cardBorder, backgroundColor: submission?.offlineMarkedLate ? (isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2') : 'transparent' }}>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: submission?.offlineMarkedLate ? '#EF4444' : theme.muted }}>{toggling === student.id ? '…' : submission?.offlineMarkedLate ? '⚠️ Late' : 'Mark Late'}</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </ScrollView>
+                </ScrollView>
+            )}
+        </Animated.View>
+    );
+}
+
 // P/A/L toggle button — mirrors web's StatusBtn.
 function AttStatusBtn({ label, active, onPress, disabled }: { label: 'P' | 'A' | 'L'; active: boolean; onPress: () => void; disabled?: boolean }) {
     const cfg = {
@@ -695,7 +1694,7 @@ function AttStatusBtn({ label, active, onPress, disabled }: { label: 'P' | 'A' |
     return (
         <TouchableOpacity onPress={onPress} disabled={disabled}
             style={{ width: 28, height: 28, borderRadius: 9, borderWidth: 2, borderColor: active ? cfg.active : '#CBD5E1', backgroundColor: active ? cfg.active : 'transparent', alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.3 : 1 }}>
-            <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: active ? '#fff' : '#94A3B8' }}>{label}</Text>
+            <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: active ? '#fff' : '#94A3B8', marginTop: Platform.OS === 'android' ? 2 : 0 }}>{label}</Text>
         </TouchableOpacity>
     );
 }
@@ -715,7 +1714,7 @@ export default function TeacherClassDetailScreen() {
 
     const TABS: { key: TabKey; label: string }[] = isClassTeacher
         ? [{ key: 'view', label: 'View' }, { key: 'manage', label: 'Manage' }, { key: 'attendance', label: 'Attendance' }, { key: 'marks', label: 'Marksheet' }, { key: 'fees', label: 'Fees' }]
-        : [{ key: 'view', label: 'View' }, { key: 'marks', label: 'Marksheet' }];
+        : [{ key: 'view', label: 'View' }, { key: 'students', label: 'Students' }, { key: 'tasks', label: 'Tasks' }, { key: 'marks', label: 'Marksheet' }];
 
     const [activeTab, setActiveTab] = useState<TabKey>('view');
 
@@ -802,6 +1801,62 @@ export default function TeacherClassDetailScreen() {
                 setManageKbPad(shortfall);
                 // The extra padding needs a frame to actually land before the
                 // ScrollView has that much further to scroll into.
+                setTimeout(doScroll, 50);
+            } else {
+                doScroll();
+            }
+        });
+    }, []);
+
+    // Marksheet Overall → Student Details' Conduct/Remarks fields — same
+    // "scroll the focused field above the keyboard, padding the scroll
+    // content by the shortfall if there's no more room to scroll into"
+    // pattern as Manage's scrollManageFieldAboveKeyboard above.
+    const marksOverallScrollRef = useRef<ScrollView>(null);
+    const marksOverallScrollYRef = useRef(0);
+    const marksKbHeightRef = useRef(0);
+    const marksFocusedInputRef = useRef<TextInput | null>(null);
+    const marksConductInputRef = useRef<TextInput>(null);
+    const marksRemarksInputRef = useRef<TextInput>(null);
+    const marksOverallContentHRef = useRef(0);
+    const marksOverallContainerHRef = useRef(0);
+    const [marksKbPad, setMarksKbPad] = useState(0);
+    useEffect(() => {
+        const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const show = Keyboard.addListener(showEvt, (e) => {
+            marksKbHeightRef.current = e.endCoordinates?.height ?? 0;
+            if (Platform.OS === 'android') {
+                setTimeout(() => scrollMarksFieldAboveKeyboard(marksFocusedInputRef.current), 80);
+            }
+        });
+        const hide = Keyboard.addListener(hideEvt, () => {
+            marksKbHeightRef.current = 0;
+            setMarksKbPad(0);
+        });
+        return () => { show.remove(); hide.remove(); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const scrollMarksFieldAboveKeyboard = useCallback((input: TextInput | null) => {
+        if (input) marksFocusedInputRef.current = input;
+        const kb = marksKbHeightRef.current;
+        if (!kb || !input) return;
+        input.measureInWindow((_x, y, _w, h) => {
+            if (!h) return;
+            const windowH = Dimensions.get('window').height;
+            const visibleBottom = windowH - kb - 12;
+            const overflow = (y + h) - visibleBottom;
+            if (overflow <= 0) return;
+            const target = marksOverallScrollYRef.current + overflow + 10;
+            const roomLeft = Math.max(0, marksOverallContentHRef.current - marksOverallContainerHRef.current - marksOverallScrollYRef.current);
+            const shortfall = Math.max(0, Math.ceil(target - marksOverallScrollYRef.current - roomLeft));
+            const doScroll = () => {
+                const clamped = Math.max(0, target);
+                marksOverallScrollYRef.current = clamped;
+                marksOverallScrollRef.current?.scrollTo({ y: clamped, animated: true });
+            };
+            if (shortfall > 0) {
+                setMarksKbPad(shortfall);
                 setTimeout(doScroll, 50);
             } else {
                 doScroll();
@@ -985,6 +2040,264 @@ export default function TeacherClassDetailScreen() {
     const [manageStats, setManageStats] = useState<ManageStudentStats | null>(null);
     const [manageLoadingStats, setManageLoadingStats] = useState(false);
 
+    // Students tab (subject-teacher only) — mirrors web's StudentsTab.tsx: the
+    // same class roster + leaderboard already fetched above (manageStudents/
+    // leaderboard, both fetched unconditionally regardless of role), but a
+    // RESTRICTED per-student summary instead of Manage's full editable detail
+    // — just rank/score/attendance stats plus a Report button, reusing the
+    // exact same Flags & Warnings board/form as Manage (manageReportBoardOpen
+    // etc. below) since a given screen instance is only ever class-teacher
+    // (Manage tab) or subject-teacher (Students tab), never both at once.
+    const [studentsSelectedId, setStudentsSelectedId] = useState<string | null>(null);
+    const studentsSelectedStudent = sortedManageStudents.find((s) => s.id === studentsSelectedId) ?? null;
+    const [studentsStats, setStudentsStats] = useState<ManageStudentStats | null>(null);
+    const [studentsLoadingStats, setStudentsLoadingStats] = useState(false);
+    const studentsDetailSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (studentsSelectedId) Animated.timing(studentsDetailSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [studentsSelectedId, studentsDetailSlideX]);
+    const closeStudentsDetail = useCallback(() => {
+        Animated.timing(studentsDetailSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setStudentsSelectedId(null);
+            studentsDetailSlideX.setValue(SCREEN_W);
+        });
+    }, [studentsDetailSlideX]);
+    useEffect(() => {
+        if (!studentsSelectedId) { setStudentsStats(null); return; }
+        setStudentsLoadingStats(true);
+        api.get(`/teacher/classes/${divisionId}/students/${studentsSelectedId}/stats`)
+            .then((r) => setStudentsStats(r.data.data))
+            .catch(() => setStudentsStats(null))
+            .finally(() => setStudentsLoadingStats(false));
+    }, [studentsSelectedId, divisionId]);
+    // Whichever of Manage's or Students' selected student is currently open —
+    // the shared Report board/form below reads/submits against this rather
+    // than manageSelectedStudent alone, so the exact same report flow already
+    // built for class-teacher works unmodified for subject-teacher too.
+    const reportStudent = manageSelectedStudent ?? studentsSelectedStudent;
+
+    // Tasks tab (subject-teacher) — Tests sub-tab. Assignments sub-tab lands
+    // in a later pass; Questions/Modules/the Paper Builder stay web-only.
+    const [tasksSubTab, setTasksSubTab] = useState<'tests' | 'assignments'>('tests');
+    const [tasksTests, setTasksTests] = useState<TaskTest[]>([]);
+    const [loadingTasksTests, setLoadingTasksTests] = useState(true);
+    const [copiedTestLink, setCopiedTestLink] = useState<string | null>(null);
+
+    const fetchTasksTests = useCallback(async (silent = false) => {
+        if (isClassTeacher) return;
+        if (!silent) setLoadingTasksTests(true);
+        try {
+            const res = await api.get(`/teacher/tasks/tests?divisionId=${divisionId}${subjectId ? `&subjectId=${subjectId}` : ''}`);
+            setTasksTests(res.data.data ?? []);
+        } catch {
+            setTasksTests([]);
+        } finally {
+            if (!silent) setLoadingTasksTests(false);
+        }
+    }, [isClassTeacher, divisionId, subjectId]);
+
+    // Same "refetch on every return to the screen" reasoning as web's
+    // pageshow listener — a test's status can change from actions taken on
+    // web while the teacher was away from this screen.
+    useFocusEffect(useCallback(() => { fetchTasksTests(); }, [fetchTasksTests]));
+
+    const taskApiErrorMsg = (err: unknown, fallback: string) => {
+        const e = err as { response?: { data?: { message?: string; error?: string } } };
+        return e?.response?.data?.message ?? e?.response?.data?.error ?? fallback;
+    };
+
+    const submitActivateTest = useCallback(async (test: TaskTest, startNow: boolean) => {
+        try {
+            const body: Record<string, unknown> = { status: 'ACTIVE' };
+            if (startNow) body.startDate = new Date().toISOString();
+            const res = await api.patch(`/teacher/tasks/tests/${test.id}`, body);
+            setTasksTests((prev) => prev.map((t) => (t.id === test.id ? { ...t, ...res.data.data } : t)));
+        } catch (err: unknown) {
+            Alert.alert('Error', taskApiErrorMsg(err, 'Failed to activate test'));
+        }
+    }, []);
+
+    const handleActivateTest = useCallback((test: TaskTest) => {
+        if (test.numberOfQuestions === 0 || !test.validUntil) {
+            Alert.alert('Cannot activate', test.numberOfQuestions === 0 ? 'This test has no questions yet — add some on web first.' : 'Set a Valid Until date on web before activating.');
+            return;
+        }
+        const confirmActivate = (startNow: boolean) => {
+            Alert.alert(
+                'Activate this test?',
+                startNow
+                    ? "The link goes live immediately and the Start Date locks to right now. This can't be undone."
+                    : 'Students will see it as "Upcoming" until the set Start Date — it\'ll go live on its own then, no need to activate it again.',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Activate', onPress: () => submitActivateTest(test, startNow) },
+                ]
+            );
+        };
+        if (test.startDate) {
+            Alert.alert('Activate test', undefined, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Start at set time', onPress: () => confirmActivate(false) },
+                { text: 'Start now', onPress: () => confirmActivate(true) },
+            ]);
+        } else {
+            confirmActivate(true);
+        }
+    }, [submitActivateTest]);
+
+    const handleStopTest = useCallback((test: TaskTest) => {
+        Alert.alert('Stop this test now?', "The test will end immediately. This can't be undone.", [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Stop Now', style: 'destructive', onPress: async () => {
+                try {
+                    const res = await api.patch(`/teacher/tasks/tests/${test.id}`, { status: 'COMPLETED', validUntil: new Date().toISOString() });
+                    setTasksTests((prev) => prev.map((t) => (t.id === test.id ? { ...t, ...res.data.data } : t)));
+                } catch (err: unknown) {
+                    Alert.alert('Error', taskApiErrorMsg(err, 'Failed to stop test'));
+                }
+            } },
+        ]);
+    }, []);
+
+    const handleDeleteTest = useCallback((test: TaskTest) => {
+        Alert.alert('Delete this test?', `"${test.title}" will be permanently deleted.`, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: async () => {
+                try {
+                    await api.delete(`/teacher/tasks/tests/${test.id}`);
+                    setTasksTests((prev) => prev.filter((t) => t.id !== test.id));
+                } catch (err: unknown) {
+                    Alert.alert('Error', taskApiErrorMsg(err, 'Failed to delete test'));
+                }
+            } },
+        ]);
+    }, []);
+
+    const handleCopyTestLink = useCallback(async (test: TaskTest) => {
+        await Clipboard.setStringAsync(`${WEB_URL}/quiz/${test.testLink}`);
+        setCopiedTestLink(test.testLink);
+        setTimeout(() => setCopiedTestLink(null), 1500);
+    }, []);
+
+    // Test Results panel — same slide-in-from-right treatment as Attendance/
+    // Marksheet Overall's student detail and Manage's Report board.
+    const [tasksResultsOpen, setTasksResultsOpen] = useState(false);
+    const [tasksResultsTestId, setTasksResultsTestId] = useState<string | null>(null);
+    const tasksResultsSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (tasksResultsOpen) Animated.timing(tasksResultsSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [tasksResultsOpen, tasksResultsSlideX]);
+    const closeTasksResults = useCallback(() => {
+        Animated.timing(tasksResultsSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setTasksResultsOpen(false);
+            setTasksResultsTestId(null);
+            tasksResultsSlideX.setValue(SCREEN_W);
+        });
+    }, [tasksResultsSlideX]);
+    const openTasksResults = useCallback((id: string) => {
+        setTasksResultsTestId(id);
+        setTasksResultsOpen(true);
+    }, []);
+
+    // Tasks tab — Assignments sub-tab, mirrors web's AssignmentCard list +
+    // activate/stop/delete/submissions exactly (same fetch/action shape as
+    // Tests above).
+    const [tasksAssignments, setTasksAssignments] = useState<TaskAssignment[]>([]);
+    const [loadingTasksAssignments, setLoadingTasksAssignments] = useState(true);
+
+    const fetchTasksAssignments = useCallback(async (silent = false) => {
+        if (isClassTeacher) return;
+        if (!silent) setLoadingTasksAssignments(true);
+        try {
+            const res = await api.get(`/teacher/tasks/assignments?divisionId=${divisionId}${subjectId ? `&subjectId=${subjectId}` : ''}`);
+            setTasksAssignments(res.data.data ?? []);
+        } catch {
+            setTasksAssignments([]);
+        } finally {
+            if (!silent) setLoadingTasksAssignments(false);
+        }
+    }, [isClassTeacher, divisionId, subjectId]);
+
+    useFocusEffect(useCallback(() => { fetchTasksAssignments(); }, [fetchTasksAssignments]));
+
+    const submitActivateAssignment = useCallback(async (assignment: TaskAssignment) => {
+        try {
+            const res = await api.patch(`/teacher/tasks/assignments/${assignment.id}`, { status: 'ACTIVE' });
+            setTasksAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, ...res.data.data } : a)));
+        } catch (err: unknown) {
+            Alert.alert('Error', taskApiErrorMsg(err, 'Failed to activate assignment'));
+        }
+    }, []);
+
+    const handleActivateAssignment = useCallback((assignment: TaskAssignment) => {
+        if (assignment.numberOfQuestions === 0 || !assignment.dueDate) {
+            Alert.alert('Cannot activate', assignment.numberOfQuestions === 0 ? 'This assignment has no questions yet — add some on web first.' : 'Set a Due Date on web before activating.');
+            return;
+        }
+        Alert.alert('Activate this assignment?', 'Students will be able to see and submit it immediately.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Activate', onPress: () => submitActivateAssignment(assignment) },
+        ]);
+    }, [submitActivateAssignment]);
+
+    const handleStopAssignment = useCallback((assignment: TaskAssignment) => {
+        Alert.alert('Stop this assignment now?', "The assignment will end immediately. This can't be undone.", [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Stop Now', style: 'destructive', onPress: async () => {
+                try {
+                    const res = await api.patch(`/teacher/tasks/assignments/${assignment.id}`, { status: 'COMPLETED' });
+                    setTasksAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, ...res.data.data } : a)));
+                } catch (err: unknown) {
+                    Alert.alert('Error', taskApiErrorMsg(err, 'Failed to stop assignment'));
+                }
+            } },
+        ]);
+    }, []);
+
+    const handleDeleteAssignment = useCallback((assignment: TaskAssignment) => {
+        Alert.alert('Delete this assignment?', `"${assignment.title}" will be permanently deleted.`, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: async () => {
+                try {
+                    await api.delete(`/teacher/tasks/assignments/${assignment.id}`);
+                    setTasksAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+                } catch (err: unknown) {
+                    Alert.alert('Error', taskApiErrorMsg(err, 'Failed to delete assignment'));
+                }
+            } },
+        ]);
+    }, []);
+
+    // Submissions panel — same slide-in treatment as Test Results.
+    const [tasksSubmissionsOpen, setTasksSubmissionsOpen] = useState(false);
+    const [tasksSubmissionsAssignmentId, setTasksSubmissionsAssignmentId] = useState<string | null>(null);
+    const tasksSubmissionsSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (tasksSubmissionsOpen) Animated.timing(tasksSubmissionsSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [tasksSubmissionsOpen, tasksSubmissionsSlideX]);
+    const closeTasksSubmissions = useCallback(() => {
+        Animated.timing(tasksSubmissionsSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setTasksSubmissionsOpen(false);
+            setTasksSubmissionsAssignmentId(null);
+            tasksSubmissionsSlideX.setValue(SCREEN_W);
+        });
+    }, [tasksSubmissionsSlideX]);
+    const openTasksSubmissions = useCallback((id: string) => {
+        setTasksSubmissionsAssignmentId(id);
+        setTasksSubmissionsOpen(true);
+    }, []);
+
+    // Pull-to-refresh — same on both Tests and Assignments sub-tabs.
+    const [tasksRefreshing, setTasksRefreshing] = useState(false);
+    const handleTasksRefresh = useCallback(async () => {
+        setTasksRefreshing(true);
+        try {
+            await Promise.all([fetchTasksTests(true), fetchTasksAssignments(true)]);
+        } finally {
+            setTasksRefreshing(false);
+        }
+    }, [fetchTasksTests, fetchTasksAssignments]);
+
     // Report (Flags & Warnings) — board + form, mirrors web's FlagsBoard +
     // ReportStudentModal exactly.
     const [manageReportBoardOpen, setManageReportBoardOpen] = useState(false);
@@ -1025,17 +2338,17 @@ export default function TeacherClassDetailScreen() {
     }, []);
 
     const fetchManageReportFlags = useCallback(async () => {
-        if (!manageSelectedStudent) return;
+        if (!reportStudent) return;
         setManageReportLoadingList(true);
         try {
-            const res = await api.get(`/teacher/classes/${divisionId}/students/${manageSelectedStudent.id}/remarks`);
+            const res = await api.get(`/teacher/classes/${divisionId}/students/${reportStudent.id}/remarks`);
             setManageReportFlags(res.data.data ?? []);
         } catch {
             setManageReportFlags([]);
         } finally {
             setManageReportLoadingList(false);
         }
-    }, [manageSelectedStudent, divisionId]);
+    }, [reportStudent, divisionId]);
 
     const openManageReportBoard = useCallback(() => {
         setManageReportBoardOpen(true);
@@ -1086,7 +2399,7 @@ export default function TeacherClassDetailScreen() {
     }, []);
 
     const handleManageReportSubmit = useCallback(async () => {
-        if (!manageSelectedStudent) return;
+        if (!reportStudent) return;
         const resolvedCategory = manageReportForm.category === 'Other' ? manageReportForm.customCategory.trim() : manageReportForm.category;
         if (!resolvedCategory || !manageReportForm.title.trim() || !manageReportForm.detail.trim()) return;
         setManageReportSubmitting(true);
@@ -1103,7 +2416,7 @@ export default function TeacherClassDetailScreen() {
             if (manageReportEditing) {
                 await api.patch(`/teacher/reports/${manageReportEditing.id}/edit`, payload);
             } else {
-                await api.post(`/teacher/classes/${divisionId}/students/${manageSelectedStudent.id}/remarks`, { ...payload, severity: 'MEDIUM' });
+                await api.post(`/teacher/classes/${divisionId}/students/${reportStudent.id}/remarks`, { ...payload, severity: 'MEDIUM' });
             }
             closeManageReportForm();
             fetchManageReportFlags();
@@ -1113,7 +2426,7 @@ export default function TeacherClassDetailScreen() {
         } finally {
             setManageReportSubmitting(false);
         }
-    }, [manageSelectedStudent, divisionId, manageReportForm, manageReportAttachments, manageReportEditing, closeManageReportForm, fetchManageReportFlags]);
+    }, [reportStudent, divisionId, manageReportForm, manageReportAttachments, manageReportEditing, closeManageReportForm, fetchManageReportFlags]);
 
     // Slide the detail in from the right the moment a student is selected,
     // and slide it back out before actually clearing the selection — same
@@ -1130,9 +2443,17 @@ export default function TeacherClassDetailScreen() {
         });
     }, [manageDetailSlideX]);
 
-    // Back (header button, Android hardware back) closes the student detail
-    // first rather than leaving the whole class screen.
-    usePreventRemove(!!manageSelectedStudent, () => closeManageDetail());
+    // Android hardware back closes the student detail first rather than
+    // leaving the whole class screen. The topbar's own back button is the
+    // one exception — it's meant to leave the class screen outright even
+    // with a student open, so it flips this flag true for its one dispatch
+    // to slip past the guard below, then this resets it once the detail
+    // itself actually closes (or immediately if it never was open).
+    const [manageBackGuardSuppressed, setManageBackGuardSuppressed] = useState(false);
+    useEffect(() => {
+        if (!manageSelectedStudent) setManageBackGuardSuppressed(false);
+    }, [manageSelectedStudent]);
+    usePreventRemove(!!manageSelectedStudent && !manageBackGuardSuppressed, () => closeManageDetail());
 
     // iOS's edge-swipe can't be redirected from JS — native-stack pops the
     // screen natively before JS sees it, so letting it run and reverting it
@@ -1423,7 +2744,11 @@ export default function TeacherClassDetailScreen() {
                 });
                 setAttAttendance(newAtt);
                 setAttGlobalRemark(dateNote ?? '');
-                if (dateNote) setAttDateRemarks((prev) => ({ ...prev, [attCurrentDk]: dateNote }));
+                // Always sync (not just when truthy) — otherwise a cleared
+                // note leaves the stale old text sitting in attDateRemarks,
+                // which feeds the Sheet view's remark dot and the remark
+                // modal's prefill.
+                setAttDateRemarks((prev) => ({ ...prev, [attCurrentDk]: dateNote ?? '' }));
             })
             .catch(() => {
                 setAttAttendance(Object.fromEntries(attStudents.map((s) => [s.id, { status: null as AttendanceStatus, remark: '' }])));
@@ -1483,7 +2808,14 @@ export default function TeacherClassDetailScreen() {
             const records = attStudents
                 .filter((s) => attAttendance[s.id]?.status !== null && attAttendance[s.id]?.status !== undefined)
                 .map((s) => ({ studentId: s.id, status: attAttendance[s.id].status as 'P' | 'A' | 'L', remark: attAttendance[s.id].remark ?? '' }));
-            await api.post(`${attBase}/daily`, { date: attCurrentDk, records, dateNote: attGlobalRemark || undefined });
+            // Always send dateNote as the real string (even ''), never
+            // `|| undefined` — the backend only touches the day note when the
+            // key is present at all (`if (dateNote !== undefined)`), and an
+            // empty string is what tells it to actually delete the note.
+            // Sending `undefined` for a cleared remark drops the key from the
+            // JSON body entirely, so the backend leaves the old note as-is —
+            // that's why a cleared-then-saved remark kept reappearing.
+            await api.post(`${attBase}/daily`, { date: attCurrentDk, records, dateNote: attGlobalRemark });
             setAttSaveStatus('saved');
             setAttRefreshKey((k) => k + 1);
             refreshAttSummary();
@@ -1529,6 +2861,10 @@ export default function TeacherClassDetailScreen() {
     const [attHolidayInput, setAttHolidayInput] = useState('');
     const [attRemarkModalDk, setAttRemarkModalDk] = useState<string | null>(null);
     const [attRemarkModalInput, setAttRemarkModalInput] = useState('');
+    const [attShowExportMenu, setAttShowExportMenu] = useState(false);
+    const [attShowMonthSelector, setAttShowMonthSelector] = useState(false);
+    const [attSelectedExportMonths, setAttSelectedExportMonths] = useState<number[]>([]);
+    const [attExporting, setAttExporting] = useState(false);
 
     // Keep the sheet's month in step with whatever date Daily has selected.
     useEffect(() => {
@@ -1584,24 +2920,59 @@ export default function TeacherClassDetailScreen() {
     const [attShortTab, setAttShortTab] = useState<'month' | 'overall'>('month');
     const [attStudentRecords, setAttStudentRecords] = useState<Record<string, AttendanceStatus>>({});
     const [attLoadingStudentRec, setAttLoadingStudentRec] = useState(false);
+    // Which student attStudentRecords currently holds. The fetch effect below
+    // only flips attLoadingStudentRec to true *after* the detail has already
+    // rendered once, so without this the 12x31 Attendance Sheet grid got built
+    // a first time against the previous student's (or empty) records — ~800
+    // views thrown away a moment later. That wasted build was the multi-second
+    // freeze on opening a student, which in turn stalled the slide-in.
+    const [attStudentRecordsFor, setAttStudentRecordsFor] = useState<string | null>(null);
 
-    // Selecting the first student once the summary loads, same as web.
-    useEffect(() => {
-        if (attOverallSelectedId === null && attOverallStudents.length > 0) setAttOverallSelectedId(attOverallStudents[0].studentId);
-    }, [attOverallStudents, attOverallSelectedId]);
-
+    // No auto-select here (unlike web) — Student Details now opens on a
+    // Manage-style list of students first, and picking one from that list is
+    // what sets attOverallSelectedId and opens the detail page below.
     const attSelectedOverallStudent = attOverallStudents.find((s) => s.studentId === attOverallSelectedId) ?? null;
+
+    // Slide the student detail in from the right the moment a student is
+    // selected, and slide it back out before clearing the selection — same
+    // treatment as Manage's manageDetailSlideX.
+    // Driven from an effect, exactly like Manage's manageDetailSlideX. It has
+    // to be: with useNativeDriver the animation is attached to the view's
+    // native node, so starting it from the press handler (before the detail
+    // has mounted) leaves it driving nothing on Android and the panel just
+    // appears. The freeze that made this look late is fixed at its source —
+    // see attStudentRecordsFor above — not by moving the start earlier.
+    const attDetailSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (attOverallSelectedId) Animated.timing(attDetailSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [attOverallSelectedId, attDetailSlideX]);
+    const closeAttOverallDetail = useCallback(() => {
+        Animated.timing(attDetailSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setAttOverallSelectedId(null);
+            attDetailSlideX.setValue(SCREEN_W);
+        });
+    }, [attDetailSlideX]);
+
+    // Same roll-no sort as sortedAttStudents, just over the summary list
+    // (which carries the pct fields the list row and detail page need).
+    const sortedOverallStudents = useMemo(() => [...attOverallStudents].sort((a, b) => {
+        const ra = parseInt(a.rollNo || '9999', 10);
+        const rb = parseInt(b.rollNo || '9999', 10);
+        return ra - rb;
+    }), [attOverallStudents]);
 
     useEffect(() => {
         if (!attSelectedOverallStudent) return;
+        const forId = attSelectedOverallStudent.studentId;
         setAttLoadingStudentRec(true);
-        api.get(`${attBase}/student-records/${attSelectedOverallStudent.studentId}?startDate=${attStartYear}-06-01&endDate=${attStartYear + 1}-05-31`)
+        api.get(`${attBase}/student-records/${forId}?startDate=${attStartYear}-06-01&endDate=${attStartYear + 1}-05-31`)
             .then((res) => {
                 const recs: Record<string, AttendanceStatus> = {};
                 (res.data.data.records ?? []).forEach((r: { date: string; status: string }) => { recs[r.date] = r.status as AttendanceStatus; });
                 setAttStudentRecords(recs);
+                setAttStudentRecordsFor(forId);
             })
-            .catch(() => setAttStudentRecords({}))
+            .catch(() => { setAttStudentRecords({}); setAttStudentRecordsFor(forId); })
             .finally(() => setAttLoadingStudentRec(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [attSelectedOverallStudent?.studentId, attBase]);
@@ -1612,6 +2983,91 @@ export default function TeacherClassDetailScreen() {
         { month: 'December', short: 'Dec', key: 11 }, { month: 'January', short: 'Jan', key: 0 }, { month: 'February', short: 'Feb', key: 1 },
         { month: 'March', short: 'Mar', key: 2 }, { month: 'April', short: 'Apr', key: 3 }, { month: 'May', short: 'May', key: 4 },
     ], []);
+
+    // Builds one month's worth of sheet data — exact same headers/columns/
+    // rows as web's exportMonthSheet (Roll No., Name, Student ID, one column
+    // per day, P/A/L/%/Cumulative %).
+    const attExportMonthSheet = useCallback((monthKey: number) => {
+        const exportYear = monthKey >= 5 ? attStartYear : attStartYear + 1;
+        const days = new Date(exportYear, monthKey + 1, 0).getDate();
+        const dates = Array.from({ length: days }, (_, i) => i + 1);
+        const exportMonthStr = `${exportYear}-${String(monthKey + 1).padStart(2, '0')}`;
+        const headers = ['Roll No.', 'Name', 'Student ID', ...dates.map(String), 'P', 'A', 'L', '%', 'Cumulative %'];
+        const rows = sortedAttStudents.map((student) => {
+            let p = 0, a = 0, l = 0;
+            const dateCells = dates.map((d) => {
+                const dk = attMakeDateKey(exportYear, monthKey, d);
+                if (attHolidays[dk]) return 'H';
+                const status = attGetLiveStatus(student.id, dk);
+                if (status === 'P') p++; else if (status === 'A') a++; else if (status === 'L') l++;
+                return status ?? '—';
+            });
+            const total = p + a + l;
+            const pct = total > 0 ? `${Math.round(((p + l) / total) * 100)}%` : '—';
+            const cumulativePct = student.cumulativeByMonth?.[exportMonthStr] ?? null;
+            return [student.rollNo, student.name, student.studentId, ...dateCells, p || '—', a || '—', l || '—', pct, cumulativePct !== null ? `${cumulativePct}%` : '—'];
+        });
+        const short = ATT_SHEET_MONTHS_ORDER.find((m) => m.key === monthKey)?.short ?? String(monthKey);
+        return { headers, rows, sheetName: short, exportYear };
+    }, [attStartYear, sortedAttStudents, attHolidays, attGetLiveStatus, ATT_SHEET_MONTHS_ORDER]);
+
+    // Writes a workbook to a local file and hands it to the OS share sheet —
+    // RN has no browser-style automatic download, so sharing (save to
+    // Files, email, WhatsApp, etc.) is the mobile equivalent of web's
+    // XLSX.writeFile triggering a download.
+    const attShareWorkbook = useCallback(async (wb: XLSX.WorkBook, filename: string) => {
+        setAttExporting(true);
+        try {
+            const Sharing = loadSharing();
+            if (!Sharing) { Alert.alert('Needs a full app build', 'Exporting to Excel isn\'t available in Expo Go — needs a full app build.'); return; }
+            const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+            const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+            await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            const available = await Sharing.isAvailableAsync();
+            if (!available) { Alert.alert('Sharing not available', 'This device cannot share files.'); return; }
+            await Sharing.shareAsync(fileUri, {
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                dialogTitle: filename,
+                UTI: 'org.openxmlformats.spreadsheetml.sheet',
+            });
+        } catch {
+            Alert.alert('Export failed', 'Could not generate the Excel file.');
+        } finally {
+            setAttExporting(false);
+        }
+    }, []);
+
+    const handleAttExportThisMonth = useCallback(() => {
+        setAttShowExportMenu(false);
+        setAttExporting(true);
+        const { headers, rows, sheetName, exportYear } = attExportMonthSheet(attSheetMonth);
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `${sheetName} Attendance`);
+        // iOS specifically: presenting the native share sheet while our own
+        // <Modal> (the export dropdown) is still mid-dismiss silently no-ops
+        // — the app just sits there like nothing happened. Waiting for the
+        // Modal's own fade-out (animationType="fade") to actually finish
+        // before calling Sharing.shareAsync avoids the two native
+        // presentations colliding. Android doesn't need this, but it's
+        // harmless there too.
+        setTimeout(() => attShareWorkbook(wb, `Attendance_${sheetName}_${exportYear}.xlsx`), 400);
+    }, [attExportMonthSheet, attSheetMonth, attShareWorkbook]);
+
+    const handleAttExportSelectedMonths = useCallback(() => {
+        if (attSelectedExportMonths.length === 0) return;
+        setAttExporting(true);
+        const wb = XLSX.utils.book_new();
+        attSelectedExportMonths.forEach((monthKey) => {
+            const { headers, rows, sheetName, exportYear } = attExportMonthSheet(monthKey);
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            XLSX.utils.book_append_sheet(wb, ws, `${sheetName} ${exportYear} Attendance`);
+        });
+        setAttShowMonthSelector(false);
+        setAttSelectedExportMonths([]);
+        // Same iOS modal-dismiss race as handleAttExportThisMonth above.
+        setTimeout(() => attShareWorkbook(wb, `Attendance_${attStartYear}_Selected.xlsx`), 400);
+    }, [attSelectedExportMonths, attExportMonthSheet, attShareWorkbook, attStartYear]);
 
     // "Get List" — same content as web's plain-text export, shared via the
     // system share sheet (save/print/send) instead of a browser download.
@@ -1784,7 +3240,7 @@ export default function TeacherClassDetailScreen() {
             <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 14, gap: 12 }}>
                 <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, paddingHorizontal: 0, paddingTop: 0, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: -12 }]}>
                     <Users size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
-                    <Text style={[styles.cardHeaderText, { color: theme.text }]}>Students ({sortedManageStudents.length})</Text>
+                    <Text style={[styles.cardHeaderText, { color: theme.text }]}>{manageSelectedStudent ? 'Student Info' : `Students (${sortedManageStudents.length})`}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                 {manageSelectedStudent ? (
@@ -1835,7 +3291,7 @@ export default function TeacherClassDetailScreen() {
                                 { label: 'Score %', value: manageLoadingStats ? '…' : (manageStats?.score.pct != null ? `${manageStats.score.pct}%` : '-'), color: manageStats?.score.pct == null ? theme.purple : manageStats.score.pct >= 75 ? '#059669' : manageStats.score.pct >= 35 ? '#F59E0B' : '#DC2626' },
                                 { label: 'Attendance', value: manageLoadingStats ? '…' : (manageStats?.attendance.pct != null ? `${manageStats.attendance.pct}%` : '-'), color: manageStats?.attendance.pct == null ? theme.purple : manageStats.attendance.pct >= 75 ? '#10B981' : manageStats.attendance.pct >= 65 ? '#F59E0B' : '#EF4444' },
                             ].map((stat) => (
-                                <View key={stat.label} style={[styles.manageStatBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                <View key={stat.label} style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
                                     <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: stat.color }}>{stat.value}</Text>
                                     <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{stat.label}</Text>
                                 </View>
@@ -2306,6 +3762,2024 @@ export default function TeacherClassDetailScreen() {
         manageReportBoardSlideX, closeManageReportBoard, closeManageReportForm,
     ]);
 
+    // ── Students tab — subject-teacher's restricted roster, mirrors web's
+    // StudentsTab.tsx: same list as Manage (rank + attendance% per row), but
+    // selecting a student shows only a summary (no editable info, no
+    // guardians, no account controls) plus the same Report button/flow.
+    const studentsPageContent = useMemo(() => {
+        if (!division) return null;
+        return (
+            <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 14, gap: 12 }}>
+                <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, paddingHorizontal: 0, paddingTop: 0, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: -12 }]}>
+                    <Users size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
+                    <Text style={[styles.cardHeaderText, { color: theme.text }]}>{studentsSelectedStudent ? 'Student Details' : `Students (${sortedManageStudents.length})`}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                {studentsSelectedStudent ? (
+                    <Animated.View style={{ flex: 1, transform: [{ translateX: studentsDetailSlideX }] }}>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingTop: 12, paddingBottom: 24 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <TouchableOpacity onPress={closeStudentsDetail} style={[styles.manageBackBtn, { borderColor: theme.cardBorder, marginTop: Platform.OS === 'android' ? -16 : -12 }]}>
+                                <ArrowLeft size={15} color={theme.text} />
+                            </TouchableOpacity>
+                            <View
+                                style={[styles.avatarSm, { width: 44, height: 44, borderRadius: 15, backgroundColor: studentsSelectedStudent.avatarUrl ? 'transparent' : getAvatarColor(studentsSelectedStudent.user.name ?? studentsSelectedStudent.studentId) }]}>
+                                {studentsSelectedStudent.avatarUrl
+                                    ? <Image source={{ uri: studentsSelectedStudent.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                    : <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(studentsSelectedStudent.user.name ?? studentsSelectedStudent.studentId)}</Text>}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{studentsSelectedStudent.user.name ?? '-'}</Text>
+                                <Text style={[{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }, Platform.OS === 'android' ? { marginTop: -3 } : undefined]}>
+                                    {studentsSelectedStudent.studentId}{studentsSelectedStudent.rollNo ? ` · Roll ${studentsSelectedStudent.rollNo}` : ''}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity onPress={openManageReportBoard}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, height: 28, paddingHorizontal: 14, borderRadius: 9, borderWidth: 1, borderColor: theme.cardBorder, alignSelf: 'flex-start' }}>
+                            <Flag size={11} color="#EF4444" />
+                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#EF4444' }}>Report</Text>
+                        </TouchableOpacity>
+
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {[
+                                { label: 'Class Rank', value: studentsLoadingStats ? '…' : (studentsStats?.classRank != null ? `#${studentsStats.classRank}` : '-'), color: studentsStats?.classRank == null ? theme.purple : studentsStats.classRank === 1 ? '#F59E0B' : studentsStats.classRank <= 3 ? theme.purple : '#64748B' },
+                                { label: 'Score %', value: studentsLoadingStats ? '…' : (studentsStats?.score.pct != null ? `${studentsStats.score.pct}%` : '-'), color: studentsStats?.score.pct == null ? theme.purple : studentsStats.score.pct >= 75 ? '#059669' : studentsStats.score.pct >= 35 ? '#F59E0B' : '#DC2626' },
+                                { label: 'Attendance', value: studentsLoadingStats ? '…' : (studentsStats?.attendance.pct != null ? `${studentsStats.attendance.pct}%` : '-'), color: studentsStats?.attendance.pct == null ? theme.purple : studentsStats.attendance.pct >= 75 ? '#10B981' : studentsStats.attendance.pct >= 65 ? '#F59E0B' : '#EF4444' },
+                            ].map((stat) => (
+                                <View key={stat.label} style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                    <Text style={{ fontSize: 16, fontFamily: 'Poppins_800ExtraBold', color: stat.color }}>{stat.value}</Text>
+                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>{stat.label}</Text>
+                                </View>
+                            ))}
+                        </View>
+
+                        <View style={{ padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.card }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.subText, lineHeight: 16 }}>
+                                Full student details, guardians, and account management are handled by {division.name}&apos;s class teacher.
+                            </Text>
+                        </View>
+                    </ScrollView>
+                    </Animated.View>
+                ) : (
+                    <View style={{ flex: 1 }}>
+                        {loadingManageStudents ? (
+                            <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+                        ) : sortedManageStudents.length === 0 ? (
+                            <View style={styles.centerFill}>
+                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students yet</Text>
+                            </View>
+                        ) : (
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {sortedManageStudents.map((student) => {
+                                    const lb = leaderboard.find((e) => e.id === student.id);
+                                    return (
+                                        <TouchableOpacity key={student.id} onPress={() => setStudentsSelectedId(student.id)} activeOpacity={0.7} style={[styles.manageStudentRow, { paddingHorizontal: 0, borderBottomColor: theme.cardBorder }]}>
+                                            <View
+                                                style={[styles.avatarSm, { width: 42, height: 42, borderRadius: 14, backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.user.name ?? student.studentId) }]}>
+                                                {student.avatarUrl
+                                                    ? <Image source={{ uri: student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                    : <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.user.name ?? student.studentId)}</Text>}
+                                            </View>
+                                            <View style={{ flex: 1, gap: 2 }}>
+                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{student.user.name ?? '-'}</Text>
+                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>
+                                                    {student.studentId}{student.rollNo ? ` · Roll ${student.rollNo}` : ''}
+                                                </Text>
+                                            </View>
+                                            {student.status === 'INACTIVE' && (
+                                                <View style={[styles.manageBadge, { backgroundColor: isDark ? '#450A0A' : '#FEE2E2' }]}>
+                                                    <Text style={[styles.manageBadgeText, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>Inactive</Text>
+                                                </View>
+                                            )}
+                                            <View style={{ alignItems: 'center', minWidth: 34 }}>
+                                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: theme.purple }}>{lb ? `#${lb.rank}` : '-'}</Text>
+                                                <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>rank</Text>
+                                            </View>
+                                            <View style={{ alignItems: 'center', minWidth: 40 }}>
+                                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_700Bold', color: lb?.attendancePct == null ? theme.muted : lb.attendancePct >= 75 ? '#059669' : lb.attendancePct >= 65 ? '#F59E0B' : '#DC2626' }}>
+                                                    {lb?.attendancePct != null ? `${lb.attendancePct}%` : '-'}
+                                                </Text>
+                                                <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>attend.</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
+                    </View>
+                )}
+
+                {manageReportBoardOpen && (
+                    <ManageReportBoard
+                        theme={theme} isDark={isDark} onClose={closeManageReportBoard} slideX={manageReportBoardSlideX}
+                        studentName={reportStudent?.user.name ?? 'Student'}
+                        flags={manageReportFlags} loading={manageReportLoadingList}
+                        onAdd={() => openManageReportForm()} onEdit={openManageReportForm}
+                    />
+                )}
+
+                {manageReportModalOpen && (
+                    <ManageReportForm
+                        theme={theme} isDark={isDark}
+                        studentName={reportStudent?.user.name ?? 'Student'}
+                        editing={manageReportEditing} form={manageReportForm} setForm={setManageReportForm}
+                        attachments={manageReportAttachments} setAttachments={setManageReportAttachments}
+                        uploading={manageReportUploading} onAttach={handleManageReportAttach}
+                        submitting={manageReportSubmitting} onSubmit={handleManageReportSubmit}
+                        onCancel={closeManageReportForm}
+                        categoryPickerOpen={manageReportCategoryPickerOpen} setCategoryPickerOpen={setManageReportCategoryPickerOpen}
+                    />
+                )}
+                </View>
+            </View>
+        );
+    }, [
+        division, theme, isDark, sortedManageStudents, loadingManageStudents, leaderboard,
+        studentsSelectedStudent, studentsDetailSlideX, closeStudentsDetail, studentsStats, studentsLoadingStats,
+        reportStudent, manageReportBoardOpen, openManageReportBoard, manageReportFlags, manageReportLoadingList,
+        openManageReportForm, manageReportModalOpen, manageReportEditing, manageReportForm,
+        manageReportAttachments, manageReportUploading, manageReportSubmitting, handleManageReportAttach, handleManageReportSubmit,
+        manageReportCategoryPickerOpen, manageReportBoardSlideX, closeManageReportBoard, closeManageReportForm,
+    ]);
+
+    // ── Tasks tab — subject-teacher's Tests/Assignments monitor ─────────────
+    const tasksPageContent = useMemo(() => {
+        if (!division) return null;
+        return (
+            <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 14, gap: 10 }}>
+                <View style={[styles.manageSegTrack, { backgroundColor: trackBg, alignSelf: 'flex-end' }]}>
+                    {([
+                        { key: 'tests' as const, label: 'Tests', Icon: BookOpen },
+                        { key: 'assignments' as const, label: 'Assignments', Icon: FileText },
+                    ]).map(({ key, label, Icon }) => {
+                        const active = tasksSubTab === key;
+                        return (
+                            <TouchableOpacity key={key} onPress={() => setTasksSubTab(key)}
+                                style={[styles.manageSegBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }, Platform.OS === 'android' ? { paddingVertical: 5 } : undefined, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                <Icon size={12} color={active ? theme.text : theme.subText} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: active ? theme.text : theme.subText }}>{label}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+
+                <View style={{ flex: 1 }}>
+                {tasksSubTab === 'tests' ? (
+                    <ScrollView showsVerticalScrollIndicator={false}
+                        contentContainerStyle={tasksTests.length === 0 ? { flexGrow: 1 } : { gap: 10, paddingBottom: 24 }}
+                        refreshControl={<RefreshControl refreshing={tasksRefreshing} onRefresh={handleTasksRefresh} tintColor={theme.muted} />}>
+                        {loadingTasksTests ? (
+                            <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+                        ) : tasksTests.length === 0 ? (
+                            <View style={styles.centerFill}>
+                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No tests yet</Text>
+                            </View>
+                        ) : (() => {
+                            const now = new Date();
+                            const isExpired = (t: TaskTest) => t.status === 'COMPLETED' || (!!t.validUntil && new Date(t.validUntil) < now);
+                            const liveTests = tasksTests.filter((t) => !isExpired(t));
+                            const historyTests = tasksTests.filter((t) => isExpired(t));
+                            const renderTestCard = (test: TaskTest) => (
+                                <TaskTestCard key={test.id} theme={theme} isDark={isDark} test={test}
+                                    onActivate={() => handleActivateTest(test)}
+                                    onStopNow={() => handleStopTest(test)}
+                                    onDelete={() => handleDeleteTest(test)}
+                                    onCopyLink={() => handleCopyTestLink(test)}
+                                    onResults={() => openTasksResults(test.id)}
+                                    copied={copiedTestLink === test.testLink}
+                                />
+                            );
+                            return (
+                                <>
+                                    <TasksSectionHeader theme={theme} icon={<TasksLiveDot />} label="Live Tests" count={liveTests.length} />
+                                    {liveTests.length === 0 ? (
+                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, marginBottom: historyTests.length > 0 ? 16 : 0 }}>No active or draft tests</Text>
+                                    ) : (
+                                        <View style={{ gap: 10, marginBottom: historyTests.length > 0 ? 16 : 0 }}>{liveTests.map(renderTestCard)}</View>
+                                    )}
+                                    {historyTests.length > 0 && (
+                                        <>
+                                            <TasksSectionHeader theme={theme} icon={<Clock size={11} color={theme.muted} />} label="History" count={historyTests.length} />
+                                            <View style={{ gap: 10 }}>{historyTests.map(renderTestCard)}</View>
+                                        </>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </ScrollView>
+                ) : (
+                    <ScrollView showsVerticalScrollIndicator={false}
+                        contentContainerStyle={tasksAssignments.length === 0 ? { flexGrow: 1 } : { gap: 10, paddingBottom: 24 }}
+                        refreshControl={<RefreshControl refreshing={tasksRefreshing} onRefresh={handleTasksRefresh} tintColor={theme.muted} />}>
+                        {loadingTasksAssignments ? (
+                            <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+                        ) : tasksAssignments.length === 0 ? (
+                            <View style={styles.centerFill}>
+                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No assignments yet</Text>
+                            </View>
+                        ) : (() => {
+                            const liveAssignments = tasksAssignments.filter((a) => a.status !== 'COMPLETED');
+                            const historyAssignments = tasksAssignments.filter((a) => a.status === 'COMPLETED');
+                            const renderAssignmentCard = (assignment: TaskAssignment) => (
+                                <TaskAssignmentCard key={assignment.id} theme={theme} isDark={isDark} assignment={assignment}
+                                    onActivate={() => handleActivateAssignment(assignment)}
+                                    onStopNow={() => handleStopAssignment(assignment)}
+                                    onDelete={() => handleDeleteAssignment(assignment)}
+                                    onSubmissions={() => openTasksSubmissions(assignment.id)}
+                                />
+                            );
+                            return (
+                                <>
+                                    <TasksSectionHeader theme={theme} icon={<TasksLiveDot />} label="Live Assignments" count={liveAssignments.length} />
+                                    {liveAssignments.length === 0 ? (
+                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, marginBottom: historyAssignments.length > 0 ? 16 : 0 }}>No active or draft assignments</Text>
+                                    ) : (
+                                        <View style={{ gap: 10, marginBottom: historyAssignments.length > 0 ? 16 : 0 }}>{liveAssignments.map(renderAssignmentCard)}</View>
+                                    )}
+                                    {historyAssignments.length > 0 && (
+                                        <>
+                                            <TasksSectionHeader theme={theme} icon={<Clock size={11} color={theme.muted} />} label="History" count={historyAssignments.length} />
+                                            <View style={{ gap: 10 }}>{historyAssignments.map(renderAssignmentCard)}</View>
+                                        </>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </ScrollView>
+                )}
+
+                {tasksResultsOpen && tasksResultsTestId && (
+                    <TaskResultsPanel theme={theme} isDark={isDark} testId={tasksResultsTestId} onClose={closeTasksResults} slideX={tasksResultsSlideX} />
+                )}
+                {tasksSubmissionsOpen && tasksSubmissionsAssignmentId && (
+                    <TaskAssignmentSubmissionsPanel theme={theme} isDark={isDark} assignmentId={tasksSubmissionsAssignmentId} onClose={closeTasksSubmissions} slideX={tasksSubmissionsSlideX} />
+                )}
+                </View>
+            </View>
+        );
+    }, [
+        division, theme, isDark, tasksSubTab, loadingTasksTests, tasksTests, copiedTestLink,
+        handleActivateTest, handleStopTest, handleDeleteTest, handleCopyTestLink, tasksRefreshing, handleTasksRefresh,
+        tasksResultsOpen, tasksResultsTestId, openTasksResults, closeTasksResults, tasksResultsSlideX,
+        loadingTasksAssignments, tasksAssignments, handleActivateAssignment, handleStopAssignment, handleDeleteAssignment,
+        tasksSubmissionsOpen, tasksSubmissionsAssignmentId, openTasksSubmissions, closeTasksSubmissions, tasksSubmissionsSlideX,
+    ]);
+
+    // ── Marksheet tab — class teacher view (Offline sub-tab first) ──────────
+    // Exam marks are the assigned subject teacher's job (bulkUpsertScores is
+    // gated to restrictToSubjectId on web); the class teacher only owns
+    // structure (add/edit exams, add/edit graded subjects) and the Graded
+    // Subjects grade values themselves. Structure management needs the same
+    // web-only judgment call already made for Attendance's export/setup
+    // flows — it's a once-a-term action best done on a bigger screen — so
+    // this screen is read-only for exam marks and structure, with graded
+    // grade-entry as the one thing the class teacher can edit here.
+    const marksAcademicYear = useMemo(() => {
+        const now = new Date();
+        const yr = now.getFullYear();
+        return now.getMonth() >= 5 ? `${yr}-${String(yr + 1).slice(2)}` : `${yr - 1}-${String(yr).slice(2)}`;
+    }, []);
+    const [marksSubTab, setMarksSubTab] = useState<'offline' | 'online' | 'overall'>('offline');
+    const [marksLoading, setMarksLoading] = useState(true);
+    const [marksInitialized, setMarksInitialized] = useState(true);
+    const [marksheetId, setMarksheetId] = useState<string | null>(null);
+    const [marksStudents, setMarksStudents] = useState<MarksStudent[]>([]);
+    const [marksExamColumns, setMarksExamColumns] = useState<Record<string, MarksExamColumn[]>>({});
+    const [marksScores, setMarksScores] = useState<Record<string, Record<string, MarksScoreEntry>>>({});
+    const [marksGradedSubjects, setMarksGradedSubjects] = useState<MarksGradedSubject[]>([]);
+    const [marksGradedScores, setMarksGradedScores] = useState<Record<string, Record<string, MarksGradedScoreEntry>>>({});
+    const [marksGradeScale, setMarksGradeScale] = useState<MarksGradeScaleEntry[]>([]);
+    const [marksGradedSectionTitle, setMarksGradedSectionTitle] = useState('Graded Subjects');
+    // Per-student Conduct/Remarks — offline-only, class-teacher writable,
+    // mirrors web's marksheetHook.remarks (keyed by studentId).
+    const [marksRemarks, setMarksRemarks] = useState<Record<string, { conduct: string | null; remarks: string | null }>>({});
+
+    const fetchMarksheet = useCallback(async () => {
+        setMarksLoading(true);
+        try {
+            const res = await api.get(`/teacher/marksheet/division/${divisionId}`, { params: { academicYear: marksAcademicYear } });
+            const data = res.data?.data;
+            setMarksInitialized(true);
+            setMarksheetId(data?.marksheet?.id ?? null);
+            setMarksStudents(data?.students ?? []);
+            setMarksExamColumns(data?.examColumns ?? {});
+            setMarksScores(data?.scores ?? {});
+            setMarksGradedSubjects(data?.gradedSubjects ?? []);
+            setMarksGradedScores(data?.gradedScores ?? {});
+            setMarksGradeScale(data?.gradeScale ?? []);
+            setMarksGradedSectionTitle(data?.marksheet?.gradedSectionTitle || 'Graded Subjects');
+            setMarksRemarks(data?.remarks ?? {});
+        } catch (err) {
+            // 404 here means the class teacher hasn't set the marksheet up yet
+            // on web — this screen has no "Add Exam" to fix that from, so it
+            // just shows the not-set-up state rather than an error.
+            if ((err as { response?: { status?: number } })?.response?.status === 404) {
+                setMarksInitialized(false);
+            }
+            setMarksStudents([]);
+            setMarksExamColumns({});
+            setMarksScores({});
+            setMarksGradedSubjects([]);
+            setMarksGradedScores({});
+            setMarksRemarks({});
+        } finally {
+            setMarksLoading(false);
+        }
+    }, [divisionId, marksAcademicYear]);
+
+    // Conduct/Remarks — debounced save-as-you-type (600ms), same PUT the web
+    // Report Card's textareas use. Local state updates immediately; the
+    // network call fires after the user pauses typing.
+    const marksRemarkTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const handleMarksRemarkChange = useCallback((studentId: string, patch: { conduct?: string | null; remarks?: string | null }) => {
+        setMarksRemarks((prev) => ({ ...prev, [studentId]: { ...(prev[studentId] ?? { conduct: null, remarks: null }), ...patch } }));
+        if (!marksheetId) return;
+        if (marksRemarkTimers.current[studentId]) clearTimeout(marksRemarkTimers.current[studentId]);
+        marksRemarkTimers.current[studentId] = setTimeout(() => {
+            setMarksRemarks((prev) => {
+                const val = prev[studentId] ?? { conduct: null, remarks: null };
+                api.put(`/teacher/marksheet/${marksheetId}/remarks/${studentId}`, { conduct: val.conduct, remarks: val.remarks }).catch(() => {});
+                return prev;
+            });
+        }, 600);
+    }, [marksheetId]);
+
+    // Online marksheet — auto-computed server-side from completed tests, so
+    // unlike Offline it's always live (no init step, no 404/not-set-up case)
+    // and fully read-only: no graded subjects, no grade editing. Roster comes
+    // from the roster call already made for Manage (manageStudents), same as
+    // web's useOnlineMarksheet falling back to getClassStudents.
+    const [marksOnlineLoading, setMarksOnlineLoading] = useState(true);
+    const [marksOnlineFetched, setMarksOnlineFetched] = useState(false);
+    const [marksOnlineExamColumns, setMarksOnlineExamColumns] = useState<Record<string, MarksExamColumn[]>>({});
+    const [marksOnlineScores, setMarksOnlineScores] = useState<Record<string, Record<string, MarksScoreEntry>>>({});
+    const fetchMarksOnline = useCallback(async () => {
+        setMarksOnlineLoading(true);
+        try {
+            const res = await api.get(`/teacher/marksheet/division/${divisionId}/online`);
+            const data = res.data?.data;
+            setMarksOnlineExamColumns(data?.examColumns ?? {});
+            setMarksOnlineScores(data?.scores ?? {});
+        } catch {
+            setMarksOnlineExamColumns({});
+            setMarksOnlineScores({});
+        } finally {
+            setMarksOnlineLoading(false);
+            setMarksOnlineFetched(true);
+        }
+    }, [divisionId]);
+    useEffect(() => {
+        if ((marksSubTab === 'online' || marksSubTab === 'overall') && !marksOnlineFetched) fetchMarksOnline();
+    }, [marksSubTab, marksOnlineFetched, fetchMarksOnline]);
+
+    // Local-first grade edit — matches Attendance's own pattern (update state
+    // immediately, save in the background) rather than waiting on the PUT
+    // before the cell shows the new value.
+    const marksSavingGradeRef = useRef<Set<string>>(new Set());
+    const handleMarksGradeChange = useCallback((gsId: string, stId: string, term: 't1' | 't2', value: string | null) => {
+        setMarksGradedScores((prev) => {
+            const existing = prev[gsId]?.[stId] ?? { term1Grade: null, term2Grade: null };
+            const updated: MarksGradedScoreEntry = term === 't1' ? { ...existing, term1Grade: value } : { ...existing, term2Grade: value };
+            return { ...prev, [gsId]: { ...prev[gsId], [stId]: updated } };
+        });
+        if (!marksheetId) return;
+        const key = `${gsId}:${stId}`;
+        marksSavingGradeRef.current.add(key);
+        const existing = marksGradedScores[gsId]?.[stId] ?? { term1Grade: null, term2Grade: null };
+        const payload = term === 't1' ? { ...existing, term1Grade: value } : { ...existing, term2Grade: value };
+        api.put(`/teacher/marksheet/${marksheetId}/graded-scores`, {
+            scores: [{ gradedSubjectId: gsId, studentId: stId, term1Grade: payload.term1Grade, term2Grade: payload.term2Grade }],
+        }).catch(() => {
+            Alert.alert('Error', 'Could not save the grade. Please try again.');
+        }).finally(() => {
+            marksSavingGradeRef.current.delete(key);
+        });
+    }, [marksheetId, marksGradedScores]);
+
+    // fetchMarksheet is declared just above, after the shared useFocusEffect
+    // higher up in this component — referencing it there would hit the const
+    // temporal-dead-zone (that effect runs during the same render, before
+    // this line is reached), so it gets its own fetch-once-on-mount effect
+    // here instead.
+    const marksFetchedRef = useRef(false);
+    useEffect(() => {
+        if (marksFetchedRef.current) return;
+        marksFetchedRef.current = true;
+        fetchMarksheet();
+    }, [fetchMarksheet]);
+
+    // Grade-entry modal for a single Graded Subject cell (Term 1 or Term 2) —
+    // class-teacher only (per confirmed scope: "Sirf dikhe, edit na ho" for
+    // a subject teacher viewing this screen).
+    const [marksGradeModal, setMarksGradeModal] = useState<{ gsId: string; gsName: string; stId: string; stName: string; term: 't1' | 't2'; current: string | null } | null>(null);
+    const [marksGradeDraft, setMarksGradeDraft] = useState('');
+
+    // Score-entry modal for a single Offline exam-mark cell — a subject
+    // teacher's own subject column only (matches web: exam marks are
+    // editable per-subject by whoever teaches that subject; Online stays
+    // read-only everywhere since it's auto-computed).
+    const [marksScoreModal, setMarksScoreModal] = useState<{ examId: string; examName: string; maxMarks: number; stId: string; stName: string; current: number | null } | null>(null);
+    const [marksScoreDraft, setMarksScoreDraft] = useState('');
+    const marksSavingScoreRef = useRef<Set<string>>(new Set());
+    const handleMarksScoreChange = useCallback((examId: string, stId: string, value: number | null) => {
+        setMarksScores((prev) => ({
+            ...prev,
+            [examId]: { ...prev[examId], [stId]: { score: value } },
+        }));
+        if (!marksheetId || !subjectId) return;
+        const key = `${examId}:${stId}`;
+        marksSavingScoreRef.current.add(key);
+        api.put(`/teacher/marksheet/${marksheetId}/scores/subject/${subjectId}`, {
+            scores: [{ studentId: stId, examColumnId: examId, score: value, isAbsent: false }],
+        }).catch(() => {
+            Alert.alert('Error', 'Could not save the score. Please try again.');
+        }).finally(() => {
+            marksSavingScoreRef.current.delete(key);
+        });
+    }, [marksheetId, subjectId]);
+
+    const marksValidGrades = useMemo(() => (
+        marksGradeScale.length > 0 ? marksGradeScale.map((g) => g.grade.toUpperCase()) : ['A+', 'A', 'B', 'C', 'D', 'F']
+    ), [marksGradeScale]);
+
+    const marksGradeLabel = useCallback((pct: number) => {
+        if (marksGradeScale.length === 0) {
+            if (pct >= 75) return 'A';
+            if (pct >= 60) return 'B';
+            if (pct >= 45) return 'C';
+            if (pct >= 35) return 'D';
+            return 'F';
+        }
+        const sorted = [...marksGradeScale].sort((a, b) => b.minPct - a.minPct);
+        for (const entry of sorted) { if (pct >= entry.minPct) return entry.grade; }
+        return sorted[sorted.length - 1]?.grade ?? 'F';
+    }, [marksGradeScale]);
+
+    const marksScoreColor = useCallback((pct: number) => (pct >= 75 ? '#059669' : pct >= 35 ? '#F59E0B' : '#DC2626'), []);
+
+    // Online's roster is the same class roster Manage already fetches — no
+    // separate students call needed, just mapped to the marksheet shape.
+    const marksOnlineStudents: MarksStudent[] = useMemo(() => (
+        manageStudents.map((s) => ({ id: s.id, name: s.user.name, rollNo: s.rollNo ?? '', avatarUrl: s.avatarUrl }))
+    ), [manageStudents]);
+
+    // Overall — mirrors web's OverallView, scoped to what the class teacher's
+    // app view needs: per-student Offline %/Online %/Combined %, same rules
+    // as web's studentStats (offline only counts a column if this student has
+    // a real score in it; online always counts in full — a missed test is a
+    // real 0). Roster is the offline roster (marksStudents) when it's loaded
+    // (has remarks/whatever else), falling back to the roster-only online one
+    // so Overall still works before Offline has ever been opened.
+    const [marksOverallRightTab, setMarksOverallRightTab] = useState<'class' | 'student'>('class');
+    const [marksRankTab, setMarksRankTab] = useState<'offline' | 'online' | 'combined'>('combined');
+    const [marksTopperTab, setMarksTopperTab] = useState<'offline' | 'online' | 'combined'>('combined');
+    const [marksOverallSelectedId, setMarksOverallSelectedId] = useState<string | null>(null);
+    const [marksTrendSubjectId, setMarksTrendSubjectId] = useState<string>('');
+    const [marksTrendMode, setMarksTrendMode] = useState<'offline' | 'online' | 'combined'>('combined');
+    const [marksChartTooltip, setMarksChartTooltip] = useState<number | null>(null);
+    const [marksReportCardTab, setMarksReportCardTab] = useState<'offline' | 'online'>('offline');
+    useEffect(() => {
+        if (!marksTrendSubjectId && (division?.subjects.length ?? 0) > 0) setMarksTrendSubjectId(division!.subjects[0].id);
+    }, [division, marksTrendSubjectId]);
+    useEffect(() => {
+        setMarksChartTooltip(null);
+    }, [marksTrendSubjectId, marksTrendMode, marksOverallSelectedId]);
+
+    const marksOverallRoster: MarksStudent[] = marksStudents.length > 0 ? marksStudents : marksOnlineStudents;
+
+    const marksStudentStats = useMemo(() => {
+        return marksOverallRoster.map((st) => {
+            let offScored = 0, offMax = 0, onScored = 0, onMax = 0;
+            (division?.subjects ?? []).forEach((sub) => {
+                const offCols = marksExamColumns[sub.id] ?? [];
+                offCols.forEach((col) => {
+                    const sc = marksScores[col.id]?.[st.id]?.score;
+                    if (sc != null) { offScored += sc; offMax += col.maxMarks; }
+                });
+                const onCols = marksOnlineExamColumns[sub.id] ?? [];
+                onCols.forEach((col) => {
+                    onMax += col.maxMarks;
+                    const e = marksOnlineScores[col.id]?.[st.id];
+                    onScored += e?.isAbsent ? 0 : (e?.score ?? 0);
+                });
+            });
+            const offPct = offMax > 0 ? Math.round((offScored / offMax) * 100) : null;
+            const onPct = onMax > 0 ? Math.round((onScored / onMax) * 100) : null;
+            const combMax = offMax + onMax;
+            const combPct = combMax > 0 ? Math.round(((offScored + onScored) / combMax) * 100) : null;
+            return { student: st, offPct, onPct, combPct };
+        });
+    }, [marksOverallRoster, division, marksExamColumns, marksScores, marksOnlineExamColumns, marksOnlineScores]);
+
+    // Per-subject class average (combined offline+online), for the Class
+    // Overview bars — averaged only over students who have an entered %
+    // for that subject, same "don't let missing data drag the bar to 0" rule
+    // used throughout this screen.
+    const marksSubjectStats = useMemo(() => {
+        return (division?.subjects ?? []).map((sub) => {
+            const pcts: number[] = [];
+            marksOverallRoster.forEach((st) => {
+                let offScored = 0, offMax = 0, onScored = 0, onMax = 0;
+                (marksExamColumns[sub.id] ?? []).forEach((col) => {
+                    const sc = marksScores[col.id]?.[st.id]?.score;
+                    if (sc != null) { offScored += sc; offMax += col.maxMarks; }
+                });
+                (marksOnlineExamColumns[sub.id] ?? []).forEach((col) => {
+                    onMax += col.maxMarks;
+                    const e = marksOnlineScores[col.id]?.[st.id];
+                    onScored += e?.isAbsent ? 0 : (e?.score ?? 0);
+                });
+                const max = offMax + onMax;
+                if (max > 0) pcts.push(Math.round(((offScored + onScored) / max) * 100));
+            });
+            const avg = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+            return { sub, avg };
+        });
+    }, [division, marksOverallRoster, marksExamColumns, marksScores, marksOnlineExamColumns, marksOnlineScores]);
+
+    const marksSelectedOverallStudent = marksStudentStats.find((s) => s.student.id === marksOverallSelectedId) ?? null;
+
+    // Slide the student detail in from the right the moment a student is
+    // selected, and slide it back out before clearing the selection — same
+    // treatment as Manage's manageDetailSlideX.
+    // Effect-driven for the same reason as attDetailSlideX above.
+    const marksDetailSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (marksOverallSelectedId) Animated.timing(marksDetailSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [marksOverallSelectedId, marksDetailSlideX]);
+    const closeMarksOverallDetail = useCallback(() => {
+        Animated.timing(marksDetailSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setMarksOverallSelectedId(null);
+            marksDetailSlideX.setValue(SCREEN_W);
+        });
+    }, [marksDetailSlideX]);
+
+    // Class rank — combined % descending, matching web's rankMap exactly.
+    const marksRankMap = useMemo(() => {
+        const sorted = [...marksStudentStats].sort((a, b) => (b.combPct ?? 0) - (a.combPct ?? 0));
+        const m: Record<string, number> = {};
+        sorted.forEach((r, i) => { m[r.student.id] = i + 1; });
+        return m;
+    }, [marksStudentStats]);
+
+    // Per-subject top-3 — mirrors web's subjectToppers exactly: per-student
+    // entered max, not a subject-wide constant (a freshly-added column with
+    // no marks yet doesn't drag down everyone's %, only the columns THIS
+    // student actually has a score for count toward their own denominator).
+    const marksSubjectToppers = useMemo(() => {
+        return (division?.subjects ?? []).map((sub) => {
+            const offCols = marksExamColumns[sub.id] ?? [];
+            const onCols = marksOnlineExamColumns[sub.id] ?? [];
+            const onMax = onCols.reduce((s, c) => s + c.maxMarks, 0);
+            const rows = marksOverallRoster.map((st) => {
+                let offScored = 0, offMax = 0, onScored = 0;
+                offCols.forEach((col) => {
+                    const sc = marksScores[col.id]?.[st.id]?.score;
+                    if (sc != null) { offScored += sc; offMax += col.maxMarks; }
+                });
+                onCols.forEach((col) => {
+                    const e = marksOnlineScores[col.id]?.[st.id];
+                    onScored += e?.isAbsent ? 0 : (e?.score ?? 0);
+                });
+                const offPct = offMax > 0 ? Math.round((offScored / offMax) * 100) : null;
+                const onPct = onMax > 0 ? Math.round((onScored / onMax) * 100) : null;
+                const combMax = offMax + onMax;
+                const combPct = combMax > 0 ? Math.round(((offScored + onScored) / combMax) * 100) : 0;
+                return { student: st, offPct, onPct, combPct };
+            });
+            const getPct = (r: typeof rows[0]) => marksTopperTab === 'offline' ? (r.offPct ?? 0) : marksTopperTab === 'online' ? (r.onPct ?? 0) : r.combPct;
+            const sorted = [...rows].sort((a, b) => getPct(b) - getPct(a));
+            return { sub, top3: sorted.slice(0, 3), getPct };
+        });
+    }, [division, marksOverallRoster, marksExamColumns, marksScores, marksOnlineExamColumns, marksOnlineScores, marksTopperTab]);
+
+    // Export — a real .xlsx of the Offline marksheet grid, same mechanism as
+    // Attendance Sheet's Export (XLSX.write → base64 → cache file → share
+    // sheet), just its own loading flag so the two features' spinners don't
+    // collide.
+    const [marksExporting, setMarksExporting] = useState(false);
+    const marksShareWorkbook = useCallback(async (wb: XLSX.WorkBook, filename: string) => {
+        setMarksExporting(true);
+        try {
+            const Sharing = loadSharing();
+            if (!Sharing) { Alert.alert('Needs a full app build', 'Exporting to Excel isn\'t available in Expo Go — needs a full app build.'); return; }
+            const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+            const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+            await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            const available = await Sharing.isAvailableAsync();
+            if (!available) { Alert.alert('Sharing not available', 'This device cannot share files.'); return; }
+            await Sharing.shareAsync(fileUri, {
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                dialogTitle: filename,
+                UTI: 'org.openxmlformats.spreadsheetml.sheet',
+            });
+        } catch {
+            Alert.alert('Export failed', 'Could not generate the Excel file.');
+        } finally {
+            setMarksExporting(false);
+        }
+    }, []);
+
+    const handleMarksExport = useCallback(() => {
+        if (!division) return;
+        const isOffline = marksSubTab === 'offline';
+        const activeStudents = isOffline ? marksStudents : marksOnlineStudents;
+        const activeExamColumns = isOffline ? marksExamColumns : marksOnlineExamColumns;
+        const activeScores = isOffline ? marksScores : marksOnlineScores;
+        const activeGradedSubjects = isOffline ? marksGradedSubjects : [];
+        const activeGradedScores = isOffline ? marksGradedScores : {};
+        const getExams = (subId: string) => activeExamColumns[subId] ?? [];
+        const getScoreVal = (examId: string, stId: string) => {
+            const sc = activeScores[examId]?.[stId]?.score ?? null;
+            return isOffline ? sc : (sc ?? 0);
+        };
+
+        const headers: string[] = ['Roll No.', 'Student Name'];
+        division.subjects.forEach((sub) => {
+            getExams(sub.id).forEach((ex) => headers.push(`${sub.name} - ${ex.name} (/${ex.maxMarks})`));
+            headers.push(`${sub.name} - Total`, `${sub.name} - %`);
+        });
+        activeGradedSubjects.forEach((gsub) => headers.push(`${gsub.name} - Term 1`, `${gsub.name} - Term 2`));
+        headers.push('Grand Total', 'Overall %', 'Grade');
+
+        const rows = activeStudents.map((student) => {
+            const row: (string | number)[] = [student.rollNo || '', student.name ?? ''];
+            let grandScored = 0, grandTotal = 0, grandEnteredTotal = 0;
+            division.subjects.forEach((sub) => {
+                const exams = getExams(sub.id);
+                let scored = 0, total = 0, enteredTotal = 0;
+                exams.forEach((ex) => {
+                    const sc = getScoreVal(ex.id, student.id);
+                    row.push(sc !== null ? sc : '');
+                    total += ex.maxMarks;
+                    if (sc !== null) { scored += sc; enteredTotal += ex.maxMarks; }
+                });
+                const subPct = enteredTotal > 0 ? Math.round((scored / enteredTotal) * 100) : null;
+                row.push(`${scored}/${total}`, subPct !== null ? `${subPct}%` : '');
+                grandScored += scored; grandTotal += total; grandEnteredTotal += enteredTotal;
+            });
+            activeGradedSubjects.forEach((gsub) => {
+                const entry = activeGradedScores[gsub.id]?.[student.id];
+                row.push(entry?.term1Grade ?? '', entry?.term2Grade ?? '');
+            });
+            const grandPct = grandEnteredTotal > 0 ? Math.round((grandScored / grandEnteredTotal) * 100) : null;
+            row.push(`${grandScored}/${grandTotal}`, grandPct !== null ? `${grandPct}%` : '', grandPct !== null ? marksGradeLabel(grandPct) : '');
+            return row;
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, isOffline ? 'Offline' : 'Online');
+        setTimeout(() => marksShareWorkbook(wb, `${division.name}_Marksheet_${isOffline ? 'Offline' : 'Online'}_${marksAcademicYear}.xlsx`), 400);
+    }, [division, marksSubTab, marksExamColumns, marksScores, marksGradedSubjects, marksGradedScores, marksStudents, marksOnlineStudents, marksOnlineExamColumns, marksOnlineScores, marksGradeLabel, marksShareWorkbook, marksAcademicYear]);
+
+    const marksPageContent = useMemo(() => {
+        // Same parchment palette as web's marksheet (distinct from Attendance's
+        // green Sheet grid, matching web's own MarkSheet component 1:1).
+        const msColors = {
+            bg: '#F8F3EC', hdrBg: '#EDE4D6', hdrText: '#2A1F10', hdrBorder: '#D8C4A0',
+            rowBase: '#FAF5EE', summaryBg: '#E8DDD0',
+        };
+        // Online is auto-computed server-side (always live, fully read-only —
+        // no graded subjects, no editing); Offline is the persisted, class-
+        // teacher-editable-for-grades sheet. Both render through this same
+        // grid, switched on which data set is "active".
+        const isOffline = marksSubTab === 'offline';
+        const activeStudents = isOffline ? marksStudents : marksOnlineStudents;
+        const activeExamColumns = isOffline ? marksExamColumns : marksOnlineExamColumns;
+        const activeScores = isOffline ? marksScores : marksOnlineScores;
+        const activeGradedSubjects = isOffline ? marksGradedSubjects : [];
+        const activeGradedScores = isOffline ? marksGradedScores : {};
+        const activeLoading = isOffline ? marksLoading : marksOnlineLoading;
+
+        // Name column sizes itself to the longest student name (avatar + gap +
+        // paddingHorizontal*2, plus an estimated text width for the name at
+        // this cell's font — there's no native text-measurement here, so this
+        // is a per-character estimate, clamped to a sane range).
+        const longestNameLen = activeStudents.reduce((max, s) => Math.max(max, (s.name ?? s.rollNo ?? '').length), 4);
+        const NAME_AVATAR_SPACE = 18 + 5 + 12; // avatar width + gap + paddingHorizontal*2
+        const NAME_W = Math.min(260, Math.max(90, NAME_AVATAR_SPACE + Math.ceil(longestNameLen * 7.6) + 8));
+        const ROLL_W = 58, EXAM_W = 82, SUBJ_TOTAL_W = 56, SUBJ_PCT_W = 40, GRADED_W = 46, GRAND_W = 58, PCT_W = 40, GRADE_W = 40;
+        // Matches web's two 12px spacer <th>/<td> on each side of the Graded
+        // Subjects section (24px total gap, transparent, no border).
+        const GRADED_GAP_W = 24;
+
+        // Grade Scale — set/edited on web only; the app just displays whatever
+        // is configured there (same DEFAULT_GRADE_SCALE fallback and color ramp
+        // as web's GradeScaleEditor, minus the edit controls).
+        const GRADE_COLOR_RAMP = ['#059669', '#16A34A', '#65A30D', '#CA8A04', '#D97706', '#EA580C', '#DC2626', '#B91C1C', '#991B1B'];
+        const gradeRankColor = (rank: number, total: number) => {
+            if (total <= 1) return GRADE_COLOR_RAMP[0];
+            const idx = Math.round((rank / (total - 1)) * (GRADE_COLOR_RAMP.length - 1));
+            return GRADE_COLOR_RAMP[idx];
+        };
+        const displayGradeScale = marksGradeScale.length > 0
+            ? [...marksGradeScale].sort((a, b) => b.minPct - a.minPct)
+            : [{ grade: 'A', minPct: 75 }, { grade: 'B', minPct: 60 }, { grade: 'C', minPct: 45 }, { grade: 'D', minPct: 35 }, { grade: 'F', minPct: 0 }];
+        // Graded Subjects' Term 1/Term 2 grade values are colored by their
+        // rank within the scale (mirrors web's gradeValColor), not by score —
+        // there's no % behind a manually-assigned grade to score-color from.
+        const gradeValColor = (g: string | null) => {
+            if (!g) return msColors.hdrBorder;
+            const rank = displayGradeScale.findIndex((e) => e.grade.toUpperCase() === g.toUpperCase());
+            if (rank === -1) return msColors.hdrBorder;
+            return gradeRankColor(rank, displayGradeScale.length);
+        };
+
+        const getSubjectExams = (subId: string) => activeExamColumns[subId] ?? [];
+        // Offline: a blank cell means "not entered yet" and stays a dash.
+        // Online: the test is already complete — every student had their
+        // shot, so no recorded attempt is a missed test (hard 0), not an
+        // unknown/blank value. Matches web's getScore exactly.
+        const getScore = (examId: string, stId: string) => {
+            const sc = activeScores[examId]?.[stId]?.score ?? null;
+            return isOffline ? sc : (sc ?? 0);
+        };
+        const getSubjectTotal = (subId: string, stId: string) => {
+            const exams = getSubjectExams(subId);
+            const total = exams.reduce((s, ex) => s + ex.maxMarks, 0);
+            const scored = exams.reduce((s, ex) => s + (getScore(ex.id, stId) ?? 0), 0);
+            const enteredTotal = exams.reduce((s, ex) => (getScore(ex.id, stId) !== null ? s + ex.maxMarks : s), 0);
+            return { total, scored, enteredTotal };
+        };
+        const getGrandTotal = (stId: string) => {
+            let total = 0, scored = 0, enteredTotal = 0;
+            division?.subjects.forEach((sub) => {
+                const t = getSubjectTotal(sub.id, stId);
+                total += t.total; scored += t.scored; enteredTotal += t.enteredTotal;
+            });
+            return { total, scored, pct: enteredTotal > 0 ? Math.round((scored / enteredTotal) * 100) : null };
+        };
+        const getGrade = (gsId: string, stId: string, term: 't1' | 't2'): string | null => {
+            const entry = activeGradedScores[gsId]?.[stId];
+            return term === 't1' ? (entry?.term1Grade ?? null) : (entry?.term2Grade ?? null);
+        };
+
+        const openGradeEditor = (gsId: string, gsName: string, stId: string, stName: string, term: 't1' | 't2') => {
+            const current = getGrade(gsId, stId, term);
+            setMarksGradeModal({ gsId, gsName, stId, stName, term, current });
+            setMarksGradeDraft(current ?? '');
+        };
+
+        const openScoreEditor = (examId: string, examName: string, maxMarks: number, stId: string, stName: string) => {
+            const current = getScore(examId, stId);
+            setMarksScoreModal({ examId, examName, maxMarks, stId, stName, current });
+            setMarksScoreDraft(current !== null ? String(current) : '');
+        };
+
+        return (
+            <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 14, gap: 10 }}>
+                <View style={[styles.manageSegTrack, { backgroundColor: trackBg, alignSelf: 'flex-end' }]}>
+                    {([
+                        { key: 'offline' as const, label: 'Offline', Icon: FileText },
+                        { key: 'online' as const, label: 'Online', Icon: BookOpen },
+                        { key: 'overall' as const, label: 'Overall', Icon: BarChart2 },
+                    ].filter((t) => isClassTeacher || t.key !== 'overall')).map(({ key, label, Icon }) => {
+                        const active = marksSubTab === key;
+                        return (
+                            <TouchableOpacity key={key} onPress={() => setMarksSubTab(key)}
+                                style={[styles.manageSegBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }, Platform.OS === 'android' ? { paddingVertical: 5 } : undefined, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                <Icon size={12} color={active ? theme.text : theme.subText} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                                <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: active ? theme.text : theme.subText }}>{label}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+
+                {marksSubTab === 'overall' ? (
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 1 }}>
+                            {marksOverallRightTab === 'class'
+                                ? <Users size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
+                                : <User size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />}
+                            <Text style={[styles.cardHeaderText, { color: theme.text }]}>
+                                {marksOverallRightTab === 'class' ? 'Class Overview' : marksSelectedOverallStudent ? 'Student Details' : `Students (${marksStudentStats.length})`}
+                            </Text>
+                            <View style={{ flex: 1 }} />
+                            <View style={[styles.manageSegTrack, { backgroundColor: trackBg }]}>
+                                <TouchableOpacity onPress={() => setMarksOverallRightTab('class')}
+                                    style={[styles.manageSegBtn, marksOverallRightTab === 'class' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                    <Users size={12} color={marksOverallRightTab === 'class' ? theme.text : theme.subText} />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setMarksOverallRightTab('student')}
+                                    style={[styles.manageSegBtn, marksOverallRightTab === 'student' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                    <User size={12} color={marksOverallRightTab === 'student' ? theme.text : theme.subText} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Class/list and the student detail each get their own
+                            ScrollView, with the slide wrapper on the detail's
+                            alone — see the matching note in Attendance's
+                            Overall for why it can't be shared or nested. Only
+                            one of the two is ever mounted, so they can share
+                            marksOverallScrollRef (the keyboard-scroll helper
+                            for Conduct/Remarks reads it on the detail side). */}
+                        {!(marksOverallRightTab === 'student' && marksSelectedOverallStudent) ? (
+                        <ScrollView ref={marksOverallScrollRef}
+                            onScrollEndDrag={(e) => { marksOverallScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+                            onMomentumScrollEnd={(e) => { marksOverallScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+                            onLayout={(e) => { marksOverallContainerHRef.current = e.nativeEvent.layout.height; }}
+                            onContentSizeChange={(_w, h) => { marksOverallContentHRef.current = h; }}
+                            style={{ flex: 1, marginHorizontal: -10 }} showsVerticalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={{ gap: 10, paddingHorizontal: 10, paddingBottom: 30 + marksKbPad }}>
+                            {marksOverallRightTab === 'class' ? (() => {
+                                // Leaderboard — same podium-for-top-3 + list-for-rest shape
+                                // as web's, with the same offline/online/combined tab.
+                                const getRankPct = (s: (typeof marksStudentStats)[0]) => marksRankTab === 'offline' ? (s.offPct ?? 0) : marksRankTab === 'online' ? (s.onPct ?? 0) : (s.combPct ?? 0);
+                                const sorted = [...marksStudentStats].sort((a, b) => getRankPct(b) - getRankPct(a));
+                                const top3 = sorted.slice(0, 3);
+                                const rest = sorted.slice(3);
+                                const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
+                                const podiumCfg = [
+                                    { height: 44, color: '#C0C0C0', label: '2nd' },
+                                    { height: 66, color: '#F59E0B', label: '1st' },
+                                    { height: 34, color: '#CD7F32', label: '3rd' },
+                                ];
+                                // Offline High / Online High — mirrors web's OverallView
+                                // stat pills exactly (the class's single best offline %
+                                // and best online %, not an average).
+                                const offPcts = marksStudentStats.map((s) => s.offPct).filter((p): p is number => p !== null);
+                                const onPcts = marksStudentStats.map((s) => s.onPct).filter((p): p is number => p !== null);
+                                const highOff = offPcts.length > 0 ? Math.max(...offPcts) : null;
+                                const highOn = onPcts.length > 0 ? Math.max(...onPcts) : null;
+                                return (
+                                    <Fragment key="marks-overall-class">
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                                <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: highOff !== null ? marksScoreColor(highOff) : theme.muted }}>{highOff !== null ? `${highOff}%` : '—'}</Text>
+                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Offline High</Text>
+                                            </View>
+                                            <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                                <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: highOn !== null ? marksScoreColor(highOn) : theme.muted }}>{highOn !== null ? `${highOn}%` : '—'}</Text>
+                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Online High</Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={styles.cardShadowWrap}>
+                                            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                                                <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, justifyContent: 'space-between' }]}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Trophy size={12} color={theme.muted} />
+                                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Leaderboard</Text>
+                                                    </View>
+                                                    <InlineWheel
+                                                        options={['offline', 'online', 'combined']}
+                                                        value={marksRankTab}
+                                                        onChange={(v) => setMarksRankTab(v as 'offline' | 'online' | 'combined')}
+                                                        isDark={isDark}
+                                                        theme={{ purple: accent.purple, purpleLight: accent.purpleLight }}
+                                                    />
+                                                </View>
+
+                                                {marksStudentStats.length === 0 ? (
+                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic', textAlign: 'center', paddingVertical: 14 }}>No students yet</Text>
+                                                ) : (
+                                                    <>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 14, paddingTop: 14, paddingBottom: 8 }}>
+                                                            {podiumOrder.map((st, i) => {
+                                                                const cfg = podiumCfg[i];
+                                                                const pct = getRankPct(st);
+                                                                return (
+                                                                    <TouchableOpacity key={st.student.id} onPress={() => { setMarksOverallSelectedId(st.student.id); setMarksOverallRightTab('student'); }} activeOpacity={0.7} style={{ alignItems: 'center', gap: 4 }}>
+                                                                        <View style={[styles.avatarSm, { width: 38, height: 38, borderRadius: 13, backgroundColor: st.student.avatarUrl ? 'transparent' : getAvatarColor(st.student.name ?? st.student.rollNo) }]}>
+                                                                            {st.student.avatarUrl
+                                                                                ? <Image source={{ uri: st.student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                                                : <Text style={{ fontSize: 12.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(st.student.name ?? st.student.rollNo)}</Text>}
+                                                                        </View>
+                                                                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: theme.text, width: 60, textAlign: 'center' }} numberOfLines={1}>{st.student.name ?? '-'}</Text>
+                                                                        <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: marksScoreColor(pct) }}>{pct}%</Text>
+                                                                        <View style={{ width: 52, height: cfg.height, borderRadius: 10, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, backgroundColor: cfg.color, alignItems: 'center', justifyContent: 'center' }}>
+                                                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_800ExtraBold', color: '#fff' }}>{cfg.label}</Text>
+                                                                        </View>
+                                                                    </TouchableOpacity>
+                                                                );
+                                                            })}
+                                                        </View>
+
+                                                        <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 6 }}>
+                                                            {rest.map((st, i) => {
+                                                                const pct = getRankPct(st);
+                                                                return (
+                                                                    <TouchableOpacity key={st.student.id} onPress={() => { setMarksOverallSelectedId(st.student.id); setMarksOverallRightTab('student'); }} activeOpacity={0.7}
+                                                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: trackBg }}>
+                                                                        <Text style={{ width: 16, fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: theme.muted, textAlign: 'center' }}>{i + 4}</Text>
+                                                                        <View style={[styles.avatarSm, { width: 24, height: 24, borderRadius: 8, backgroundColor: st.student.avatarUrl ? 'transparent' : getAvatarColor(st.student.name ?? st.student.rollNo) }]}>
+                                                                            {st.student.avatarUrl
+                                                                                ? <Image source={{ uri: st.student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                                                : <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(st.student.name ?? st.student.rollNo)}</Text>}
+                                                                        </View>
+                                                                        <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{st.student.name ?? '-'}</Text>
+                                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: marksScoreColor(pct) }}>{pct}%</Text>
+                                                                    </TouchableOpacity>
+                                                                );
+                                                            })}
+                                                        </View>
+                                                    </>
+                                                )}
+                                            </View>
+                                        </View>
+
+                                        {/* Subject Toppers — per-subject top-3, same tab switch. */}
+                                        <View style={styles.cardShadowWrap}>
+                                            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                                                <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, justifyContent: 'space-between' }]}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Trophy size={12} color={theme.muted} />
+                                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Subject Toppers</Text>
+                                                    </View>
+                                                    <InlineWheel
+                                                        options={['offline', 'online', 'combined']}
+                                                        value={marksTopperTab}
+                                                        onChange={(v) => setMarksTopperTab(v as 'offline' | 'online' | 'combined')}
+                                                        isDark={isDark}
+                                                        theme={{ purple: accent.purple, purpleLight: accent.purpleLight }}
+                                                    />
+                                                </View>
+                                                <View style={{ paddingHorizontal: 12, paddingVertical: 10, gap: 12 }}>
+                                                    {marksSubjectToppers.length === 0 ? (
+                                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic', textAlign: 'center', paddingVertical: 8 }}>No subjects yet</Text>
+                                                    ) : marksSubjectToppers.map(({ sub, top3: subTop3, getPct }) => (
+                                                        <View key={sub.id} style={{ gap: 5 }}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2 }}>
+                                                                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colorForSubject(sub) }} />
+                                                                <Text numberOfLines={1} style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: colorForSubject(sub) }}>{sub.name}</Text>
+                                                            </View>
+                                                            {subTop3.map((row, idx) => {
+                                                                const pct = getPct(row);
+                                                                return (
+                                                                    <TouchableOpacity key={row.student.id} onPress={() => { setMarksOverallSelectedId(row.student.id); setMarksOverallRightTab('student'); }} activeOpacity={0.7}
+                                                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10, backgroundColor: trackBg }}>
+                                                                        <Text style={{ width: 12, fontSize: 9.5, fontFamily: 'Poppins_800ExtraBold', color: theme.muted }}>{idx + 1}</Text>
+                                                                        <View style={[styles.avatarSm, { width: 20, height: 20, borderRadius: 7, backgroundColor: row.student.avatarUrl ? 'transparent' : getAvatarColor(row.student.name ?? row.student.rollNo) }]}>
+                                                                            {row.student.avatarUrl
+                                                                                ? <Image source={{ uri: row.student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                                                : <Text style={{ fontSize: 7.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(row.student.name ?? row.student.rollNo)}</Text>}
+                                                                        </View>
+                                                                        <Text style={{ flex: 1, fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{row.student.name ?? '-'}</Text>
+                                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: marksScoreColor(pct) }}>{pct}%</Text>
+                                                                    </TouchableOpacity>
+                                                                );
+                                                            })}
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        </View>
+                                    </Fragment>
+                                );
+                            })() : (
+                                marksStudentStats.length === 0 ? (
+                                    <View key="marks-overall-empty" style={styles.centerFill}>
+                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students yet</Text>
+                                    </View>
+                                ) : (
+                                    <View key="marks-overall-list" style={{ marginTop: -4 }}>
+                                        {marksStudentStats.map(({ student, offPct, onPct }) => (
+                                            <TouchableOpacity key={student.id} onPress={() => setMarksOverallSelectedId(student.id)} activeOpacity={0.7}
+                                                style={[styles.manageStudentRow, { paddingHorizontal: 0, borderBottomColor: theme.cardBorder }]}>
+                                                <View style={[styles.avatarSm, { width: 42, height: 42, borderRadius: 14, backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.name ?? student.rollNo) }]}>
+                                                    {student.avatarUrl
+                                                        ? <Image source={{ uri: student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                        : <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.name ?? student.rollNo)}</Text>}
+                                                </View>
+                                                <View style={{ flex: 1, gap: 2 }}>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{student.name ?? '-'}</Text>
+                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll {student.rollNo || '—'}</Text>
+                                                </View>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                    <View style={{ width: StyleSheet.hairlineWidth, height: 22, backgroundColor: theme.cardBorder }} />
+                                                    <View style={{ alignItems: 'center' }}>
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: offPct !== null ? marksScoreColor(offPct) : theme.muted }}>{offPct !== null ? `${offPct}%` : '—'}</Text>
+                                                        <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Offline</Text>
+                                                    </View>
+                                                    <View style={{ width: StyleSheet.hairlineWidth, height: 22, backgroundColor: theme.cardBorder }} />
+                                                    <View style={{ alignItems: 'center' }}>
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: onPct !== null ? marksScoreColor(onPct) : theme.muted }}>{onPct !== null ? `${onPct}%` : '—'}</Text>
+                                                        <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Online</Text>
+                                                    </View>
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )
+                            )}
+                        </ScrollView>
+                        ) : (
+                        <Animated.View style={{ flex: 1, transform: [{ translateX: marksDetailSlideX }] }}>
+                        <ScrollView ref={marksOverallScrollRef}
+                            onScrollEndDrag={(e) => { marksOverallScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+                            onMomentumScrollEnd={(e) => { marksOverallScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+                            onLayout={(e) => { marksOverallContainerHRef.current = e.nativeEvent.layout.height; }}
+                            onContentSizeChange={(_w, h) => { marksOverallContentHRef.current = h; }}
+                            style={{ flex: 1, marginHorizontal: -10 }} showsVerticalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={{ gap: 10, paddingHorizontal: 10, paddingBottom: 30 + marksKbPad }}>
+                            {(() => {
+                                const sel = marksSelectedOverallStudent;
+                                if (!sel) return null;
+                                const rank = marksRankMap[sel.student.id];
+
+                                // Performance Trend — same data + rules as web (a blank
+                                // offline column is excluded entirely, not shown as 0%;
+                                // online always shows, missed test = 0%).
+                                const trendSub = (division?.subjects ?? []).find((s) => s.id === marksTrendSubjectId) ?? (division?.subjects ?? [])[0];
+                                const trendColor = trendSub ? colorForSubject(trendSub) : '#999';
+                                const trendData = (() => {
+                                    if (!trendSub) return [];
+                                    const offRows = (marksExamColumns[trendSub.id] ?? [])
+                                        .filter((col) => marksScores[col.id]?.[sel.student.id]?.score != null)
+                                        .map((col) => {
+                                            const e = marksScores[col.id]?.[sel.student.id];
+                                            const sc = e?.isAbsent ? 0 : (e?.score ?? 0);
+                                            return { name: col.name, score: col.maxMarks > 0 ? Math.round((sc / col.maxMarks) * 100) : 0 };
+                                        });
+                                    const onRows = (marksOnlineExamColumns[trendSub.id] ?? []).map((col) => {
+                                        const e = marksOnlineScores[col.id]?.[sel.student.id];
+                                        const sc = e?.isAbsent ? 0 : (e?.score ?? 0);
+                                        return { name: col.name, score: col.maxMarks > 0 ? Math.round((sc / col.maxMarks) * 100) : 0 };
+                                    });
+                                    if (marksTrendMode === 'online') return onRows;
+                                    if (marksTrendMode === 'offline') return offRows;
+                                    return [...offRows, ...onRows];
+                                })();
+
+                                return (
+                                    <Fragment key="marks-overall-student">
+                                        <TouchableOpacity onPress={closeMarksOverallDetail} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: Platform.OS === 'android' ? 4 : 0 }}>
+                                            <View style={[styles.manageBackBtn, { borderColor: theme.cardBorder }, Platform.OS === 'android' ? { marginTop: -2 } : undefined]}>
+                                                <ArrowLeft size={15} color={theme.text} />
+                                            </View>
+                                            <Text style={{ flex: 1, fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{sel.student.name ?? '-'}</Text>
+                                        </TouchableOpacity>
+
+                                        {/* Student info card — photo, name, roll no, class
+                                            rank, overall %, laid out in a single row. */}
+                                        <View style={styles.cardShadowWrap}>
+                                            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 }]}>
+                                                <View style={[styles.avatarSm, { width: 44, height: 44, borderRadius: 16, backgroundColor: sel.student.avatarUrl ? 'transparent' : getAvatarColor(sel.student.name ?? sel.student.rollNo) }]}>
+                                                    {sel.student.avatarUrl
+                                                        ? <Image source={{ uri: sel.student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                        : <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(sel.student.name ?? sel.student.rollNo)}</Text>}
+                                                </View>
+                                                <View style={{ flex: 1, minWidth: 0 }}>
+                                                    <Text numberOfLines={1} style={{ fontSize: 12.5, fontFamily: 'Poppins_700Bold', color: theme.text }}>{sel.student.name ?? '-'}</Text>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll No. {sel.student.rollNo}</Text>
+                                                </View>
+                                                <View style={{ alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 9, borderWidth: 1, borderColor: '#F59E0B4D', backgroundColor: '#F59E0B0D' }}>
+                                                    <Text style={{ fontSize: 13, fontFamily: 'Poppins_800ExtraBold', color: '#F59E0B' }}>#{rank ?? '—'}</Text>
+                                                    <Text style={{ fontSize: 7, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Class Rank</Text>
+                                                </View>
+                                                <View style={{ alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5 }}>
+                                                    <Text style={{ fontSize: 13, fontFamily: 'Poppins_800ExtraBold', color: sel.combPct !== null ? marksScoreColor(sel.combPct) : theme.muted }}>{sel.combPct !== null ? `${sel.combPct}%` : '—'}</Text>
+                                                    <Text style={{ fontSize: 7, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Overall</Text>
+                                                </View>
+                                            </View>
+                                        </View>
+
+                                        {/* Performance Trend card — subject-pill row + mode
+                                            toggle in the header, chart below. Same
+                                            react-native-chart-kit LineChart used for the
+                                            student app's Class → Subjects "Performance Trend"
+                                            chart (app/(tabs)/class.tsx) — bezier line, shaded
+                                            fill under the curve, min/max score callouts, and a
+                                            tap-to-reveal tooltip via invisible tap-zone
+                                            overlays (chart-kit's own onDataPointClick only
+                                            fires on an exact dot hit). */}
+                                        <View style={styles.cardShadowWrap}>
+                                            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder, overflow: 'hidden' }]}>
+                                                <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, justifyContent: 'space-between' }]}>
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Performance Trend</Text>
+                                                    <InlineWheel
+                                                        options={['offline', 'online', 'combined']}
+                                                        value={marksTrendMode}
+                                                        onChange={(v) => setMarksTrendMode(v as 'offline' | 'online' | 'combined')}
+                                                        isDark={isDark}
+                                                        theme={{ purple: accent.purple, purpleLight: accent.purpleLight }}
+                                                    />
+                                                </View>
+                                                <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder, backgroundColor: trackBg }}>
+                                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={{ gap: 6 }}>
+                                                        {(division?.subjects ?? []).map((sub) => {
+                                                            const active = marksTrendSubjectId === sub.id;
+                                                            const col = colorForSubject(sub);
+                                                            return (
+                                                                <TouchableOpacity key={sub.id} onPress={() => setMarksTrendSubjectId(sub.id)}
+                                                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: active ? col + '22' : theme.card, borderWidth: 1, borderColor: active ? col + '66' : theme.cardBorder }}>
+                                                                    <BookOpen size={10} color={active ? col : theme.subText} />
+                                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: active ? col : theme.subText }}>{sub.name}</Text>
+                                                                </TouchableOpacity>
+                                                            );
+                                                        })}
+                                                    </ScrollView>
+                                                </View>
+
+                                                {trendData.length === 0 ? (
+                                                    <View style={{ height: 190, alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted }}>No data</Text>
+                                                    </View>
+                                                ) : (() => {
+                                                    const chartLabels = trendData.map((d) => d.name);
+                                                    const axisLabels = chartLabels.map((l) => (l.length > 6 ? `${l.slice(0, 5)}…` : l));
+                                                    const chartValues = trendData.map((d) => d.score);
+                                                    const chartW = Math.max(220, SCREEN_W - 64);
+                                                    return (
+                                                        <View style={{ position: 'relative', paddingVertical: 10 }}>
+                                                            <LineChart
+                                                                renderDotContent={({ x, y, index, indexData }) => {
+                                                                    const max = Math.max(...chartValues);
+                                                                    const min = Math.min(...chartValues);
+                                                                    if (marksChartTooltip === index) {
+                                                                        const tooltipW = 60;
+                                                                        const clampedLeft = Math.max(2, Math.min(x - tooltipW / 2, chartW - tooltipW - 2));
+                                                                        const showBelow = y - 38 < 4;
+                                                                        return (
+                                                                            <View key={index} style={{ position: 'absolute', top: showBelow ? y + 10 : y - 38, left: clampedLeft, backgroundColor: theme.text, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, alignItems: 'center', minWidth: 52 }}>
+                                                                                <Text style={{ fontSize: 9, color: theme.card, fontFamily: 'Poppins_600SemiBold' }} numberOfLines={1}>{chartLabels[index]}</Text>
+                                                                                <Text style={{ fontSize: 11, color: theme.card, fontFamily: 'Poppins_700Bold' }}>{indexData}%</Text>
+                                                                            </View>
+                                                                        );
+                                                                    }
+                                                                    if (indexData !== max && indexData !== min) return null;
+                                                                    const isMin = indexData === min;
+                                                                    return (
+                                                                        <View key={index} style={{ position: 'absolute', top: isMin ? y + 6 : y - 22, left: x - 12, backgroundColor: isMin ? '#DC2626' : '#059669', paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 }}>
+                                                                            <Text style={{ fontSize: 9, color: 'white', fontFamily: 'Poppins_600SemiBold' }}>{indexData}%</Text>
+                                                                        </View>
+                                                                    );
+                                                                }}
+                                                                onDataPointClick={({ index }) => setMarksChartTooltip((prev) => (prev === index ? null : index))}
+                                                                data={{ labels: axisLabels, datasets: [{ data: chartValues, color: () => trendColor, strokeWidth: 2 }] }}
+                                                                width={chartW}
+                                                                height={180}
+                                                                yAxisSuffix="%"
+                                                                chartConfig={{
+                                                                    backgroundColor: 'transparent',
+                                                                    backgroundGradientFrom: theme.card,
+                                                                    backgroundGradientTo: theme.card,
+                                                                    decimalPlaces: 0,
+                                                                    color: () => trendColor,
+                                                                    fillShadowGradient: trendColor,
+                                                                    fillShadowGradientOpacity: 0.15,
+                                                                    labelColor: () => theme.subText,
+                                                                    propsForDots: { r: '4', strokeWidth: '2', stroke: theme.card, fill: trendColor },
+                                                                    propsForBackgroundLines: { stroke: theme.cardBorder, strokeWidth: 1, strokeDasharray: '' },
+                                                                    propsForLabels: { fontSize: 9, fontFamily: 'Poppins_400Regular' },
+                                                                }}
+                                                                bezier
+                                                                style={{ borderRadius: 12, marginLeft: -16, marginBottom: 4 }}
+                                                                fromZero
+                                                                withInnerLines
+                                                                withHorizontalLabels
+                                                                segments={5}
+                                                            />
+                                                            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                                                                {(() => {
+                                                                    const gutter = 64;
+                                                                    const n = axisLabels.length;
+                                                                    const binWidth = n > 0 ? (chartW - gutter) / n : 0;
+                                                                    const tapWidth = Math.max(28, Math.min(binWidth, 56));
+                                                                    return axisLabels.map((_, i) => {
+                                                                        const cx = gutter + i * binWidth;
+                                                                        return (
+                                                                            <TouchableOpacity
+                                                                                key={i}
+                                                                                activeOpacity={1}
+                                                                                style={{ position: 'absolute', top: 0, bottom: 0, left: cx - tapWidth / 2, width: tapWidth }}
+                                                                                onPress={() => setMarksChartTooltip((prev) => (prev === i ? null : i))}
+                                                                            />
+                                                                        );
+                                                                    });
+                                                                })()}
+                                                            </View>
+                                                        </View>
+                                                    );
+                                                })()}
+                                            </View>
+                                        </View>
+
+                                        {/* Report Card — full parity with web's per-student
+                                            grid: subjects × exam columns (offline) or tests-as-chips
+                                            (online), Total/%/Grade per subject, a Grand Total row,
+                                            and (offline only) editable Conduct/Remarks rows +
+                                            a Graded Subjects mini-table, matching
+                                            marksheetHook.remarks / handleRemarkChange on web. RN has
+                                            no <table>, so this is the same column-width grid
+                                            technique already used for the main Offline/Online sheet
+                                            above (msColors, fixed-width columns inside one shared
+                                            horizontal ScrollView so every row's columns line up). */}
+                                        {(() => {
+                                            const RC_SUBJ_W = 116, RC_EXAM_W = 62, RC_TESTS_W = 230, RC_TOTAL_W = 52, RC_PCT_W = 42, RC_GRADE_W = 40;
+                                            const rcIsOffline = marksReportCardTab === 'offline';
+                                            const rcExamColumns = rcIsOffline ? marksExamColumns : marksOnlineExamColumns;
+                                            const rcScores = rcIsOffline ? marksScores : marksOnlineScores;
+                                            const rcHeaderExams = rcIsOffline ? (rcExamColumns[(division?.subjects ?? [])[0]?.id ?? ''] ?? []) : [];
+                                            const rcGradedSubs = rcIsOffline ? marksGradedSubjects : [];
+
+                                            let rcGrandScored = 0, rcGrandMax = 0;
+                                            const rcSubjectData = (division?.subjects ?? []).map((sub) => {
+                                                const examList = rcExamColumns[sub.id] ?? [];
+                                                let scored = 0, maxTotal = 0;
+                                                const cells = examList.map((col) => {
+                                                    const e = rcScores[col.id]?.[sel.student.id];
+                                                    const val = e?.isAbsent ? null : (e?.score ?? (rcIsOffline ? null : 0));
+                                                    const pct = val !== null && col.maxMarks > 0 ? Math.round((val / col.maxMarks) * 100) : null;
+                                                    if (val !== null) { maxTotal += col.maxMarks; scored += val; }
+                                                    return { ex: col, val, maxMarks: col.maxMarks, pct };
+                                                });
+                                                const totalPct = maxTotal > 0 ? Math.round((scored / maxTotal) * 100) : null;
+                                                rcGrandScored += scored;
+                                                rcGrandMax += maxTotal;
+                                                return { sub, cells, scored, maxTotal, totalPct };
+                                            });
+                                            const rcGrandPct = rcGrandMax > 0 ? Math.round((rcGrandScored / rcGrandMax) * 100) : null;
+                                            const rcHasOnlineData = rcSubjectData.some((s) => s.maxTotal > 0);
+                                            const rcGridW = rcIsOffline
+                                                ? RC_SUBJ_W + rcHeaderExams.length * RC_EXAM_W + RC_TOTAL_W + RC_PCT_W + RC_GRADE_W
+                                                : RC_SUBJ_W + RC_TESTS_W + RC_TOTAL_W + RC_PCT_W + RC_GRADE_W;
+                                            const rcRemark = marksRemarks[sel.student.id] ?? { conduct: null, remarks: null };
+
+                                            const cellStyle = { borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder };
+
+                                            return (
+                                                <View style={styles.cardShadowWrap}>
+                                                    <View style={[styles.card, { backgroundColor: msColors.bg, borderColor: theme.cardBorder, overflow: 'hidden' }]}>
+                                                        <View style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.card, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder, gap: 6 }}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Report Card</Text>
+                                                                <View style={[styles.manageSegTrack, { backgroundColor: trackBg, padding: 2 }]}>
+                                                                    {(['offline', 'online'] as const).map((t) => {
+                                                                        const active = marksReportCardTab === t;
+                                                                        return (
+                                                                            <TouchableOpacity key={t} onPress={() => setMarksReportCardTab(t)}
+                                                                                style={[styles.manageSegBtn, { paddingHorizontal: 10, paddingVertical: 4 }, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF' }]}>
+                                                                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_600SemiBold', color: active ? theme.text : theme.subText, textTransform: 'capitalize' }}>{t}</Text>
+                                                                            </TouchableOpacity>
+                                                                        );
+                                                                    })}
+                                                                </View>
+                                                            </View>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                                                                <Text numberOfLines={1} style={{ fontSize: 11, fontFamily: 'Poppins_700Bold', color: theme.text }}>{sel.student.name ?? '-'}</Text>
+                                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll No. {sel.student.rollNo}</Text>
+                                                            </View>
+                                                        </View>
+
+                                                        <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
+                                                            {!rcIsOffline && !rcHasOnlineData ? (
+                                                                <View style={{ width: Math.max(rcGridW, 260), paddingVertical: 28, alignItems: 'center', gap: 3 }}>
+                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>No completed tests yet</Text>
+                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.7 }}>Online results appear here once a test is completed</Text>
+                                                                </View>
+                                                            ) : (
+                                                                <View style={{ width: rcGridW }}>
+                                                                    {/* Header row */}
+                                                                    <View style={{ flexDirection: 'row' }}>
+                                                                        <View style={[cellStyle, { width: RC_SUBJ_W, backgroundColor: msColors.hdrBg, alignItems: 'flex-start', justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 6 }]}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Subjects</Text>
+                                                                        </View>
+                                                                        {rcIsOffline ? (
+                                                                            rcHeaderExams.map((ex) => (
+                                                                                <View key={ex.id} style={[cellStyle, { width: RC_EXAM_W, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 }]}>
+                                                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrText }} numberOfLines={1}>{ex.name}</Text>
+                                                                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.7 }}>/{ex.maxMarks}</Text>
+                                                                                </View>
+                                                                            ))
+                                                                        ) : (
+                                                                            <View style={[cellStyle, { width: RC_TESTS_W, backgroundColor: msColors.hdrBg, alignItems: 'flex-start', justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 6 }]}>
+                                                                                <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Tests & Marks</Text>
+                                                                            </View>
+                                                                        )}
+                                                                        <View style={[cellStyle, { width: RC_TOTAL_W, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Total</Text>
+                                                                        </View>
+                                                                        <View style={[cellStyle, { width: RC_PCT_W, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>%</Text>
+                                                                        </View>
+                                                                        <View style={[cellStyle, { width: RC_GRADE_W, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Grade</Text>
+                                                                        </View>
+                                                                    </View>
+
+                                                                    {/* Subject rows */}
+                                                                    {rcSubjectData.map(({ sub, cells, scored, maxTotal, totalPct }) => {
+                                                                        const subCol = colorForSubject(sub);
+                                                                        return (
+                                                                            <View key={sub.id} style={{ flexDirection: 'row' }}>
+                                                                                <View style={[cellStyle, { width: RC_SUBJ_W, backgroundColor: msColors.rowBase, paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
+                                                                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: subCol }} />
+                                                                                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 10, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>{sub.name}</Text>
+                                                                                </View>
+                                                                                {rcIsOffline ? (
+                                                                                    cells.map(({ ex, val, pct }) => (
+                                                                                        <View key={ex.id} style={[cellStyle, { width: RC_EXAM_W, backgroundColor: msColors.rowBase, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 }]}>
+                                                                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: val !== null ? marksScoreColor(pct ?? 0) : msColors.hdrText + '80' }}>{val !== null ? val : '—'}</Text>
+                                                                                        </View>
+                                                                                    ))
+                                                                                ) : (
+                                                                                    <View style={[cellStyle, { width: RC_TESTS_W, backgroundColor: msColors.rowBase, paddingHorizontal: 6, paddingVertical: 5, alignItems: 'flex-start' }]}>
+                                                                                        {cells.length === 0 ? (
+                                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: msColors.hdrText + '80' }}>—</Text>
+                                                                                        ) : (
+                                                                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                                                                                                {cells.map(({ ex, val, maxMarks }) => (
+                                                                                                    <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                                                        <Text numberOfLines={1} style={{ fontSize: 8.5, color: msColors.hdrText, opacity: 0.7, maxWidth: 70 }}>{ex.name}</Text>
+                                                                                                        {val === null ? (
+                                                                                                            <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: '#DC2626' }}>Ab</Text>
+                                                                                                        ) : (
+                                                                                                            <Text style={{ fontSize: 9, fontFamily: 'Poppins_700Bold', color: marksScoreColor(maxMarks > 0 ? Math.round((val / maxMarks) * 100) : 0) }}>{val}/{maxMarks}</Text>
+                                                                                                        )}
+                                                                                                    </View>
+                                                                                                ))}
+                                                                                            </View>
+                                                                                        )}
+                                                                                    </View>
+                                                                                )}
+                                                                                <View style={[cellStyle, { width: RC_TOTAL_W, backgroundColor: msColors.summaryBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>{maxTotal > 0 ? `${scored}/${maxTotal}` : '—'}</Text>
+                                                                                </View>
+                                                                                <View style={[cellStyle, { width: RC_PCT_W, backgroundColor: msColors.rowBase, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: totalPct !== null ? marksScoreColor(totalPct) : msColors.hdrText + '80' }}>{totalPct !== null ? `${totalPct}%` : '—'}</Text>
+                                                                                </View>
+                                                                                <View style={[cellStyle, { width: RC_GRADE_W, backgroundColor: msColors.rowBase, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: totalPct !== null ? marksScoreColor(totalPct) : msColors.hdrText + '80' }}>{totalPct !== null ? marksGradeLabel(totalPct) : '—'}</Text>
+                                                                                </View>
+                                                                            </View>
+                                                                        );
+                                                                    })}
+
+                                                                    {/* Grand Total row */}
+                                                                    <View style={{ flexDirection: 'row' }}>
+                                                                        <View style={[cellStyle, { width: RC_SUBJ_W, backgroundColor: msColors.rowBase, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: msColors.hdrText }}>Grand Total</Text>
+                                                                        </View>
+                                                                        <View style={[cellStyle, { width: rcIsOffline ? rcHeaderExams.length * RC_EXAM_W : RC_TESTS_W, backgroundColor: msColors.rowBase }]} />
+                                                                        <View style={[cellStyle, { width: RC_TOTAL_W, backgroundColor: msColors.summaryBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_800ExtraBold', color: msColors.hdrText }}>{rcGrandMax > 0 ? `${rcGrandScored}/${rcGrandMax}` : '—'}</Text>
+                                                                        </View>
+                                                                        <View style={[cellStyle, { width: RC_PCT_W, backgroundColor: msColors.summaryBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: rcGrandPct !== null ? marksScoreColor(rcGrandPct) : msColors.hdrText + '80' }}>{rcGrandPct !== null ? `${rcGrandPct}%` : '—'}</Text>
+                                                                        </View>
+                                                                        <View style={[cellStyle, { width: RC_GRADE_W, backgroundColor: msColors.summaryBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: rcGrandPct !== null ? marksScoreColor(rcGrandPct) : msColors.hdrText + '80' }}>{rcGrandPct !== null ? marksGradeLabel(rcGrandPct) : '—'}</Text>
+                                                                        </View>
+                                                                    </View>
+
+                                                                    {/* Graded Subjects mini table — offline only. */}
+                                                                    {rcIsOffline && rcGradedSubs.length > 0 && (
+                                                                        <View style={{ marginTop: 10 }}>
+                                                                            <View style={{ flexDirection: 'row' }}>
+                                                                                <View style={[cellStyle, { width: RC_SUBJ_W, backgroundColor: msColors.hdrBg, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>{marksGradedSectionTitle}</Text>
+                                                                                </View>
+                                                                                <View style={[cellStyle, { width: 90, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Term 1</Text>
+                                                                                </View>
+                                                                                <View style={[cellStyle, { width: 90, backgroundColor: msColors.hdrBg, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Term 2</Text>
+                                                                                </View>
+                                                                            </View>
+                                                                            {rcGradedSubs.map((gs) => {
+                                                                                const gsScore = marksGradedScores[gs.id]?.[sel.student.id];
+                                                                                return (
+                                                                                    <View key={gs.id} style={{ flexDirection: 'row' }}>
+                                                                                        <View style={[cellStyle, { width: RC_SUBJ_W, backgroundColor: msColors.rowBase, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center' }]}>
+                                                                                            <Text numberOfLines={1} style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrText }}>{gs.name}</Text>
+                                                                                        </View>
+                                                                                        <View style={[cellStyle, { width: 90, backgroundColor: msColors.rowBase, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: gsScore?.term1Grade ? gradeValColor(gsScore.term1Grade) : msColors.hdrText + '80' }}>{gsScore?.term1Grade ?? '—'}</Text>
+                                                                                        </View>
+                                                                                        <View style={[cellStyle, { width: 90, backgroundColor: msColors.rowBase, alignItems: 'center', justifyContent: 'center' }]}>
+                                                                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: gsScore?.term2Grade ? gradeValColor(gsScore.term2Grade) : msColors.hdrText + '80' }}>{gsScore?.term2Grade ?? '—'}</Text>
+                                                                                        </View>
+                                                                                    </View>
+                                                                                );
+                                                                            })}
+                                                                        </View>
+                                                                    )}
+                                                                </View>
+                                                            )}
+                                                        </ScrollView>
+
+                                                        {/* Conduct + Remarks — offline only, class-teacher
+                                                            editable (same PUT as web's textareas), read-only
+                                                            text for a subject teacher viewing the app.
+                                                            Rendered OUTSIDE the horizontal grid ScrollView
+                                                            above (full width instead of a "colSpan" cell) —
+                                                            on Android a TextInput nested inside a horizontal
+                                                            ScrollView that sits inside a vertical one doesn't
+                                                            reliably receive focus (the ScrollView's touch
+                                                            responder swallows the tap before the keyboard can
+                                                            open), so these need to sit outside that nesting
+                                                            entirely. */}
+                                                        {rcIsOffline && (
+                                                            <View style={{ paddingTop: 4 }}>
+                                                                <View style={{ borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder, borderBottomWidth: 0 }}>
+                                                                    <View style={{ flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: msColors.hdrBorder }}>
+                                                                        <View style={{ width: 68, backgroundColor: msColors.hdrBg, paddingHorizontal: 8, paddingVertical: 8 }}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: msColors.hdrText }}>Conduct</Text>
+                                                                        </View>
+                                                                        <View style={{ flex: 1, backgroundColor: msColors.bg, paddingHorizontal: 10, paddingVertical: 6, justifyContent: 'center' }}>
+                                                                            {isClassTeacher ? (
+                                                                                <TextInput
+                                                                                    ref={marksConductInputRef}
+                                                                                    onFocus={() => scrollMarksFieldAboveKeyboard(marksConductInputRef.current)}
+                                                                                    value={rcRemark.conduct ?? ''}
+                                                                                    onChangeText={(t) => handleMarksRemarkChange(sel.student.id, { conduct: t || null })}
+                                                                                    placeholder="—"
+                                                                                    placeholderTextColor={msColors.hdrText + '80'}
+                                                                                    multiline
+                                                                                    style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, includeFontPadding: false, padding: 0 }}
+                                                                                />
+                                                                            ) : (
+                                                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: msColors.hdrText }}>{rcRemark.conduct || '—'}</Text>
+                                                                            )}
+                                                                        </View>
+                                                                    </View>
+                                                                    <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
+                                                                        <View style={{ width: 68, backgroundColor: msColors.hdrBg, paddingHorizontal: 8, paddingVertical: 8 }}>
+                                                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_800ExtraBold', color: msColors.hdrText }}>Remarks</Text>
+                                                                        </View>
+                                                                        <View style={{ flex: 1, backgroundColor: msColors.bg, paddingHorizontal: 10, paddingVertical: 6, justifyContent: 'center' }}>
+                                                                            {isClassTeacher ? (
+                                                                                <TextInput
+                                                                                    ref={marksRemarksInputRef}
+                                                                                    onFocus={() => scrollMarksFieldAboveKeyboard(marksRemarksInputRef.current)}
+                                                                                    value={rcRemark.remarks ?? ''}
+                                                                                    onChangeText={(t) => handleMarksRemarkChange(sel.student.id, { remarks: t || null })}
+                                                                                    placeholder="—"
+                                                                                    placeholderTextColor={msColors.hdrText + '80'}
+                                                                                    multiline
+                                                                                    style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: msColors.hdrText, includeFontPadding: false, padding: 0 }}
+                                                                                />
+                                                                            ) : (
+                                                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', fontStyle: 'italic', color: msColors.hdrText }}>{rcRemark.remarks || '—'}</Text>
+                                                                            )}
+                                                                        </View>
+                                                                    </View>
+                                                                </View>
+                                                            </View>
+                                                        )}
+
+                                                        {/* Footer legend — same Pass/Fail color key as the
+                                                            main sheet. */}
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.cardBorder, backgroundColor: theme.card }}>
+                                                            {[
+                                                                { label: '≥75% Pass', color: '#059669', sample: 75 },
+                                                                { label: '35–74% Pass', color: '#F59E0B', sample: 36 },
+                                                                { label: '<35% Fail', color: '#DC2626', sample: 17 },
+                                                            ].map((item) => (
+                                                                <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_700Bold', color: item.color }}>{item.sample}%</Text>
+                                                                    <Text style={{ fontSize: 9, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{item.label}</Text>
+                                                                </View>
+                                                            ))}
+                                                        </View>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })()}
+                                    </Fragment>
+                                );
+                            })()}
+                        </ScrollView>
+                        </Animated.View>
+                        )}
+                    </View>
+                ) : activeLoading ? (
+                    <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+                ) : (isOffline && !marksInitialized) ? (
+                    <View style={[styles.centerFill, { paddingHorizontal: 24 }]}>
+                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.muted, textAlign: 'center' }}>
+                            Marksheet not set up yet for this class — set it up from the web dashboard first.
+                        </Text>
+                    </View>
+                ) : (
+                    <View style={[styles.cardShadowWrap, { flex: 1 }]}>
+                        <View style={[styles.card, { flex: 1, backgroundColor: msColors.bg, borderColor: theme.cardBorder, overflow: 'hidden' }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, backgroundColor: theme.card, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <BookOpen size={13} color={theme.text} style={{ marginTop: Platform.OS === 'android' ? 1 : 3 }} />
+                                        <Text
+                                            style={{ flexShrink: 1, fontSize: 12.5, lineHeight: 15, fontFamily: 'Poppins_700Bold', color: theme.text, includeFontPadding: false, marginTop: Platform.OS === 'ios' ? 3 : 0 }}
+                                            numberOfLines={1}
+                                        >
+                                            {division?.name} Marksheet
+                                        </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 10, lineHeight: 12, fontFamily: 'Poppins_400Regular', color: theme.muted, marginLeft: 19, marginTop: 2, includeFontPadding: false }}>
+                                        Academic Year {marksAcademicYear} - {isOffline ? 'Offline' : 'Online'}
+                                    </Text>
+                                </View>
+
+                                {/* Export — same mechanism as Attendance Sheet's Export: a
+                                    real .xlsx built client-side with the xlsx (SheetJS)
+                                    library, then handed to the OS share sheet. */}
+                                <TouchableOpacity onPress={handleMarksExport} disabled={marksExporting} activeOpacity={0.85} style={{ opacity: marksExporting ? 0.6 : 1 }}>
+                                    <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 26, paddingHorizontal: 10, borderRadius: 8 }}>
+                                        {marksExporting ? <ActivityIndicator size="small" color="#fff" /> : (
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>⬇ Export</Text>
+                                        )}
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
+
+                            <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
+                                <View>
+                                    {/* Header — Roll No. + Name form one merged cell spanning
+                                        both header rows (mirrors web's rowSpan={2} sticky
+                                        columns), with the subject-group row and the per-exam
+                                        row stacked to its right. */}
+                                    <View style={{ flexDirection: 'row' }}>
+                                        <View style={{ width: ROLL_W + NAME_W, flexDirection: 'row', alignItems: 'stretch', backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                            <View style={{ width: ROLL_W, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText, includeFontPadding: false }}>Roll No.</Text>
+                                            </View>
+                                            <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: msColors.hdrBorder }} />
+                                            <View style={{ width: NAME_W - StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' }}>
+                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText, includeFontPadding: false }}>Student Name</Text>
+                                            </View>
+                                        </View>
+                                        <View>
+                                    {/* Row 1 — subject group headers (colored, spanning that
+                                        subject's exam columns + its Total/% below). */}
+                                    <View style={{ flexDirection: 'row' }}>
+                                        {(division?.subjects ?? []).map((sub) => {
+                                            const w = getSubjectExams(sub.id).length * EXAM_W + SUBJ_TOTAL_W + SUBJ_PCT_W;
+                                            const col = colorForSubject(sub);
+                                            return (
+                                                <View key={sub.id} style={{ width: w, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6, backgroundColor: col + '22', borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder, borderBottomWidth: 2, borderBottomColor: col + '99' }}>
+                                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: col }} />
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: col }} numberOfLines={1}>{sub.name}</Text>
+                                                </View>
+                                            );
+                                        })}
+                                        {activeGradedSubjects.length > 0 && (
+                                            <>
+                                                <View style={{ width: GRADED_GAP_W }} />
+                                                <View style={{ width: GRADED_W * 2, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }} numberOfLines={1}>{marksGradedSectionTitle}</Text>
+                                                </View>
+                                                <View style={{ width: GRADED_GAP_W }} />
+                                            </>
+                                        )}
+                                        <View style={{ width: GRAND_W + PCT_W + GRADE_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Overall</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Row 2 — per-exam sub-headers + Total/% + graded Term1/Term2 + Grand/%/Grade. */}
+                                    <View style={{ flexDirection: 'row' }}>
+                                        {(division?.subjects ?? []).map((sub) => (
+                                            <Fragment key={sub.id}>
+                                                {getSubjectExams(sub.id).map((ex) => (
+                                                    <View key={ex.id} style={{ width: EXAM_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                        <Text style={{ fontSize: 9, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrText }} numberOfLines={1}>{ex.name}</Text>
+                                                        <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.75 }}>/{ex.maxMarks}</Text>
+                                                        {!isOffline && ex.examDate && (
+                                                            <Text style={{ fontSize: 7, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.6 }} numberOfLines={1}>
+                                                                {new Date(ex.examDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                ))}
+                                                <View style={{ width: SUBJ_TOTAL_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Total</Text>
+                                                </View>
+                                                <View style={{ width: SUBJ_PCT_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>%</Text>
+                                                </View>
+                                            </Fragment>
+                                        ))}
+                                        {activeGradedSubjects.length > 0 && <View style={{ width: GRADED_GAP_W }} />}
+                                        {activeGradedSubjects.map((gsub) => (
+                                            <Fragment key={gsub.id}>
+                                                <View style={{ width: GRADED_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                    <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }} numberOfLines={1}>{gsub.name}</Text>
+                                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.75 }}>Term 1</Text>
+                                                </View>
+                                                <View style={{ width: GRADED_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, backgroundColor: msColors.hdrBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                    <Text style={{ fontSize: 8.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }} numberOfLines={1}>{gsub.name}</Text>
+                                                    <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: msColors.hdrText, opacity: 0.75 }}>Term 2</Text>
+                                                </View>
+                                            </Fragment>
+                                        ))}
+                                        {activeGradedSubjects.length > 0 && <View style={{ width: GRADED_GAP_W }} />}
+                                        <View style={{ width: GRAND_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Grand</Text>
+                                        </View>
+                                        <View style={{ width: PCT_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>%</Text>
+                                        </View>
+                                        <View style={{ width: GRADE_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrText }}>Grade</Text>
+                                        </View>
+                                    </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Body — vertical scroll of student rows, same trick as the
+                                        Sheet tab: a plain vertical ScrollView nested inside this
+                                        horizontal one is safe here because this whole grid is a
+                                        direct child of the tab page (no extra vertical ScrollView
+                                        sits between it and the top-level tab pager) — the exact
+                                        structural difference that caused Android's first-swipe bug
+                                        on the Overall tab's student sheet. */}
+                                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                                        {activeStudents.length === 0 ? (
+                                            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students yet</Text>
+                                            </View>
+                                        ) : activeStudents.map((student, si) => {
+                                            const rowBg = si % 2 === 0 ? msColors.rowBase : msColors.rowBase;
+                                            const grand = getGrandTotal(student.id);
+                                            return (
+                                                <View key={student.id} style={{ flexDirection: 'row', backgroundColor: rowBg }}>
+                                                    <Text style={[styles.attGridCell, { width: ROLL_W, fontFamily: 'Poppins_700Bold', backgroundColor: msColors.rowBase, borderColor: msColors.hdrBorder, color: msColors.hdrText }]}>{student.rollNo || '-'}</Text>
+                                                    <View style={{ width: NAME_W, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                        <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.name ?? student.rollNo), overflow: 'hidden' }}>
+                                                            {student.avatarUrl
+                                                                ? <Image source={{ uri: student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                                : <Text style={{ fontSize: 7.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.name ?? student.rollNo)}</Text>}
+                                                        </View>
+                                                        <Text style={{ flex: 1, fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrText }} numberOfLines={1}>{student.name ?? '-'}</Text>
+                                                    </View>
+                                                    {(division?.subjects ?? []).map((sub) => {
+                                                        // Matches web's isRestricted: a subject teacher sees only
+                                                        // their own subject's column — every other subject's exam
+                                                        // marks and subject total/% are blanked out entirely.
+                                                        const subRestricted = !isClassTeacher && !!subjectId && sub.id !== subjectId;
+                                                        const { total, scored, enteredTotal } = getSubjectTotal(sub.id, student.id);
+                                                        const subPct = enteredTotal > 0 ? Math.round((scored / enteredTotal) * 100) : null;
+                                                        return (
+                                                            <Fragment key={sub.id}>
+                                                                {getSubjectExams(sub.id).map((ex) => {
+                                                                    if (subRestricted) {
+                                                                        return (
+                                                                            <View key={ex.id} style={{ width: EXAM_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrBorder }}>—</Text>
+                                                                            </View>
+                                                                        );
+                                                                    }
+                                                                    const sc = getScore(ex.id, student.id);
+                                                                    const cellPct = sc !== null ? (sc / ex.maxMarks) * 100 : null;
+                                                                    // A subject teacher can edit Offline marks for
+                                                                    // their own subject column only (matches web);
+                                                                    // Online is always auto-computed/read-only, and
+                                                                    // a class teacher never edits marks here either.
+                                                                    const editable = isOffline && !isClassTeacher && !!subjectId && sub.id === subjectId;
+                                                                    const cellContent = (
+                                                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: sc !== null ? marksScoreColor(cellPct!) : msColors.hdrBorder }}>
+                                                                            {sc !== null ? sc : '-'}
+                                                                        </Text>
+                                                                    );
+                                                                    return editable ? (
+                                                                        <TouchableOpacity key={ex.id} onPress={() => openScoreEditor(ex.id, ex.name, ex.maxMarks, student.id, student.name ?? student.rollNo)}
+                                                                            style={{ width: EXAM_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                            {cellContent}
+                                                                        </TouchableOpacity>
+                                                                    ) : (
+                                                                        <View key={ex.id} style={{ width: EXAM_W, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                            {cellContent}
+                                                                        </View>
+                                                                    );
+                                                                })}
+                                                                <View style={{ width: SUBJ_TOTAL_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg + '80', borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: subRestricted ? msColors.hdrBorder : msColors.hdrText }}>{subRestricted ? '—' : `${scored}/${total}`}</Text>
+                                                                </View>
+                                                                <View style={{ width: SUBJ_PCT_W, alignItems: 'center', justifyContent: 'center', backgroundColor: msColors.summaryBg + '80', borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: subRestricted ? msColors.hdrBorder : (subPct !== null ? marksScoreColor(subPct) : msColors.hdrBorder) }}>{subRestricted ? '—' : (subPct !== null ? `${subPct}%` : '-')}</Text>
+                                                                </View>
+                                                            </Fragment>
+                                                        );
+                                                    })}
+                                                    {activeGradedSubjects.length > 0 && <View style={{ width: GRADED_GAP_W }} />}
+                                                    {activeGradedSubjects.map((gsub) => {
+                                                        const t1 = getGrade(gsub.id, student.id, 't1');
+                                                        const t2 = getGrade(gsub.id, student.id, 't2');
+                                                        // Graded Subjects are class-teacher-only, matching web's
+                                                        // isRestricted: a subject teacher gets a blank "—" here,
+                                                        // not the real grade value.
+                                                        const gradedCellStyle = { width: GRADED_W, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder };
+                                                        return isClassTeacher ? (
+                                                            <Fragment key={gsub.id}>
+                                                                <TouchableOpacity onPress={() => openGradeEditor(gsub.id, gsub.name, student.id, student.name ?? student.rollNo, 't1')}
+                                                                    style={gradedCellStyle}>
+                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_700Bold', color: gradeValColor(t1) }}>{t1 ?? '-'}</Text>
+                                                                </TouchableOpacity>
+                                                                <TouchableOpacity onPress={() => openGradeEditor(gsub.id, gsub.name, student.id, student.name ?? student.rollNo, 't2')}
+                                                                    style={gradedCellStyle}>
+                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_700Bold', color: gradeValColor(t2) }}>{t2 ?? '-'}</Text>
+                                                                </TouchableOpacity>
+                                                            </Fragment>
+                                                        ) : (
+                                                            <Fragment key={gsub.id}>
+                                                                <View style={gradedCellStyle}>
+                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrBorder }}>—</Text>
+                                                                </View>
+                                                                <View style={gradedCellStyle}>
+                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_700Bold', color: msColors.hdrBorder }}>—</Text>
+                                                                </View>
+                                                            </Fragment>
+                                                        );
+                                                    })}
+                                                    {activeGradedSubjects.length > 0 && <View style={{ width: GRADED_GAP_W }} />}
+                                                    <View style={{ width: GRAND_W, alignItems: 'center', justifyContent: 'center', backgroundColor: rowBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: msColors.hdrText }}>{isClassTeacher ? `${grand.scored}/${grand.total}` : '—'}</Text>
+                                                    </View>
+                                                    <View style={{ width: PCT_W, alignItems: 'center', justifyContent: 'center', backgroundColor: rowBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_800ExtraBold', color: isClassTeacher && grand.pct !== null ? marksScoreColor(grand.pct) : msColors.hdrBorder }}>{isClassTeacher ? (grand.pct !== null ? `${grand.pct}%` : '-') : '—'}</Text>
+                                                    </View>
+                                                    <View style={{ width: GRADE_W, alignItems: 'center', justifyContent: 'center', backgroundColor: rowBg, borderWidth: StyleSheet.hairlineWidth, borderColor: msColors.hdrBorder }}>
+                                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_800ExtraBold', color: isClassTeacher && grand.pct !== null ? marksScoreColor(grand.pct) : msColors.hdrBorder }}>{isClassTeacher ? (grand.pct !== null ? marksGradeLabel(grand.pct) : '-') : '—'}</Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </ScrollView>
+                                </View>
+                            </ScrollView>
+
+                            {/* Grade Scale — offline only, matching web (the
+                                GradeScaleEditor there is gated the same way);
+                                read-only here — the class teacher configures/
+                                edits this on web only, the app just mirrors
+                                whatever is currently set. */}
+                            {isOffline && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.cardBorder }}>
+                                    <Trophy size={11} color={theme.muted} style={Platform.OS === 'android' ? { marginTop: 1 } : undefined} />
+                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginRight: 2 }}>Grade Scale</Text>
+                                    {displayGradeScale.map((entry, i) => {
+                                        const isFail = i === displayGradeScale.length - 1;
+                                        const color = gradeRankColor(i, displayGradeScale.length);
+                                        return (
+                                            <View key={entry.grade + i} style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7, backgroundColor: color + '1A' }}>
+                                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color }}>
+                                                    {entry.grade}{isFail ? ' (Fail)' : ` ≥${entry.minPct}%`}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            )}
+                            {!isOffline && (
+                                <View style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.cardBorder }}>
+                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>
+                                        Auto-filled from completed test results · best attempt counts
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                )}
+            </View>
+        );
+    }, [
+        division, trackBg, isDark, theme, marksSubTab, marksLoading, marksInitialized, marksAcademicYear,
+        marksExamColumns, marksScores, marksGradedSubjects, marksGradedScores, marksGradedSectionTitle,
+        marksStudents, marksGradeLabel, marksScoreColor, marksGradeScale, marksExporting, handleMarksExport,
+        marksOnlineLoading, marksOnlineStudents, marksOnlineExamColumns, marksOnlineScores,
+        marksOverallRightTab, marksOverallSelectedId, marksStudentStats, marksSubjectStats, marksSelectedOverallStudent,
+        marksRankTab, marksTopperTab, marksSubjectToppers, marksTrendSubjectId, marksTrendMode, marksRankMap, marksChartTooltip,
+        marksReportCardTab, marksRemarks, handleMarksRemarkChange, isClassTeacher, marksKbPad, scrollMarksFieldAboveKeyboard,
+        marksDetailSlideX, closeMarksOverallDetail,
+    ]);
+
+    // ── Fees tab — read-only mirror of web's FeesTab.tsx. Teachers (even the
+    // class teacher) cannot edit the fee structure or mark a payment — only
+    // admins do that; this is strictly a viewer.
+    const [feesLoading, setFeesLoading] = useState(true);
+    const [feesFetched, setFeesFetched] = useState(false);
+    const [feesRoster, setFeesRoster] = useState<FeesRosterStudent[]>([]);
+    const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+    const [feeMonths, setFeeMonths] = useState<FeeMonth[]>([]);
+    const [feePayments, setFeePayments] = useState<FeePayment[]>([]);
+    const [feeRulesAndRegs, setFeeRulesAndRegs] = useState<{ id: string; text: string }[]>([]);
+    const [feeExtraColumns, setFeeExtraColumns] = useState<{ label: string }[]>([]);
+    const [feeCardTheme, setFeeCardTheme] = useState<FeeCardThemeKey>('yellow');
+    const [feeSchoolLogoUrl, setFeeSchoolLogoUrl] = useState<string | null>(null);
+    const [feeSchoolName, setFeeSchoolName] = useState('');
+    const [feeStudentFields, setFeeStudentFields] = useState<FeeStudentDetailField[]>(DEFAULT_FEE_STUDENT_FIELDS);
+
+    const fetchFees = useCallback(async () => {
+        setFeesLoading(true);
+        try {
+            const [studentsRes, structureRes, paymentsRes] = await Promise.all([
+                api.get(`/teacher/classes/${divisionId}/students`).catch(() => ({ data: { data: [] } })),
+                api.get(`/teacher/campus/divisions/${divisionId}/fee-structure`).catch(() => ({ data: { data: null } })),
+                api.get(`/teacher/campus/divisions/${divisionId}/fee-payments`).catch(() => ({ data: { data: [] } })),
+            ]);
+            const studentsRaw: { id: string; studentId: string; user: { name: string | null }; rollNo: string | null; extraDetailFields: Record<string, string> | null; avatarUrl: string | null }[] = studentsRes.data?.data ?? [];
+            setFeesRoster(studentsRaw.map((s) => ({
+                id: s.id,
+                studentId: s.studentId,
+                name: s.user?.name ?? 'Unknown',
+                rollNo: s.rollNo ?? '—',
+                extraDetailFields: s.extraDetailFields ?? null,
+                avatarUrl: s.avatarUrl ?? null,
+            })));
+
+            const structure = structureRes.data?.data;
+            setFeeStructures(feeNormalizeStructureColors(structure?.feeStructures ?? []));
+            setFeeMonths(structure?.feeMonths ?? []);
+            setFeeRulesAndRegs(structure?.rulesAndRegs ?? []);
+            setFeeExtraColumns(structure?.extraColumns ?? []);
+            if (structure?.studentFields && structure.studentFields.length > 0) {
+                const hasBus = structure.studentFields.some((f: FeeStudentDetailField) => f.kind === 'default' && f.defaultKey === 'bus');
+                setFeeStudentFields(hasBus ? structure.studentFields : [...structure.studentFields, { id: 'f-bus', kind: 'default' as const, defaultKey: 'bus' as const, label: 'Bus' }]);
+            } else {
+                setFeeStudentFields(DEFAULT_FEE_STUDENT_FIELDS);
+            }
+            const themeKey = structure?.feeCardTheme;
+            setFeeCardTheme(themeKey && themeKey in FEE_CARD_THEMES ? themeKey as FeeCardThemeKey : 'yellow');
+            setFeeSchoolLogoUrl(structure?.schoolLogoUrl ?? null);
+            setFeeSchoolName(structure?.schoolName ?? '');
+
+            setFeePayments(paymentsRes.data?.data ?? []);
+        } catch {
+            setFeesRoster([]);
+            setFeeStructures([]);
+            setFeeMonths([]);
+            setFeePayments([]);
+        } finally {
+            setFeesLoading(false);
+            setFeesFetched(true);
+        }
+    }, [divisionId]);
+    useEffect(() => {
+        if (activeTab === 'fees' && !feesFetched) fetchFees();
+    }, [activeTab, feesFetched, fetchFees]);
+
+    const [feesSelectedStudentId, setFeesSelectedStudentId] = useState<string | null>(null);
+    const [feesStudentFilter, setFeesStudentFilter] = useState<'all' | 'paid' | 'pending'>('all');
+    const [feesSelectedMonth, setFeesSelectedMonth] = useState<string | null>(null);
+    // Card front/back flip and item-expand state now live inside FeeFlipCard
+    // itself (imported from fees_detail.tsx) — it's the same component the
+    // student app uses, so this tab no longer manages that state locally.
+
+    // Slide the fee card in from the right the moment a student is selected,
+    // and slide it back out before clearing the selection — same treatment
+    // as Manage's manageDetailSlideX.
+    const feesDetailSlideX = useRef(new Animated.Value(SCREEN_W)).current;
+    useEffect(() => {
+        if (feesSelectedStudentId) Animated.timing(feesDetailSlideX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, [feesSelectedStudentId, feesDetailSlideX]);
+    const closeFeesDetail = useCallback(() => {
+        Animated.timing(feesDetailSlideX, { toValue: SCREEN_W, duration: 200, useNativeDriver: true }).start(() => {
+            setFeesSelectedStudentId(null);
+            feesDetailSlideX.setValue(SCREEN_W);
+        });
+    }, [feesDetailSlideX]);
+
+    const feesPageContent = useMemo(() => {
+        const getPayment = (studentId: string, feeMonthId: string): FeePayment =>
+            feePayments.find((p) => p.studentId === studentId && p.feeMonthId === feeMonthId)
+                ?? { studentId, feeMonthId, status: 'PENDING', paidDate: null, remark: null, extraFields: null, extraStructureIds: null };
+
+        // Overall paid/pending tracks only the current calendar month's fee
+        // status (the most recently applicable configured month, at or
+        // before now) — matches web's isStudentPaid exactly.
+        const isStudentPaid = (studentId: string) => {
+            if (feeMonths.length === 0) return false;
+            const currentMonthIndex = new Date().getMonth();
+            const withIdx = feeMonths.map((m) => ({ m, idx: FEE_MONTHS.indexOf(m.month) })).filter((x) => x.idx !== -1);
+            if (withIdx.length === 0) return false;
+            const pastOrCurrent = withIdx.filter((x) => x.idx <= currentMonthIndex).sort((a, b) => b.idx - a.idx)[0];
+            const target = pastOrCurrent ?? [...withIdx].sort((a, b) => a.idx - b.idx)[0];
+            return getPayment(studentId, target.m.id).status === 'PAID';
+        };
+
+        const feesStudents = feesRoster.map((s) => ({ ...s, paid: isStudentPaid(s.id) }));
+        const selectedStudent = feesStudents.find((s) => s.id === feesSelectedStudentId) ?? null;
+
+        // Late Fee Fine / Bus Fee auto-apply and per-month totals are now
+        // computed inside FeeFlipCard itself (same logic, ported from
+        // web/fees_detail.tsx) — this tab only needs isStudentPaid above,
+        // for the list's Paid/Pending badges.
+
+        const fc = FEE_CARD_THEMES[feeCardTheme];
+        const filteredStudents = feesStudents.filter((s) => (feesStudentFilter === 'all' ? true : feesStudentFilter === 'paid' ? s.paid : !s.paid));
+
+        // FeeFlipCard reads the built-in Student Details fields (roll no,
+        // student id, class, division) off this same extraDetailFields map
+        // via their well-known keys — mirrors fees_detail.tsx's own
+        // mergedDetailFields exactly.
+        const divisionName = division?.name ?? '';
+        const classValue = divisionName.split('-')[0] ?? divisionName;
+        const divisionValue = divisionName.split('-')[1] ?? '';
+        const mergedFeeDetailFields: Record<string, string> = selectedStudent ? {
+            ...(selectedStudent.extraDetailFields ?? {}),
+            rollNo: selectedStudent.rollNo,
+            studentId: selectedStudent.studentId,
+            class: classValue || '—',
+            division: divisionValue || '—',
+        } : {};
+
+        return (
+            <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4 }}>
+                <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, paddingHorizontal: 0, paddingTop: 0, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 0 }]}>
+                    <Users size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
+                    <Text style={[styles.cardHeaderText, { color: theme.text }]}>{selectedStudent ? 'Fee Details' : `Students (${feesStudents.length})`}</Text>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                {!selectedStudent ? (
+                    <>
+                        {/* Filter pills — same shape/colors as web's (all = purple,
+                            paid = emerald, pending = red), not the segmented-control
+                            style used elsewhere in this app. */}
+                        <View style={{ flexDirection: 'row', gap: 6, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
+                            {(['all', 'paid', 'pending'] as const).map((f) => {
+                                const active = feesStudentFilter === f;
+                                const activeBg = f === 'paid' ? (isDark ? '#052E20' : '#D1FAE5') : f === 'pending' ? (isDark ? '#450A0A' : '#FEE2E2') : theme.purple;
+                                const activeText = f === 'paid' ? (isDark ? '#6EE7B7' : '#047857') : f === 'pending' ? (isDark ? '#FCA5A5' : '#B91C1C') : '#FFFFFF';
+                                return (
+                                    <TouchableOpacity key={f} onPress={() => setFeesStudentFilter(f)}
+                                        style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: active ? activeBg : trackBg }}>
+                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: active ? activeText : theme.subText, textTransform: 'capitalize' }}>{f}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+
+                        {feesLoading ? (
+                            <View style={styles.centerFill}><ActivityIndicator color={theme.purple} /></View>
+                        ) : filteredStudents.length === 0 ? (
+                            <View style={styles.centerFill}>
+                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students yet</Text>
+                            </View>
+                        ) : (
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {filteredStudents.map((student) => (
+                                    <TouchableOpacity key={student.id}
+                                        onPress={() => {
+                                            setFeesSelectedStudentId(student.id);
+                                            setFeesSelectedMonth(null);
+                                        }}
+                                        activeOpacity={0.7}
+                                        style={[styles.manageStudentRow, { paddingHorizontal: 0, borderBottomColor: theme.cardBorder }]}>
+                                        <View style={[styles.avatarSm, { width: 42, height: 42, borderRadius: 14, backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.name) }]}>
+                                            {student.avatarUrl
+                                                ? <Image source={{ uri: student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                : <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.name)}</Text>}
+                                        </View>
+                                        <View style={{ flex: 1, gap: 2 }}>
+                                            <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{student.name}</Text>
+                                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll No. {student.rollNo}</Text>
+                                        </View>
+                                        <View style={[styles.manageBadge, { backgroundColor: student.paid ? (isDark ? '#052E20' : '#D1FAE5') : (isDark ? '#450A0A' : '#FEE2E2') }]}>
+                                            <Text style={[styles.manageBadgeText, { color: student.paid ? (isDark ? '#6EE7B7' : '#047857') : (isDark ? '#FCA5A5' : '#B91C1C') }]}>{student.paid ? 'Paid' : 'Pending'}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        )}
+                    </>
+                ) : (
+                    <Animated.View style={{ flex: 1, transform: [{ translateX: feesDetailSlideX }] }}>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingTop: 12, paddingBottom: 30 }}>
+                        <TouchableOpacity onPress={closeFeesDetail} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 }}>
+                            <View style={[styles.manageBackBtn, { borderColor: theme.cardBorder }, Platform.OS === 'android' ? { marginTop: -2 } : undefined]}>
+                                <ArrowLeft size={15} color={theme.text} />
+                            </View>
+                            <Text style={{ flex: 1, fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{selectedStudent.name}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.cardShadowWrap}>
+                            {/* Exact same Fee Card component the student app
+                                renders (front/back 3D flip, its own internal
+                                flip/expand state) — no hand-built lookalike. */}
+                            <FeeFlipCard
+                                theme={theme as never}
+                                isDark={isDark}
+                                selectedMonth={feesSelectedMonth}
+                                setSelectedMonth={setFeesSelectedMonth}
+                                fc={fc}
+                                schoolLogoUrl={feeSchoolLogoUrl}
+                                schoolName={feeSchoolName}
+                                studentName={selectedStudent.name}
+                                feeStructures={feeStructures}
+                                feeMonths={feeMonths}
+                                feePayments={feePayments}
+                                studentFields={feeStudentFields}
+                                extraDetailFields={mergedFeeDetailFields}
+                                rulesAndRegs={feeRulesAndRegs}
+                            />
+                        </View>
+                    </ScrollView>
+                    </Animated.View>
+                )}
+                </View>
+            </View>
+        );
+    }, [
+        feesLoading, feesRoster, feeStructures, feeMonths, feePayments, feeStudentFields, feeRulesAndRegs,
+        feeCardTheme, feeSchoolLogoUrl, feeSchoolName, feesSelectedStudentId, feesStudentFilter, feesSelectedMonth,
+        theme, trackBg, isDark, division, feesDetailSlideX, closeFeesDetail,
+    ]);
+
     const attendancePageContent = useMemo(() => {
         const today = new Date();
         const startOffset = (new Date(attCalYear, attCalMonth, 1).getDay() + 6) % 7;
@@ -2315,14 +5789,19 @@ export default function TeacherClassDetailScreen() {
 
         return (
             <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 14, gap: 10 }}>
-                <View style={[styles.manageSegTrack, { backgroundColor: trackBg }]}>
-                    {(['daily', 'sheet', 'overall'] as const).map((key) => {
+                <View style={[styles.manageSegTrack, { backgroundColor: trackBg, alignSelf: 'flex-end' }]}>
+                    {([
+                        { key: 'daily' as const, label: 'Daily', Icon: CalendarCheck },
+                        { key: 'sheet' as const, label: 'Sheet', Icon: CalendarDays },
+                        { key: 'overall' as const, label: 'Overall', Icon: BarChart2 },
+                    ]).map(({ key, label, Icon }) => {
                         const active = attSubTab === key;
                         return (
                             <TouchableOpacity key={key} onPress={() => setAttSubTab(key)}
-                                style={[styles.manageSegBtn, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                style={[styles.manageSegBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }, Platform.OS === 'android' ? { paddingVertical: 5 } : undefined, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                <Icon size={12} color={active ? theme.text : theme.subText} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
                                 <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: active ? theme.text : theme.subText }}>
-                                    {key === 'daily' ? 'Daily' : key === 'sheet' ? 'Sheet' : 'Overall'}
+                                    {label}
                                 </Text>
                             </TouchableOpacity>
                         );
@@ -2330,55 +5809,92 @@ export default function TeacherClassDetailScreen() {
                 </View>
 
                 {attSubTab === 'overall' ? (
-                    <View style={{ flex: 1, gap: 10 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <View style={[styles.manageSegTrack, { backgroundColor: trackBg, flex: 1 }]}>
-                                {(['class', 'student'] as const).map((key) => {
-                                    const active = attOverallRightTab === key;
-                                    return (
-                                        <TouchableOpacity key={key} onPress={() => setAttOverallRightTab(key)}
-                                            style={[styles.manageSegBtn, { flex: 1, alignItems: 'center' }, active && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
-                                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: active ? theme.text : theme.subText }}>
-                                                {key === 'class' ? 'Class Overview' : 'Student Details'}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
+                    <View style={{ flex: 1, gap: 4 }}>
+                        {/* Heading styled like Manage's ManageSectionHeader (icon +
+                            small uppercase bold label) instead of the old
+                            Class Overview / Student Details pill tabs — the label
+                            itself now reflects whichever side is active, and the
+                            switch on the right (same icon-only track as
+                            CampusStaffroom's Staffroom/DMs switch) is what
+                            actually changes it. Get List sits at the very end.
+                            marginBottom:6 matches ManageSectionHeader's own
+                            internal spacing exactly (its row has the same
+                            marginBottom:6 before whatever content follows). */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 1 }}>
+                            {attOverallRightTab === 'class'
+                                ? <Users size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />
+                                : <User size={16} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -3 } : undefined} />}
+                            <Text style={[styles.cardHeaderText, { color: theme.text }]}>
+                                {attOverallRightTab === 'class' ? 'Class Overview' : attSelectedOverallStudent ? 'Student Details' : `Students (${sortedOverallStudents.length})`}
+                            </Text>
+                            {attOverallRightTab === 'student' && !attSelectedOverallStudent && (
+                                <TouchableOpacity
+                                    activeOpacity={0.85}
+                                    onPress={() => Alert.alert('Get List', 'Export attendance report', [
+                                        { text: 'All Months', onPress: () => handleAttGetList('all') },
+                                        { text: 'Current Month', onPress: () => handleAttGetList('current') },
+                                        { text: 'Cancel', style: 'cancel' },
+                                    ])}>
+                                    <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.attGetListBtn}>
+                                        <Download size={12} color="#fff" />
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            )}
+                            <View style={{ flex: 1 }} />
+                            <View style={[styles.manageSegTrack, { backgroundColor: trackBg }]}>
+                                <TouchableOpacity onPress={() => setAttOverallRightTab('class')}
+                                    style={[styles.manageSegBtn, attOverallRightTab === 'class' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                    <Users size={12} color={attOverallRightTab === 'class' ? theme.text : theme.subText} />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setAttOverallRightTab('student')}
+                                    style={[styles.manageSegBtn, attOverallRightTab === 'student' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.manageSegBtnActiveShadow }]}>
+                                    <User size={12} color={attOverallRightTab === 'student' ? theme.text : theme.subText} />
+                                </TouchableOpacity>
                             </View>
-                            <TouchableOpacity
-                                onPress={() => Alert.alert('Get List', 'Export attendance report', [
-                                    { text: 'All Months', onPress: () => handleAttGetList('all') },
-                                    { text: 'Current Month', onPress: () => handleAttGetList('current') },
-                                    { text: 'Cancel', style: 'cancel' },
-                                ])}
-                                style={[styles.attGetListBtn, { backgroundColor: theme.purple }]}>
-                                <Download size={12} color="#fff" />
-                            </TouchableOpacity>
                         </View>
 
-                        {attOverallRightTab === 'student' && (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                                {sortedAttStudents.map((s) => {
-                                    const active = attOverallSelectedId === s.studentId;
-                                    return (
-                                        <TouchableOpacity key={s.studentId} onPress={() => setAttOverallSelectedId(s.studentId)}
-                                            style={[styles.attStudentChip, { backgroundColor: active ? theme.purple : trackBg }]}>
-                                            <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: active ? '#fff' : theme.subText }} numberOfLines={1}>{s.name}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </ScrollView>
-                        )}
-
-                        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
+                        {/* marginHorizontal:-10 on the ScrollView itself widens
+                            its own frame (its clipping bounds on iOS) 10px
+                            past the cards on each side, and the matching
+                            paddingHorizontal:10 on contentContainerStyle pulls
+                            the cards back to their original position/width —
+                            net zero visual change to the cards, but now the
+                            cardShadowWrap shadow (radius:18, offset height:8)
+                            has real room to blur into before it hits the
+                            ScrollView's clip edge, instead of being
+                            hard-clipped flush against the card into what read
+                            as a left/right/bottom border. */}
+                        {/* marginHorizontal:-10 on the ScrollView itself widens
+                            its own frame (its clipping bounds on iOS) 10px
+                            past the cards on each side, and the matching
+                            paddingHorizontal:10 on contentContainerStyle pulls
+                            the cards back to their original position/width —
+                            net zero visual change to the cards, but now the
+                            cardShadowWrap shadow (radius:18, offset height:8)
+                            has real room to blur into before it hits the
+                            ScrollView's clip edge, instead of being
+                            hard-clipped flush against the card into what read
+                            as a left/right/bottom border. */}
+                        {/* Class/list and the student detail each get their own
+                            ScrollView, and the slide wrapper belongs to the
+                            detail alone — exactly how Manage is built. Sharing
+                            one wrapper between list and detail can't work: it
+                            has to sit at 0 for the list and off-screen for a
+                            closed detail, and whichever one loses that fight
+                            either vanishes or flashes back in for a frame.
+                            The wrapper also has to be *outside* the ScrollView,
+                            since Android clips scroll children and would clip
+                            the panel away mid-slide instead of moving it. */}
+                        {!(attOverallRightTab === 'student' && attSelectedOverallStudent) ? (
+                        <ScrollView style={{ flex: 1, marginHorizontal: -10 }} showsVerticalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={{ gap: 10, paddingHorizontal: 10, paddingBottom: 30 }}>
                             {attOverallRightTab === 'class' ? (
-                                <>
+                                <Fragment key="att-overall-class">
                                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        <View style={[styles.manageStatBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                        <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
                                             <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(attClassStats?.overallPct ?? null) }}>{attClassStats?.overallPct != null ? `${attClassStats.overallPct}%` : '—'}</Text>
                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Class Overall</Text>
                                         </View>
-                                        <View style={[styles.manageStatBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                        <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
                                             <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(attClassStats?.currentMonthPct ?? null) }}>{attClassStats?.currentMonthPct != null ? `${attClassStats.currentMonthPct}%` : '—'}</Text>
                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>This Month Avg</Text>
                                         </View>
@@ -2451,19 +5967,70 @@ export default function TeacherClassDetailScreen() {
                                             })()}
                                         </View>
                                     </View>
-                                </>
-                            ) : !attSelectedOverallStudent ? (
-                                <View style={styles.centerFill}>
-                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.muted }}>Select a student</Text>
-                                </View>
+                                </Fragment>
                             ) : (
-                                <>
+                                // Manage-style student list — same row layout as the
+                                // Manage tab's roster (avatar/name/roll no), just with
+                                // this page's own overall% on the right instead of
+                                // Manage's rank/leaderboard columns. Tapping a row opens
+                                // the detail page below (stat boxes + the 3 cards).
+                                sortedOverallStudents.length === 0 ? (
+                                    <View key="att-overall-empty" style={styles.centerFill}>
+                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic' }}>No students yet</Text>
+                                    </View>
+                                ) : (
+                                    // Plain View (no gap) so the ScrollView's own
+                                    // gap:10 — meant for spacing between the class-tab's
+                                    // stat boxes/cards — doesn't also land between every
+                                    // row here; Manage's list relies on each row's own
+                                    // borderBottom for separation, not an extra gap.
+                                    <View key="att-overall-list" style={{ marginTop: -4 }}>
+                                        {sortedOverallStudents.map((s) => (
+                                            <TouchableOpacity key={s.studentId} onPress={() => setAttOverallSelectedId(s.studentId)} activeOpacity={0.7}
+                                                style={[styles.manageStudentRow, { paddingHorizontal: 0, borderBottomColor: theme.cardBorder }]}>
+                                                <View style={[styles.avatarSm, { width: 42, height: 42, borderRadius: 14, backgroundColor: s.avatarUrl ? 'transparent' : getAvatarColor(s.name) }]}>
+                                                    {s.avatarUrl
+                                                        ? <Image source={{ uri: s.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                                        : <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(s.name)}</Text>}
+                                                </View>
+                                                <View style={{ flex: 1, gap: 2 }}>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{s.name}</Text>
+                                                    <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll {s.rollNo || '—'}</Text>
+                                                </View>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                    <View style={{ alignItems: 'flex-end' }}>
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(s.overallPct) }}>{s.overallPct != null ? `${s.overallPct}%` : '—'}</Text>
+                                                        <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>overall</Text>
+                                                    </View>
+                                                    <View style={{ width: StyleSheet.hairlineWidth, height: 22, backgroundColor: theme.cardBorder }} />
+                                                    <View style={{ alignItems: 'flex-end' }}>
+                                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(s.currentMonthPct) }}>{s.currentMonthPct != null ? `${s.currentMonthPct}%` : '—'}</Text>
+                                                        <Text style={{ fontSize: 8, fontFamily: 'Poppins_400Regular', color: theme.muted }}>this month</Text>
+                                                    </View>
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )
+                            )}
+                        </ScrollView>
+                        ) : (
+                        <Animated.View style={{ flex: 1, transform: [{ translateX: attDetailSlideX }] }}>
+                        <ScrollView style={{ flex: 1, marginHorizontal: -10 }} showsVerticalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={{ gap: 10, paddingHorizontal: 10, paddingBottom: 30 }}>
+                                <Fragment key="att-overall-student">
+                                    <TouchableOpacity onPress={closeAttOverallDetail} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: Platform.OS === 'android' ? 4 : 0 }}>
+                                        <View style={[styles.manageBackBtn, { borderColor: theme.cardBorder }, Platform.OS === 'android' ? { marginTop: -2 } : undefined]}>
+                                            <ArrowLeft size={15} color={theme.text} />
+                                        </View>
+                                        <Text style={{ flex: 1, fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>{attSelectedOverallStudent.name}</Text>
+                                    </TouchableOpacity>
+
                                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        <View style={[styles.manageStatBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                        <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
                                             <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(attSelectedOverallStudent.overallPct) }}>{attSelectedOverallStudent.overallPct != null ? `${attSelectedOverallStudent.overallPct}%` : '—'}</Text>
                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Overall</Text>
                                         </View>
-                                        <View style={[styles.manageStatBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
+                                        <View style={[styles.manageStatBox, { minWidth: 0, borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
                                             <Text style={{ fontSize: 18, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(attSelectedOverallStudent.currentMonthPct) }}>{attSelectedOverallStudent.currentMonthPct != null ? `${attSelectedOverallStudent.currentMonthPct}%` : '—'}</Text>
                                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>This Month</Text>
                                         </View>
@@ -2495,18 +6062,22 @@ export default function TeacherClassDetailScreen() {
 
                                     <View style={styles.cardShadowWrap}>
                                         <View style={[styles.card, { backgroundColor: '#F5F8EE', borderColor: theme.cardBorder, overflow: 'hidden' }]}>
-                                            <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, backgroundColor: theme.card }]}>
-                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Attendance Sheet — {attSelectedOverallStudent.name}</Text>
+                                            <View style={[styles.cardHeader, { borderBottomColor: theme.cardBorder, backgroundColor: theme.card, justifyContent: 'space-between' }]}>
+                                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: theme.muted, textTransform: 'uppercase' }}>Attendance Sheet</Text>
+                                                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{attSelectedOverallStudent.name}</Text>
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll No. {attSelectedOverallStudent.rollNo || '—'}</Text>
+                                                </View>
                                             </View>
-                                            {attLoadingStudentRec ? (
+                                            {attLoadingStudentRec || attStudentRecordsFor !== attSelectedOverallStudent.studentId ? (
                                                 <View style={{ paddingVertical: 24 }}><ActivityIndicator color={theme.purple} /></View>
                                             ) : (
-                                                <ScrollView horizontal showsHorizontalScrollIndicator>
+                                                <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
                                                     <View>
                                                         <View style={{ flexDirection: 'row' }}>
                                                             <Text style={[styles.attGridHeadCell, { width: 40 }]}>Mo</Text>
                                                             {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                                                                <Text key={d} style={[styles.attGridHeadCell, { width: 22 }]}>{d}</Text>
+                                                                <Text key={d} style={[styles.attGridHeadCell, { width: Platform.OS === 'android' ? 26 : 24 }]}>{d}</Text>
                                                             ))}
                                                         </View>
                                                         {ATT_SHEET_MONTHS_ORDER.map((m) => {
@@ -2522,12 +6093,29 @@ export default function TeacherClassDetailScreen() {
                                                                         const isHol = !isOut && !isSun && !!attHolidays[dk];
                                                                         const status: AttendanceStatus = !isOut && !isSun && !isHol ? (attStudentRecords[dk] ?? null) : null;
                                                                         return (
-                                                                            <View key={d} style={[styles.attGridDayCell, { width: 22, backgroundColor: isOut ? '#ECF3D0' : isSun || isHol ? '#FFF0F0' : 'transparent' }]}>
+                                                                            // Web shows the holiday's name on hover (title=);
+                                                                            // there's no hover on mobile, so tapping the ×
+                                                                            // cell shows the same name in an Alert instead.
+                                                                            // (Ruled out as the cause of Android's first-swipe
+                                                                            // problem on this grid — making every cell a plain
+                                                                            // View changed nothing.)
+                                                                            <TouchableOpacity key={d} disabled={!isHol} activeOpacity={isHol ? 0.6 : 1}
+                                                                                onPress={() => { if (isHol) Alert.alert('Holiday', attHolidays[dk] || 'Holiday'); }}
+                                                                                style={[styles.attGridDayCell, { width: Platform.OS === 'android' ? 26 : 24, backgroundColor: isOut ? '#ECF3D0' : isSun || isHol ? '#FFF0F0' : 'transparent' }]}>
                                                                                 {isOut ? <Text style={{ fontSize: 9, color: '#BACE85' }}>·</Text>
                                                                                     : isHol ? <Text style={{ fontSize: 10, color: '#FCA5A5' }}>×</Text>
-                                                                                        : status ? <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_800ExtraBold', color: status === 'P' ? '#16A34A' : status === 'A' ? '#DC2626' : '#D97706' }}>{status}</Text>
+                                                                                        : status ? (
+                                                                                            // Same Patrick Hand + text-shadow-stroke trick as the
+                                                                                            // main Sheet grid's P/A/L cells, not a bold sans.
+                                                                                            <Text style={{
+                                                                                                fontFamily: 'PatrickHand_400Regular', fontSize: Platform.OS === 'ios' ? 15 : 14, fontWeight: '700',
+                                                                                                textShadowColor: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
+                                                                                                textShadowOffset: { width: 0.6, height: 0 }, textShadowRadius: 0,
+                                                                                                color: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
+                                                                                            }}>{status}</Text>
+                                                                                        )
                                                                                             : <Text style={{ fontSize: 9, color: '#BACE85' }}>—</Text>}
-                                                                            </View>
+                                                                            </TouchableOpacity>
                                                                         );
                                                                     })}
                                                                 </View>
@@ -2538,21 +6126,26 @@ export default function TeacherClassDetailScreen() {
                                             )}
                                         </View>
                                     </View>
-                                </>
-                            )}
+                                </Fragment>
                         </ScrollView>
+                        </Animated.View>
+                        )}
                     </View>
                 ) : attSubTab === 'sheet' ? (
-                    <View style={{ flex: 1, gap: 8 }}>
-                        {/* Month chips — same order as web's academic year (Jun→May) */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                    <View style={{ flex: 1, gap: 8, marginHorizontal: -8 }}>
+                        {/* Month chips — same order as web's academic year (Jun→May).
+                            Explicit height + flexGrow:0 pins this to the chip's own
+                            26px height so it can't stretch to fill any of the
+                            parent's flex:1 space (which would otherwise show up as a
+                            big empty gap above the grid card below it). */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled style={{ flexGrow: 0, height: 26 }} contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
                             {[5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4].map((mIdx) => {
                                 const active = attSheetMonth === mIdx;
                                 const hasSelectedDate = attSelectedDate.getMonth() === mIdx;
                                 return (
                                     <TouchableOpacity key={mIdx} onPress={() => setAttSheetMonth(mIdx)}
                                         style={[styles.attMonthChip, { backgroundColor: active ? theme.purple : trackBg }]}>
-                                        <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: active ? '#fff' : theme.subText }}>{ATT_MONTHS[mIdx].slice(0, 3)}</Text>
+                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: active ? '#fff' : theme.subText }}>{ATT_MONTHS[mIdx].slice(0, 3)}</Text>
                                         {hasSelectedDate && !active && <View style={[styles.attMonthChipDot, { backgroundColor: theme.purple }]} />}
                                     </TouchableOpacity>
                                 );
@@ -2567,11 +6160,126 @@ export default function TeacherClassDetailScreen() {
                             they scroll with everything else. */}
                         <View style={[styles.cardShadowWrap, { flex: 1 }]}>
                             <View style={[styles.card, { flex: 1, backgroundColor: '#F5F8EE', borderColor: theme.cardBorder, overflow: 'hidden' }]}>
-                                <ScrollView horizontal showsHorizontalScrollIndicator>
+                                {/* Header — mirrors web's AttendanceSheet panel header
+                                    (title + academic year + Export button). */}
+                                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, backgroundColor: theme.card, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                            <CalendarDays size={13} color={theme.text} style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />
+                                            <Text
+                                                style={{ flexShrink: 1, fontSize: 12.5, lineHeight: 15, fontFamily: 'Poppins_700Bold', color: theme.text, includeFontPadding: false, marginTop: Platform.OS === 'ios' ? 3 : 0 }}
+                                                numberOfLines={1}
+                                            >
+                                                {division.name} Attendance Sheet
+                                            </Text>
+                                        </View>
+                                        <Text style={{ fontSize: 10, lineHeight: 12, fontFamily: 'Poppins_400Regular', color: theme.muted, marginLeft: 19, marginTop: 2, includeFontPadding: false }}>
+                                            Academic Year {attStartYear}–{String(attStartYear + 1).slice(2)} · {ATT_MONTHS[attSheetMonth]}
+                                        </Text>
+                                    </View>
+
+                                    {/* Export button + dropdown — same two options as web
+                                        ("This Month" / "Select Months"), same function: a
+                                        real .xlsx workbook built client-side with the xlsx
+                                        (SheetJS) library, written to a local file, then
+                                        handed to the OS share sheet (expo-sharing) — RN has
+                                        no browser download, so the share sheet is the mobile
+                                        equivalent of web's automatic file download. */}
+                                    <TouchableOpacity onPress={() => setAttShowExportMenu((v) => !v)} disabled={attExporting} activeOpacity={0.85} style={{ opacity: attExporting ? 0.6 : 1 }}>
+                                        <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 26, paddingHorizontal: 10, borderRadius: 8 }}>
+                                            {attExporting ? <ActivityIndicator size="small" color="#fff" /> : (
+                                                <>
+                                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>⬇ Export</Text>
+                                                    <ChevronDown size={11} color="#fff" />
+                                                </>
+                                            )}
+                                        </LinearGradient>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Export dropdown menu */}
+                                <Modal visible={attShowExportMenu} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setAttShowExportMenu(false)}>
+                                    <Pressable style={[styles.timetableOverlay, { backgroundColor: 'transparent' }]} onPress={() => setAttShowExportMenu(false)}>
+                                        {/* width:'100%' is load-bearing — timetableOverlay's
+                                            alignItems:'center' otherwise shrinks this to its
+                                            content width and centers it, which throws off the
+                                            right:20 below (menu opened on the left instead of
+                                            under the Export button). */}
+                                        <View style={{ flex: 1, width: '100%' }}>
+                                            <Pressable onPress={(e) => e.stopPropagation()}
+                                                style={{ position: 'absolute', top: Platform.OS === 'ios' ? 290 : 280, right: 20, width: 200, borderRadius: 14, paddingVertical: 4, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.cardBorder }}>
+                                                <TouchableOpacity onPress={handleAttExportThisMonth} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10 }}>
+                                                    <Text style={{ fontSize: 14 }}>📅</Text>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>This Month ({ATT_MONTHS[attSheetMonth]})</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => { setAttShowExportMenu(false); setAttShowMonthSelector(true); setAttSelectedExportMonths([]); }}
+                                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10 }}>
+                                                    <Text style={{ fontSize: 14 }}>🗓️</Text>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.text }}>Select Months</Text>
+                                                </TouchableOpacity>
+                                            </Pressable>
+                                        </View>
+                                    </Pressable>
+                                </Modal>
+
+                                {/* Month selector modal — pick multiple months to export
+                                    into one workbook (one sheet per month), same as web. */}
+                                <Modal visible={attShowMonthSelector} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setAttShowMonthSelector(false)}>
+                                    <Pressable style={styles.timetableOverlay} onPress={() => setAttShowMonthSelector(false)}>
+                                        <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '86%', maxWidth: 340, borderRadius: 18, padding: 18, backgroundColor: theme.card }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                                                <Text style={{ fontSize: 13.5, fontFamily: 'Poppins_700Bold', color: theme.text }}>🗓️ Select Months to Export</Text>
+                                                <TouchableOpacity onPress={() => setAttShowMonthSelector(false)} style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: trackBg }}>
+                                                    <X size={13} color={theme.subText} />
+                                                </TouchableOpacity>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                                                {ATT_SHEET_MONTHS_ORDER.map((m) => {
+                                                    const checked = attSelectedExportMonths.includes(m.key);
+                                                    return (
+                                                        <TouchableOpacity key={m.key}
+                                                            onPress={() => setAttSelectedExportMonths((prev) => prev.includes(m.key) ? prev.filter((k) => k !== m.key) : [...prev, m.key])}
+                                                            style={{
+                                                                width: '30%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 10, borderWidth: 1.5,
+                                                                borderColor: checked ? theme.purple : theme.cardBorder, backgroundColor: checked ? theme.purpleLight : 'transparent',
+                                                            }}>
+                                                            <View style={{ width: 14, height: 14, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', borderColor: checked ? theme.purple : theme.subText, backgroundColor: checked ? theme.purple : 'transparent' }}>
+                                                                {checked && <Text style={{ fontSize: 8, fontFamily: 'Poppins_800ExtraBold', color: '#fff' }}>✓</Text>}
+                                                            </View>
+                                                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: checked ? theme.purple : theme.subText }}>{m.short}</Text>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                                                <TouchableOpacity onPress={() => setAttSelectedExportMonths(ATT_SHEET_MONTHS_ORDER.map((m) => m.key))}
+                                                    style={{ flex: 1, height: 30, borderRadius: 9, borderWidth: 1, borderColor: theme.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Select All</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity onPress={() => setAttSelectedExportMonths([])}
+                                                    style={{ flex: 1, height: 30, borderRadius: 9, borderWidth: 1, borderColor: theme.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Text style={{ fontSize: 11, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Clear</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                            <TouchableOpacity onPress={handleAttExportSelectedMonths} disabled={attSelectedExportMonths.length === 0} activeOpacity={0.85}
+                                                style={{ opacity: attSelectedExportMonths.length === 0 ? 0.4 : 1 }}>
+                                                <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                                    style={{ height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>
+                                                        ⬇ Download {attSelectedExportMonths.length > 0 ? `(${attSelectedExportMonths.length} month${attSelectedExportMonths.length > 1 ? 's' : ''})` : ''}
+                                                    </Text>
+                                                </LinearGradient>
+                                            </TouchableOpacity>
+                                        </Pressable>
+                                    </Pressable>
+                                </Modal>
+                                <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
                                     <View>
                                         <View style={{ flexDirection: 'row' }}>
-                                            <Text style={[styles.attGridHeadCell, { width: 46 }]}>Roll</Text>
-                                            <Text style={[styles.attGridHeadCell, { width: 96, textAlign: 'left' }]}>Name</Text>
+                                            <Text style={[styles.attGridHeadCell, { width: 58 }]}>Roll No.</Text>
+                                            <Text style={[styles.attGridHeadCell, { width: 130, textAlign: 'left' }]}>Name</Text>
                                             {Array.from({ length: new Date(attSheetYear, attSheetMonth + 1, 0).getDate() }, (_, i) => i + 1).map((d) => {
                                                 const dk = attMakeDateKey(attSheetYear, attSheetMonth, d);
                                                 const isSel = d === attSelectedDate.getDate() && attSheetMonth === attSelectedDate.getMonth() && attSheetYear === attSelectedDate.getFullYear();
@@ -2580,7 +6288,7 @@ export default function TeacherClassDetailScreen() {
                                                 return (
                                                     <TouchableOpacity key={d} onPress={() => setAttHeaderPopupDate(d)}
                                                         style={[styles.attGridDateHead, { backgroundColor: isHol || weekend ? '#FFE4E4' : isSel ? '#DCEAFE' : '#ECF3D0' }]}>
-                                                        <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: isHol || weekend ? '#EF4444' : '#2A3A10' }}>{d}</Text>
+                                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: isHol || weekend ? '#EF4444' : '#2A3A10' }}>{d}</Text>
                                                         {!!attDateRemarks[dk] && !isHol && <View style={styles.attGridRemarkDot} />}
                                                     </TouchableOpacity>
                                                 );
@@ -2593,29 +6301,47 @@ export default function TeacherClassDetailScreen() {
                                             <Text style={[styles.attGridHeadCell, { width: 42 }]}>Σ%</Text>
                                         </View>
                                         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                                            {sortedAttStudents.map((student) => {
-                                                const daysInSheetMonth = new Date(attSheetYear, attSheetMonth + 1, 0).getDate();
-                                                let p = 0, a = 0, l = 0;
-                                                const dayCells = Array.from({ length: daysInSheetMonth }, (_, i) => i + 1).map((d) => {
-                                                    const dk = attMakeDateKey(attSheetYear, attSheetMonth, d);
-                                                    if (attHolidays[dk]) return { d, dk, status: null as AttendanceStatus, isHol: true, weekend: false };
-                                                    const status = attGetLiveStatus(student.id, dk);
-                                                    if (status === 'P') p++; else if (status === 'A') a++; else if (status === 'L') l++;
-                                                    return { d, dk, status, isHol: false, weekend: new Date(attSheetYear, attSheetMonth, d).getDay() === 0 };
-                                                });
-                                                const total = p + a + l;
-                                                const pct = total > 0 ? Math.round(((p + l) / total) * 100) : null;
-                                                const cum = attCumulativePctFor(student);
-                                                return (
-                                                    <View key={student.id} style={{ flexDirection: 'row' }}>
-                                                        <Text style={[styles.attGridCell, { width: 46, fontFamily: 'Poppins_700Bold' }]}>{student.rollNo || '—'}</Text>
-                                                        <Text style={[styles.attGridCell, { width: 96, textAlign: 'left' }]} numberOfLines={1}>{student.name}</Text>
-                                                        {dayCells.map(({ d, dk, status, isHol, weekend }) => (
-                                                            <View key={d} style={[styles.attGridDayCell, { backgroundColor: isHol ? '#FEF2F2' : weekend ? '#FFF5F5' : dk === attCurrentDk ? '#EEF4FF' : 'transparent' }]}>
-                                                                {isHol ? (
-                                                                    <Text style={{ fontSize: 10, color: '#FCA5A5' }}>×</Text>
-                                                                ) : status ? (
-                                                                    <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_800ExtraBold', color: status === 'P' ? '#16A34A' : status === 'A' ? '#DC2626' : '#D97706' }}>{status}</Text>
+                                            {/* position:relative wrapper lets the holiday-column
+                                                overlays below be absolutely positioned across every
+                                                row at once — RN has no <td rowSpan>, so instead of
+                                                web's single merged cell per holiday date, each
+                                                holiday date gets one tall vertical-text overlay
+                                                drawn on top of that column's (now-blank) per-row
+                                                cells, visually the same "Holiday" running top-to-
+                                                bottom the full height of the table. */}
+                                            <View style={{ position: 'relative' }}>
+                                                {sortedAttStudents.map((student) => {
+                                                    const daysInSheetMonth = new Date(attSheetYear, attSheetMonth + 1, 0).getDate();
+                                                    let p = 0, a = 0, l = 0;
+                                                    const dayCells = Array.from({ length: daysInSheetMonth }, (_, i) => i + 1).map((d) => {
+                                                        const dk = attMakeDateKey(attSheetYear, attSheetMonth, d);
+                                                        if (attHolidays[dk]) return { d, dk, status: null as AttendanceStatus, isHol: true, weekend: false };
+                                                        const status = attGetLiveStatus(student.id, dk);
+                                                        if (status === 'P') p++; else if (status === 'A') a++; else if (status === 'L') l++;
+                                                        return { d, dk, status, isHol: false, weekend: new Date(attSheetYear, attSheetMonth, d).getDay() === 0 };
+                                                    });
+                                                    const total = p + a + l;
+                                                    const pct = total > 0 ? Math.round(((p + l) / total) * 100) : null;
+                                                    const cum = attCumulativePctFor(student);
+                                                    return (
+                                                        <View key={student.id} style={{ flexDirection: 'row' }}>
+                                                            <Text style={[styles.attGridCell, { width: 58, fontFamily: 'Poppins_700Bold' }]}>{student.rollNo || '—'}</Text>
+                                                            <Text style={[styles.attGridCell, { width: 130, textAlign: 'left', paddingHorizontal: 6 }]} numberOfLines={1}>{student.name}</Text>
+                                                            {dayCells.map(({ d, dk, status, isHol, weekend }) => (
+                                                                <View key={d} style={[styles.attGridDayCell, { backgroundColor: isHol ? '#FEF2F2' : weekend ? '#FFF5F5' : dk === attCurrentDk ? '#EEF4FF' : 'transparent' }]}>
+                                                                    {isHol ? null : status ? (
+                                                                    // Matches web's Sheet cell exactly (Patrick Hand
+                                                                    // handwriting font, not a bold sans) — same trick
+                                                                    // the student-facing AttendanceSheet.tsx already
+                                                                    // uses: a matching-color text-shadow offset fakes
+                                                                    // a bolder stroke since Patrick Hand only ships a
+                                                                    // 400 weight.
+                                                                    <Text style={{
+                                                                        fontFamily: 'PatrickHand_400Regular', fontSize: Platform.OS === 'ios' ? 15 : 14, fontWeight: '700',
+                                                                        textShadowColor: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
+                                                                        textShadowOffset: { width: 0.6, height: 0 }, textShadowRadius: 0,
+                                                                        color: status === 'P' ? '#16a34a' : status === 'A' ? '#dc2626' : '#d97706',
+                                                                    }}>{status}</Text>
                                                                 ) : (
                                                                     <Text style={{ fontSize: 10, color: '#BACE85' }}>—</Text>
                                                                 )}
@@ -2626,45 +6352,113 @@ export default function TeacherClassDetailScreen() {
                                                         <Text style={[styles.attGridCell, { width: 30, color: '#D97706', fontFamily: 'Poppins_700Bold' }]}>{l || '—'}</Text>
                                                         <Text style={[styles.attGridCell, { width: 34, fontFamily: 'Poppins_700Bold' }]}>{total || '—'}</Text>
                                                         <Text style={[styles.attGridCell, { width: 42, fontFamily: 'Poppins_800ExtraBold', color: pct !== null ? attPctColor(pct) : '#BACE85' }]}>{pct !== null ? `${pct}%` : '—'}</Text>
-                                                        <Text style={[styles.attGridCell, { width: 42, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(cum) }]}>{cum !== null ? `${cum}%` : '—'}</Text>
-                                                    </View>
-                                                );
-                                            })}
+                                                            <Text style={[styles.attGridCell, { width: 42, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(cum) }]}>{cum !== null ? `${cum}%` : '—'}</Text>
+                                                        </View>
+                                                    );
+                                                })}
+
+                                                {/* Holiday column overlays — one tall vertical-text
+                                                    label per holiday date, drawn on top of that
+                                                    column's now-blank per-row cells, spanning every
+                                                    row (mirrors web's single rowSpan-merged cell). */}
+                                                {Array.from({ length: new Date(attSheetYear, attSheetMonth + 1, 0).getDate() }, (_, i) => i + 1)
+                                                    .filter((d) => !!attHolidays[attMakeDateKey(attSheetYear, attSheetMonth, d)])
+                                                    .map((d) => {
+                                                        const dk = attMakeDateKey(attSheetYear, attSheetMonth, d);
+                                                        const label = attHolidays[dk] ? `Holiday — ${attHolidays[dk]}` : 'Holiday';
+                                                        return (
+                                                            <View key={d} pointerEvents="none" style={{
+                                                                position: 'absolute', top: 0, bottom: 0, left: 58 + 130 + 26 * (d - 1), width: 26,
+                                                                backgroundColor: '#FEF2F2', borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth,
+                                                                borderColor: '#FCA5A5', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                                                            }}>
+                                                                <Text numberOfLines={1} style={{
+                                                                    width: Math.max(200, sortedAttStudents.length * 42),
+                                                                    textAlign: 'center', color: '#EF4444', fontWeight: '700', fontSize: 10.5, letterSpacing: 0.5,
+                                                                    fontFamily: 'Poppins_600SemiBold', transform: [{ rotate: '-90deg' }],
+                                                                }}>{label}</Text>
+                                                            </View>
+                                                        );
+                                                    })}
+                                            </View>
                                         </ScrollView>
                                     </View>
                                 </ScrollView>
                             </View>
                         </View>
 
-                        {/* Legend */}
+                        {/* Legend — same Patrick Hand + text-shadow-stroke trick as
+                            the grid cells above and as the student-facing
+                            AttendanceSheet.tsx's own footer legend. */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                             {[{ l: 'P', c: '#16A34A', t: 'Present' }, { l: 'A', c: '#DC2626', t: 'Absent' }, { l: 'L', c: '#D97706', t: 'Late' }].map((it) => (
                                 <View key={it.l} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_800ExtraBold', color: it.c }}>{it.l}</Text>
-                                    <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{it.t}</Text>
+                                    <Text style={{
+                                        fontFamily: 'PatrickHand_400Regular', fontSize: Platform.OS === 'ios' ? 18 : 17, fontWeight: '700', lineHeight: Platform.OS === 'ios' ? 18 : 17,
+                                        textShadowColor: it.c, textShadowOffset: { width: 0.6, height: 0 }, textShadowRadius: 0,
+                                        color: it.c,
+                                    }}>{it.l}</Text>
+                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{it.t}</Text>
                                 </View>
                             ))}
-                            <Text style={{ fontSize: 9, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic', marginLeft: 'auto' }}>Tap a date for options</Text>
+                            <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: theme.muted, fontStyle: 'italic', marginLeft: 'auto' }}>Tap a date for options</Text>
                         </View>
                     </View>
                 ) : (
                     <>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                             <TouchableOpacity onPress={() => setAttShowDatePicker(true)}
                                 style={[styles.attDateBtn, { borderColor: attIsHoliday || attIsSunday ? '#FCA5A5' : theme.cardBorder, backgroundColor: attIsHoliday || attIsSunday ? (isDark ? '#450A0A' : '#FEF2F2') : theme.card }]}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <CalendarDays size={13} color={attIsHoliday || attIsSunday ? '#EF4444' : theme.subText} />
-                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: attIsHoliday || attIsSunday ? '#EF4444' : theme.text }}>{attFormatDate(attSelectedDate)}</Text>
+                                    <Text
+                                        style={{ flex: 1, fontSize: 12, lineHeight: 14, fontFamily: 'Poppins_600SemiBold', color: attIsHoliday || attIsSunday ? '#EF4444' : theme.text, includeFontPadding: false }}
+                                    >{attFormatDate(attSelectedDate)}</Text>
+                                    <ChevronDown size={12} color={theme.subText} />
                                 </View>
-                                <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: attIsHoliday || attIsSunday ? '#EF4444' : theme.muted, marginLeft: 19 }}>
+                                <Text
+                                    style={{
+                                        fontSize: 9.5, lineHeight: 11, fontFamily: 'Poppins_400Regular',
+                                        color: attIsHoliday || attIsSunday ? '#EF4444' : theme.muted,
+                                        marginLeft: 19, includeFontPadding: false,
+                                        marginTop: 2,
+                                    }}
+                                >
                                     {attIsHoliday ? `🏖️ ${attHolidays[attCurrentDk]}` : attIsSunday ? '🔴 Sunday' : attSelectedDate.toLocaleDateString('en-US', { weekday: 'long' })}
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={attMarkAllPresent} disabled={attIsHoliday || attIsSunday || attStudents.length === 0}
-                                style={[styles.attAllPBtn, { backgroundColor: isDark ? '#052E16' : '#D1FAE5', opacity: (attIsHoliday || attIsSunday || attStudents.length === 0) ? 0.4 : 1 }]}>
+                                style={[styles.attAllPBtn, {
+                                    backgroundColor: isDark ? '#052E16' : '#D1FAE5',
+                                    borderColor: isDark ? '#065F46' : '#6EE7B7',
+                                    opacity: (attIsHoliday || attIsSunday || attStudents.length === 0) ? 0.4 : 1,
+                                }]}>
                                 <CheckCircle2 size={12} color={isDark ? '#6EE7B7' : '#047857'} />
                                 <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: isDark ? '#6EE7B7' : '#047857' }}>All P</Text>
                             </TouchableOpacity>
+
+                            {/* Class Overall / This Month — mirrors the header stats on
+                                qubeex-web's DivisionClassPageClient (value on top, label
+                                below, right-aligned pair). flex:1 + minWidth:0 (instead of
+                                a fixed-content marginLeft:'auto' block) lets this shrink
+                                into whatever room is left rather than overflowing past the
+                                screen edge — Android's default font metrics render this
+                                combo of fonts a bit wider than iOS, which was pushing
+                                "This Month" off-screen there specifically. */}
+                            <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                                {[
+                                    { label: 'Class Overall', value: attClassStats?.overallPct ?? null },
+                                    { label: 'This Month', value: attClassStats?.currentMonthPct ?? null },
+                                ].map(({ label, value }) => (
+                                    <View key={label} style={{ alignItems: 'flex-end', flexShrink: 1 }}>
+                                        <Text allowFontScaling={false} style={{ fontSize: 15, fontFamily: 'Poppins_800ExtraBold', color: attPctColor(value), lineHeight: 18 }}>
+                                            {value != null ? `${value}%` : '—'}
+                                        </Text>
+                                        <Text allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}
+                                            style={{ fontSize: 9, fontFamily: 'Poppins_400Regular', color: theme.muted }}>{label}</Text>
+                                    </View>
+                                ))}
+                            </View>
                         </View>
 
                         <View style={[styles.attRemarkBox, { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
@@ -2673,7 +6467,9 @@ export default function TeacherClassDetailScreen() {
                                 value={attGlobalRemark}
                                 onChangeText={(v) => { setAttGlobalRemark(v); setAttDateRemarks((p) => ({ ...p, [attCurrentDk]: v })); }}
                                 placeholder="Remark for this day..." placeholderTextColor={theme.muted}
-                                style={{ flex: 1, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}
+                                textAlignVertical="center"
+                                includeFontPadding={false}
+                                style={{ flex: 1, height: '100%', fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, paddingVertical: 0 }}
                             />
                         </View>
 
@@ -2694,15 +6490,20 @@ export default function TeacherClassDetailScreen() {
                                                 <View key={student.id} style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.cardBorder }}>
                                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9 }}>
                                                         <TouchableOpacity onPress={() => student.avatarUrl && setAttExpandedPhoto({ url: student.avatarUrl, name: student.name })}>
-                                                            <View style={[styles.avatarSm, { width: 28, height: 28, borderRadius: 9, backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.name) }]}>
+                                                            <View style={[styles.avatarSm, { width: 38, height: 38, borderRadius: 12, backgroundColor: student.avatarUrl ? 'transparent' : getAvatarColor(student.name) }]}>
                                                                 {student.avatarUrl
                                                                     ? <Image source={{ uri: student.avatarUrl }} style={{ width: '100%', height: '100%' }} />
-                                                                    : <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.name)}</Text>}
+                                                                    : <Text style={{ fontSize: 12.5, fontFamily: 'Poppins_700Bold', color: '#fff' }}>{getInitials(student.name)}</Text>}
                                                             </View>
                                                         </TouchableOpacity>
                                                         <View style={{ flex: 1 }}>
-                                                            <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_600SemiBold', color: theme.text }} numberOfLines={1}>{student.name}</Text>
-                                                            <Text style={{ fontSize: 9.5, fontFamily: 'Poppins_400Regular', color: theme.muted }}>Roll {student.rollNo || '—'}</Text>
+                                                            <Text
+                                                                style={{ fontSize: 11.5, lineHeight: 14, fontFamily: 'Poppins_600SemiBold', color: theme.text, includeFontPadding: false }}
+                                                                numberOfLines={1}
+                                                            >{student.name}</Text>
+                                                            <Text
+                                                                style={{ fontSize: 9.5, lineHeight: 12, fontFamily: 'Poppins_400Regular', color: theme.muted, includeFontPadding: false }}
+                                                            >Roll {student.rollNo || '—'}</Text>
                                                         </View>
                                                         <View style={{ flexDirection: 'row', gap: 5 }}>
                                                             <AttStatusBtn label="P" active={rec.status === 'P'} onPress={() => attSetStatus(student.id, 'P')} disabled={attIsHoliday || attIsSunday} />
@@ -2718,7 +6519,13 @@ export default function TeacherClassDetailScreen() {
                                                         <View style={{ paddingHorizontal: 12, paddingBottom: 9 }}>
                                                             <TextInput value={rec.remark} onChangeText={(v) => attSetRemark(student.id, v)}
                                                                 placeholder={`Remark for ${student.name}...`} placeholderTextColor={theme.muted}
-                                                                style={{ height: 28, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.text }}
+                                                                includeFontPadding={false}
+                                                                style={{
+                                                                    paddingHorizontal: 10,
+                                                                    paddingVertical: Platform.OS === 'android' ? 5 : 7,
+                                                                    borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg,
+                                                                    fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.text,
+                                                                }}
                                                             />
                                                         </View>
                                                     )}
@@ -2746,9 +6553,17 @@ export default function TeacherClassDetailScreen() {
                                     ))}
                                 </View>
                                 <TouchableOpacity onPress={handleAttSave} disabled={attSaveStatus === 'saving' || attStudents.length === 0 || !attHasAnyMarked}
-                                    style={[styles.attSaveBtn, { backgroundColor: attSaveStatus === 'saved' ? '#10B981' : theme.purple, opacity: (attSaveStatus === 'saving' || attStudents.length === 0 || !attHasAnyMarked) ? 0.4 : 1 }]}>
-                                    {attSaveStatus === 'saving' ? <ActivityIndicator size="small" color="#fff" /> : attSaveStatus === 'saved' ? <CheckCircle2 size={12} color="#fff" /> : <Save size={12} color="#fff" />}
-                                    <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>{attSaveStatus === 'saving' ? 'Saving…' : attSaveStatus === 'saved' ? 'Saved' : 'Save'}</Text>
+                                    activeOpacity={0.85}
+                                    style={{ opacity: (attSaveStatus === 'saving' || attStudents.length === 0 || !attHasAnyMarked) ? 0.4 : 1 }}>
+                                    <LinearGradient
+                                        colors={attSaveStatus === 'saved' ? ['#10B981', '#10B981'] : ['#E8876A', '#DA7756', '#C06040']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.attSaveBtn}
+                                    >
+                                        {attSaveStatus === 'saving' ? <ActivityIndicator size="small" color="#fff" /> : attSaveStatus === 'saved' ? <CheckCircle2 size={12} color="#fff" style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} /> : <Save size={12} color="#fff" style={Platform.OS === 'android' ? { marginTop: -2 } : undefined} />}
+                                        <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>{attSaveStatus === 'saving' ? 'Saving…' : attSaveStatus === 'saved' ? 'Saved' : 'Save'}</Text>
+                                    </LinearGradient>
                                 </TouchableOpacity>
                             </View>
                             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: attIsHoliday || attIsSunday ? '#EF4444' : attUnmarked > 0 ? '#F59E0B' : '#10B981' }}>
@@ -2921,8 +6736,10 @@ export default function TeacherClassDetailScreen() {
         attLate, attUnmarked, attHasAnyMarked, handleAttSave, attSaveStatus, attShowDatePicker, attCalYear, attCalMonth, attMonthMarkedCounts, attExpandedPhoto,
         attSheetMonth, attSheetYear, attSheetMonthKey, sortedAttStudents, attStudents, attGetLiveStatus, attCumulativePctFor, attPctColor, attMonthlyRecords,
         attHeaderPopupDate, attHolidayModalDk, attHolidayInput, attRemarkModalDk, attRemarkModalInput, handleAttHolidayChange, handleAttRemarkChange, attDateRemarks,
+        attShowExportMenu, attShowMonthSelector, attSelectedExportMonths, attExporting, handleAttExportThisMonth, handleAttExportSelectedMonths,
         attOverallStudents, attClassStats, attOverallSelectedId, attOverallRightTab, attShortTab, attStudentRecords, attLoadingStudentRec,
-        attSelectedOverallStudent, ATT_SHEET_MONTHS_ORDER, handleAttGetList, attStartYear,
+        attSelectedOverallStudent, sortedOverallStudents, ATT_SHEET_MONTHS_ORDER, handleAttGetList, attStartYear, attDetailSlideX,
+        closeAttOverallDetail, attStudentRecordsFor,
     ]);
 
     // The View tab's whole card stack (feed, subject teachers, leaderboard,
@@ -2978,6 +6795,7 @@ export default function TeacherClassDetailScreen() {
                         mainContentHRef={mainContentHRef}
                         mainContainerHRef={mainContainerHRef}
                         setKbPad={setFeedKbPad}
+                        restrictToSubjectId={isClassTeacher ? null : subjectId ?? null}
                     />
 
                     {/* Subject Teachers */}
@@ -3113,7 +6931,7 @@ export default function TeacherClassDetailScreen() {
                     </View>
 
                     {/* Academic Calendar */}
-                    <ClassCalendar divisionId={divisionId} divisionName={division.name} isClassTeacher={isClassTeacher} />
+                    <ClassCalendar divisionId={divisionId} divisionName={division.name} isClassTeacher={isClassTeacher} isSubjectTeacher={!isClassTeacher} />
 
                     {/* Materials — fixed-height card (matches web's 240px), only the
                         list body scrolls internally so the card itself never grows
@@ -3168,7 +6986,7 @@ export default function TeacherClassDetailScreen() {
                     </View>
                 </ScrollView>
         );
-    }, [feedKbPad, theme, classTeacherAssignment, isClassTeacher, divisionId, division, leaderTab, isDark, accent, top5, podium, pctFor, uploadingTimetable, pickTimetable, timetableImage, uploadingResult, handleUploadResult, materials, results, renderFeedItemRow]);
+    }, [feedKbPad, theme, classTeacherAssignment, isClassTeacher, divisionId, division, leaderTab, isDark, accent, top5, podium, pctFor, uploadingTimetable, pickTimetable, timetableImage, uploadingResult, handleUploadResult, materials, results, renderFeedItemRow, subjectId]);
 
 
     if (loading) {
@@ -3200,7 +7018,19 @@ export default function TeacherClassDetailScreen() {
                 screen isn't the kind of place either of those belongs. */}
             <View style={[styles.topbar, { backgroundColor: isDark ? '#141414' : 'white' }]}>
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={() => {
+                        if (manageSelectedStudent) {
+                            // The topbar's own back button should leave the class
+                            // screen outright, not close the Manage detail first
+                            // the way hardware back / hardware-back-equivalent does
+                            // — suppress the usePreventRemove guard for this one
+                            // dispatch (see manageBackGuardSuppressed below).
+                            setManageBackGuardSuppressed(true);
+                            requestAnimationFrame(() => router.back());
+                            return;
+                        }
+                        router.back();
+                    }}
                     style={[styles.topbarBackBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F8F8F8' }]}
                 >
                     <ArrowLeft size={18} color={isDark ? accent.purple : '#374151'} strokeWidth={1.5} />
@@ -3211,16 +7041,23 @@ export default function TeacherClassDetailScreen() {
                         <Text style={[styles.topbarTitle, { color: theme.text }]} numberOfLines={1}>{division.name}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Platform.OS === 'ios' ? -2 : -7 }}>
-                        <Text style={[styles.headerSub, { color: theme.subText }]}>{division.standard.name}</Text>
+                        <Text style={[styles.headerSub, { color: theme.subText, flexShrink: 0 }]}>{division.standard.name}</Text>
                         <ChevronRight size={9} color={theme.subText} />
-                        <Text style={[styles.headerSub, { color: theme.subText }]}>{division.name}</Text>
+                        <Text style={[styles.headerSub, { color: theme.subText, flexShrink: 0 }]}>{division.name}</Text>
                         {isClassTeacher ? (
-                            <View style={[styles.roleBadge, { backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : '#FEF3C7' }]}>
-                                <Text style={[styles.roleBadgeText, { color: isDark ? '#FCD34D' : '#B45309' }]}>Class Teacher</Text>
+                            <View style={[styles.roleBadge, { backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', flexShrink: 1 }]}>
+                                <Text style={[styles.roleBadgeText, { color: isDark ? '#FCD34D' : '#B45309' }]} numberOfLines={1} ellipsizeMode="tail">Class Teacher</Text>
                             </View>
                         ) : (
-                            <View style={[styles.roleBadge, { backgroundColor: accent.purpleLight }]}>
-                                <Text style={[styles.roleBadgeText, { color: accent.purple }]}>Subject Teacher{restrictSubjectName ? ` · ${restrictSubjectName}` : ''}</Text>
+                            // A long subject name (e.g. "Mathematics 2") pushed this
+                            // badge's text past the topbar's flex:1 title column and
+                            // it overlapped the theme-toggle button, since RN doesn't
+                            // clip a Text that overflows its box by default —
+                            // flexShrink lets the badge give up width first, and
+                            // numberOfLines+ellipsizeMode truncate the subject name
+                            // with "…" instead of overlapping the button behind it.
+                            <View style={[styles.roleBadge, { backgroundColor: accent.purpleLight, flexShrink: 1 }]}>
+                                <Text style={[styles.roleBadgeText, { color: accent.purple }]} numberOfLines={1} ellipsizeMode="tail">Subject Teacher{restrictSubjectName ? ` · ${restrictSubjectName}` : ''}</Text>
                             </View>
                         )}
                     </View>
@@ -3332,6 +7169,10 @@ export default function TeacherClassDetailScreen() {
                         {tabDef.key === 'view' ? viewPageContent
                             : tabDef.key === 'manage' ? managePageContent
                             : tabDef.key === 'attendance' ? attendancePageContent
+                            : tabDef.key === 'marks' ? marksPageContent
+                            : tabDef.key === 'fees' ? feesPageContent
+                            : tabDef.key === 'students' ? studentsPageContent
+                            : tabDef.key === 'tasks' ? tasksPageContent
                             : (
                                 <View style={styles.centerFill}>
                                     <Text style={{ fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Coming soon</Text>
@@ -3378,6 +7219,105 @@ export default function TeacherClassDetailScreen() {
                                 resizeMode="contain"
                             />
                         )}
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {/* Marksheet — Graded Subject grade-entry modal. Class-teacher
+                only; a subject teacher sees these cells but can't open this
+                modal (per confirmed scope: "Sirf dikhe, edit na ho"). */}
+            <Modal visible={!!marksGradeModal} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMarksGradeModal(null)}>
+                <Pressable style={styles.timetableOverlay} onPress={() => setMarksGradeModal(null)}>
+                    <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '86%', maxWidth: 340, backgroundColor: theme.card, borderRadius: 16, padding: 16, gap: 12 }}>
+                        <View>
+                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>
+                                {marksGradeModal?.gsName} — {marksGradeModal?.term === 't1' ? 'Term 1' : 'Term 2'}
+                            </Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, marginTop: 2 }} numberOfLines={1}>
+                                {marksGradeModal?.stName}
+                            </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {marksValidGrades.map((g) => {
+                                const active = marksGradeDraft === g;
+                                return (
+                                    <TouchableOpacity key={g} onPress={() => setMarksGradeDraft(g)}
+                                        style={{
+                                            width: 44, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                                            backgroundColor: active ? theme.purple : (isDark ? '#000' : '#F3EEE6'),
+                                            borderWidth: 1, borderColor: active ? theme.purple : theme.cardBorder,
+                                        }}>
+                                        <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: active ? '#fff' : theme.text }}>{g}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                            <TouchableOpacity onPress={() => setMarksGradeModal(null)} style={{ flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.cardBorder }}>
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    if (marksGradeModal) {
+                                        handleMarksGradeChange(marksGradeModal.gsId, marksGradeModal.stId, marksGradeModal.term, marksGradeDraft || null);
+                                    }
+                                    setMarksGradeModal(null);
+                                }}
+                                activeOpacity={0.85} style={{ flex: 1, borderRadius: 10, overflow: 'hidden' }}>
+                                <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 38, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>Save</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {/* Marksheet — Offline exam-mark score-entry modal. A subject
+                teacher's own subject column only, matching web's per-subject
+                marks entry. */}
+            <Modal visible={!!marksScoreModal} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMarksScoreModal(null)}>
+                <Pressable style={styles.timetableOverlay} onPress={() => setMarksScoreModal(null)}>
+                    <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '86%', maxWidth: 340, backgroundColor: theme.card, borderRadius: 16, padding: 16, gap: 12 }}>
+                        <View>
+                            <Text style={{ fontSize: 13, fontFamily: 'Poppins_700Bold', color: theme.text }} numberOfLines={1}>
+                                {marksScoreModal?.examName} <Text style={{ color: theme.muted }}>(/{marksScoreModal?.maxMarks})</Text>
+                            </Text>
+                            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: theme.muted, marginTop: 2 }} numberOfLines={1}>
+                                {marksScoreModal?.stName}
+                            </Text>
+                        </View>
+                        <TextInput
+                            value={marksScoreDraft}
+                            onChangeText={(t) => setMarksScoreDraft(t.replace(/[^0-9.]/g, ''))}
+                            keyboardType="numeric"
+                            placeholder="Enter marks"
+                            placeholderTextColor={theme.muted}
+                            style={{
+                                height: 44, borderRadius: 10, borderWidth: 1, borderColor: theme.cardBorder,
+                                paddingHorizontal: 12, fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: theme.text,
+                                includeFontPadding: false, textAlignVertical: 'center',
+                            }}
+                        />
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                            <TouchableOpacity onPress={() => setMarksScoreModal(null)} style={{ flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.cardBorder }}>
+                                <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: theme.subText }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    if (marksScoreModal) {
+                                        const trimmed = marksScoreDraft.trim();
+                                        const parsed = trimmed === '' ? null : Math.min(marksScoreModal.maxMarks, Math.max(0, parseFloat(trimmed)));
+                                        handleMarksScoreChange(marksScoreModal.examId, marksScoreModal.stId, parsed !== null && !Number.isNaN(parsed) ? parsed : null);
+                                    }
+                                    setMarksScoreModal(null);
+                                }}
+                                activeOpacity={0.85} style={{ flex: 1, borderRadius: 10, overflow: 'hidden' }}>
+                                <LinearGradient colors={['#E8876A', '#DA7756', '#C06040']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 38, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text style={{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: '#fff' }}>Save</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
                     </Pressable>
                 </Pressable>
             </Modal>
@@ -3497,8 +7437,8 @@ const styles = StyleSheet.create({
     manageBloodBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, borderWidth: 1 },
     // Attendance tab — Daily marking (date button, All P, remark box, save,
     // calendar popup).
-    attDateBtn: { flex: 1, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, justifyContent: 'center' },
-    attAllPBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, borderRadius: 12 },
+    attDateBtn: { width: '45%', borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, justifyContent: 'center' },
+    attAllPBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12, height: 40, borderRadius: 12, borderWidth: 1 },
     attRemarkBox: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 36, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
     attRemarkToggle: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     attSaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 28, paddingHorizontal: 12, borderRadius: 9 },
@@ -3507,14 +7447,14 @@ const styles = StyleSheet.create({
     // Attendance — Sheet (month grid) + popups.
     attMonthChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 26, borderRadius: 8 },
     attMonthChipDot: { width: 4, height: 4, borderRadius: 2 },
-    attGridHeadCell: { paddingVertical: 6, paddingHorizontal: 4, textAlign: 'center', fontSize: 9.5, fontFamily: 'Poppins_700Bold', color: '#2A3A10', backgroundColor: '#ECF3D0', borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
+    attGridHeadCell: { paddingVertical: 6, paddingHorizontal: 4, textAlign: 'center', fontSize: 10.5, fontFamily: 'Poppins_700Bold', color: '#2A3A10', backgroundColor: '#ECF3D0', borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
     attGridDateHead: { width: 26, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
     attGridRemarkDot: { position: 'absolute', top: 2, right: 2, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#DA7756' },
-    attGridCell: { paddingVertical: 8, textAlign: 'center', fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: '#2A3A10', backgroundColor: '#F5F8EE', borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
+    attGridCell: { paddingVertical: 8, textAlign: 'center', fontSize: 11.5, fontFamily: 'Poppins_600SemiBold', color: '#2A3A10', backgroundColor: '#F5F8EE', borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
     attGridDayCell: { width: 26, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: '#BACE85' },
     attPopupCard: { width: 220, borderRadius: 16, padding: 12 },
     // Attendance — Overall (class + student summary).
-    attGetListBtn: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+    attGetListBtn: { width: 34, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
     attStudentChip: { paddingHorizontal: 10, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
     attPopupRow: { paddingVertical: 9 },
 });
