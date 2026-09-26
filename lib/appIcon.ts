@@ -6,12 +6,22 @@
 // screen — still works everywhere; only the icon-switcher itself becomes a
 // no-op until the app is running from a build that actually has the module
 // compiled in (a fresh dev client or an EAS build).
+import { requireOptionalNativeModule } from 'expo-modules-core';
+
 type IconName = 'black' | 'white' | 'transparent';
 
 let mod: typeof import('@g9k/expo-dynamic-app-icon') | null | undefined;
 
 function load() {
     if (mod !== undefined) return mod;
+    // Check for the native module first — requireOptionalNativeModule returns
+    // null instead of throwing, so in Expo Go / old dev clients the library is
+    // never required at all and its "Cannot find native module" error doesn't
+    // get logged to the dev console.
+    if (!requireOptionalNativeModule('ExpoDynamicAppIcon')) {
+        mod = null;
+        return mod;
+    }
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         mod = require('@g9k/expo-dynamic-app-icon');

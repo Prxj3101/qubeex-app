@@ -30,14 +30,14 @@ import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInpu
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // App-icon variants bundled via the @g9k/expo-dynamic-app-icon config plugin
-// (see app.json). "black" is the app's shipped default — passing that name
+// (see app.json). "white" is the app's shipped default — passing that name
 // to setAppIcon() is equivalent to null/reset here since it matches the
 // icon already declared at the top level, so it doubles as the "reset" option.
 // The swatch shows the actual icon artwork (not a flat color) so it reads as
 // a live preview rather than an abstract color picker.
 const APP_ICON_OPTIONS: { key: 'black' | 'white' | 'transparent'; label: string; image: number; swatchBg: string; swatchBorder?: string }[] = [
-    { key: 'black', label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
     { key: 'white', label: 'White', image: require('@/assets/icon-white.png'), swatchBg: '#FFFFFF', swatchBorder: '#E2E8F0' },
+    { key: 'black', label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
     { key: 'transparent', label: 'Transparent', image: require('@/assets/icon-transparent-fg.png'), swatchBg: '#F1F5F9', swatchBorder: '#E2E8F0' },
 ];
 
@@ -132,14 +132,14 @@ export default function TeacherSettingsScreen() {
         (strength.level === 'medium' || strength.level === 'strong' || strength.level === 'very-strong');
 
     // ── App icon ──
-    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('black');
+    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('white');
     const [iconSwitching, setIconSwitching] = useState<string | null>(null);
 
     useEffect(() => {
         try {
             const current = getAppIcon();
-            if (current === 'white' || current === 'transparent') setAppIconState(current);
-            else setAppIconState('black'); // "DEFAULT"/null/"black" all mean the shipped black icon
+            if (current === 'black' || current === 'transparent') setAppIconState(current);
+            else setAppIconState('white'); // "DEFAULT"/null/"white" all mean the shipped white icon
         } catch {
             // dev client not rebuilt yet with the icon plugin — keep the default
         }
@@ -149,7 +149,7 @@ export default function TeacherSettingsScreen() {
         if (key === appIcon || iconSwitching) return;
         setIconSwitching(key);
         try {
-            const result = setAppIcon(key === 'black' ? null : key);
+            const result = setAppIcon(key === 'white' ? null : key);
             if (result === false) {
                 Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
             } else {

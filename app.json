@@ -4,7 +4,7 @@
     "slug": "QubeEx",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-white.png",
     "scheme": "qubeex",
     "userInterfaceStyle": "automatic",
     "updates": {
@@ -20,7 +20,7 @@
       "package": "com.prxj31.qubeex",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/icon-white.png",
         "backgroundColor": "#ffffff"
       }
     },
@@ -57,10 +57,7 @@
         {
           "black": {
             "ios": "./assets/icon-black.png",
-            "android": {
-              "foregroundImage": "./assets/icon-transparent-fg.png",
-              "backgroundColor": "#000000"
-            }
+            "android": "./assets/icon-black.png"
           },
           "white": {
             "ios": "./assets/icon-white.png",
@@ -68,10 +65,7 @@
           },
           "transparent": {
             "ios": "./assets/icon-black.png",
-            "android": {
-              "foregroundImage": "./assets/icon-transparent-fg.png",
-              "backgroundColor": "#FFFFFF"
-            }
+            "android": "./assets/icon-white.png"
           }
         }
       ],

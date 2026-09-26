@@ -341,15 +341,15 @@ export default function Profile() {
     const [flags, setFlags] = useState<FlagItem[]>([]);
 
     // ── App icon (same 3 launcher variants as the teacher app) ──
-    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('black');
+    const [appIcon, setAppIconState] = useState<'black' | 'white' | 'transparent'>('white');
     const [iconPickerOpen, setIconPickerOpen] = useState(false);
     const [iconSwitching, setIconSwitching] = useState<string | null>(null);
 
     useEffect(() => {
         try {
             const current = getAppIcon();
-            if (current === 'white' || current === 'transparent') setAppIconState(current);
-            else setAppIconState('black');
+            if (current === 'black' || current === 'transparent') setAppIconState(current);
+            else setAppIconState('white');
         } catch {
             // dev client not rebuilt yet with the icon plugin — keep the default
         }
@@ -359,7 +359,7 @@ export default function Profile() {
         if (key === appIcon || iconSwitching) return;
         setIconSwitching(key);
         try {
-            const result = setAppIcon(key === 'black' ? null : key);
+            const result = setAppIcon(key === 'white' ? null : key);
             if (result === false) {
                 Alert.alert('Couldn’t change icon', 'This build doesn’t have the app-icon feature yet - it needs a fresh install after the next update.');
             } else {
@@ -1165,8 +1165,8 @@ export default function Profile() {
                         {iconPickerOpen && (
                             <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 4, paddingBottom: 10, paddingTop: 2 }}>
                                 {([
-                                    { key: 'black' as const, label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
                                     { key: 'white' as const, label: 'White', image: require('@/assets/icon-white.png'), swatchBg: '#FFFFFF' },
+                                    { key: 'black' as const, label: 'Black', image: require('@/assets/icon-black.png'), swatchBg: '#000000' },
                                     { key: 'transparent' as const, label: 'Transparent', image: require('@/assets/icon-transparent-fg.png'), swatchBg: '#F1F5F9' },
                                 ]).map((opt) => {
                                     const selected = appIcon === opt.key;

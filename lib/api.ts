@@ -18,7 +18,11 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    // A 401 from the login call itself just means wrong credentials — let the
+    // login screen show that error. Redirecting to /login here remounted the
+    // screen and wiped the error message before the user could see it.
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRequest) {
       await AsyncStorage.multiRemove(['userToken', 'mustChangePassword']);
       router.replace('/login');
     }

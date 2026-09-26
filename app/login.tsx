@@ -193,11 +193,14 @@ export default function LoginScreen() {
                 router.replace(homeRoute);
             }
         } catch (err: unknown) {
-            const e = err as { response?: { data?: { error?: string } }; message?: string };
-            const msg = e.response?.data?.error
-                ?? (e.message?.includes('Network') || e.message?.includes('connect')
-                    ? 'Cannot reach server. Check your network or API URL.'
-                    : 'Invalid credentials');
+            const e = err as { response?: { status?: number; data?: { message?: string; error?: string } }; message?: string };
+            const serverMsg = e.response?.data?.message ?? e.response?.data?.error;
+            const msg = e.response?.status === 401
+                ? 'Incorrect email/ID or password'
+                : serverMsg
+                    ?? (e.message?.includes('Network') || e.message?.includes('connect')
+                        ? 'Cannot reach server. Check your internet connection.'
+                        : 'Something went wrong. Please try again.');
             setError(msg);
             shake();
         } finally {
@@ -304,7 +307,10 @@ export default function LoginScreen() {
                                         {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
 
                                         {/* Submit */}
-                                        <TouchableOpacity onPress={handleLogin} disabled={!canSubmit} activeOpacity={0.85} style={styles.submitWrap}>
+                                        {/* Only disabled while loading — with empty fields the
+                                            tap still goes through so handleLogin can show
+                                            "Please enter your…" instead of silently doing nothing. */}
+                                        <TouchableOpacity onPress={handleLogin} disabled={loading} activeOpacity={0.85} style={styles.submitWrap}>
                                             <LinearGradient
                                                 colors={canSubmit ? ['#E8876A', '#DA7756', '#C06040'] : ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.06)']}
                                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
