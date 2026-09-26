@@ -57,15 +57,24 @@
         {
           "black": {
             "ios": "./assets/icon-black.png",
-            "android": "./assets/icon-black.png"
+            "android": {
+              "foregroundImage": "./assets/icon-black.png",
+              "backgroundColor": "#000000"
+            }
           },
           "white": {
             "ios": "./assets/icon-white.png",
-            "android": "./assets/icon-white.png"
+            "android": {
+              "foregroundImage": "./assets/icon-white.png",
+              "backgroundColor": "#ffffff"
+            }
           },
           "transparent": {
             "ios": "./assets/icon-black.png",
-            "android": "./assets/icon-white.png"
+            "android": {
+              "foregroundImage": "./assets/icon-white.png",
+              "backgroundColor": "#ffffff"
+            }
           }
         }
       ],
