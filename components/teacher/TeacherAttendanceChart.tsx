@@ -14,13 +14,17 @@ interface TeacherAttendanceChartProps {
     data: AttendanceDataPoint[];
 }
 
-const BAR_COLOR = '#7C3AED';
-const LINE_COLOR = '#F59E0B';
+// Bars follow the school's theme accent; the students line stays amber, except
+// on the amber theme where it would blend into the bars - then it goes cyan.
+const LINE_AMBER = '#F59E0B';
+const LINE_ALT = '#0891B2';
 const CHART_HEIGHT = 180;
 const Y_TICKS = 4;
 
 export function TeacherAttendanceChart({ data }: TeacherAttendanceChartProps) {
-    const { isDark } = useTheme();
+    const { isDark, accent, themeColor } = useTheme();
+    const BAR_COLOR = accent.purple;
+    const LINE_COLOR = themeColor === 'amber' ? LINE_ALT : LINE_AMBER;
     const cardBg = isDark ? '#141414' : '#FFFFFF';
     const cardBorder = isDark ? '#2A2A2A' : '#EDE9FE';
     const text = isDark ? '#F1F5F9' : '#0F172A';

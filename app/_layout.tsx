@@ -135,7 +135,7 @@ function AuthGate() {
             const mustChangePassword = mustChange === 'true';
             const homeRoute = role === 'TEACHER' ? '/(teacher)' : '/(tabs)';
 
-            const AUTHENTICATED_SCREENS = new Set(['(tabs)', '(teacher)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card', 'test-webview', 'assignment-webview', 'teacher_settings', 'notifications', 'teacher_class_detail']);
+            const AUTHENTICATED_SCREENS = new Set(['(tabs)', '(teacher)', 'student_detail', 'attendance_detail', 'fees_detail', 'flags', 'report_card', 'test-webview', 'assignment-webview', 'teacher_settings', 'teacher_payroll', 'notifications', 'teacher_class_detail']);
             const inSetup = segments[0] === 'setup-required';
             const inAuthenticatedScreen = AUTHENTICATED_SCREENS.has(segments[0]);
 

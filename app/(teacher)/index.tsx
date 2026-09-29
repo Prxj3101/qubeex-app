@@ -1,4 +1,5 @@
 import { AnnouncementStrip } from '@/components/AnnouncementStrip';
+import { PayslipReadyStrip } from '@/components/teacher/PayslipReadyStrip';
 import { TeacherHeader } from '@/components/teacher/TeacherHeader';
 import { TeacherThoughtOfTheDay } from '@/components/teacher/TeacherThoughtOfTheDay';
 import { TeacherNotepad, TeacherNotepadHandle } from '@/components/teacher/TeacherNotepad';
@@ -104,6 +105,7 @@ export default function TeacherHome() {
                     loading={!overview}
                 />
                 <AnnouncementStrip title={overview?.latestPost?.title ?? null} />
+                <PayslipReadyStrip />
 
                 <View style={styles.body}>
 

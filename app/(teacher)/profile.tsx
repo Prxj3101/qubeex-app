@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bell, BookOpen, Briefcase, Calendar, Camera, Check, ChevronDown, ChevronRight, Edit2, GraduationCap, Hash, Layers, LogOut, Mail, MapPin, Phone, Settings, Sparkles, Tag, User as UserIcon, X } from 'lucide-react-native';
+import { Bell, BookOpen, Briefcase, Calendar, Camera, Check, ChevronDown, ChevronRight, Edit2, GraduationCap, Hash, Layers, LogOut, Mail, MapPin, Phone, Settings, Sparkles, Tag, User as UserIcon, Wallet, X } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -129,6 +129,15 @@ function VerifiedBadge() {
     );
 }
 
+const SLIP_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "Oct payslip · ₹28,760 · Paid" (paise in, Indian grouping, no Intl). */
+function slipSubtitle(p: { month: string; netPay: number; status: string }): string {
+    const m = SLIP_MONTHS[Number(p.month.slice(5, 7)) - 1];
+    const s = String(Math.round(p.netPay / 100));
+    const last3 = s.slice(-3), rest = s.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+    return `${m} payslip · ₹${rest ? `${rest},${last3}` : last3} · ${p.status === 'PAID' ? 'Paid' : 'Pending'}`;
+}
+
 export default function TeacherProfileScreen() {
     const { setPhoto: setContextPhoto } = useTeacher();
     const { isDark, accent } = useTheme();
@@ -144,6 +153,8 @@ export default function TeacherProfileScreen() {
     const blueColor = isDark ? '#60A5FA' : '#2563EB';
 
     const [teacher, setTeacher] = useState<TeacherData | null>(null);
+    // Latest published payslip, for the "My Payroll" row's subtitle. null = none / not on payroll.
+    const [latestSlip, setLatestSlip] = useState<{ month: string; netPay: number; status: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
@@ -286,6 +297,13 @@ export default function TeacherProfileScreen() {
                     .catch(() => setAiUsage(null))
                     .finally(() => setAiUsageLoading(false));
             }
+            // Refreshed on every focus - a payslip can get published while the app is open.
+            api.get('/teacher/payroll/payslips')
+                .then((res) => {
+                    const p = (res.data.data ?? [])[0];
+                    setLatestSlip(p ? { month: p.payrollRun.month, netPay: p.netPay, status: p.status } : null);
+                })
+                .catch(() => setLatestSlip(null));
         }, [fetchTeacher])
     );
 
@@ -946,6 +964,27 @@ export default function TeacherProfileScreen() {
                     }}>
                         Settings
                     </Text>
+
+                    <TouchableOpacity onPress={() => router.push('/teacher_payroll')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 4 }}>
+                        <View style={{
+                            width: 36, height: 36, borderRadius: 10,
+                            backgroundColor: '#05966920',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Wallet size={16} color={isDark ? '#34D399' : '#059669'} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, lineHeight: 18, fontFamily: 'Poppins_600SemiBold', color: text, includeFontPadding: false }}>
+                                My Payroll
+                            </Text>
+                            {latestSlip && (
+                                <Text style={{ fontSize: 11, lineHeight: 14, marginTop: 1, fontFamily: 'Poppins_400Regular', color: subText, includeFontPadding: false }} numberOfLines={1}>
+                                    {slipSubtitle(latestSlip)}
+                                </Text>
+                            )}
+                        </View>
+                        <ChevronRight size={16} color={subText} />
+                    </TouchableOpacity>
 
                     <TouchableOpacity onPress={() => router.push('/teacher_settings')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 4 }}>
                         <View style={{
