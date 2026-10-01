@@ -1,5 +1,8 @@
 import { ReportCardSheet } from '@/components/ReportCardSheet';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { AcademicYearPicker } from '@/components/AcademicYearPicker';
+import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTheme } from '@/context/ThemeContext';
 import { useStudent } from '@/context/StudentContext';
 import api from '@/lib/api';
@@ -95,13 +98,17 @@ export default function ReportCard() {
     const { photo } = useStudent();
     const [data, setData] = useState<MarksheetData | null>(null);
     const [loading, setLoading] = useState(true);
+    const { years, selectedYearId, setSelectedYearId, selectedYear, isCurrentYearSelected, loading: yearsLoading } = useAcademicYears();
 
     useEffect(() => {
-        api.get('/student/marksheet')
+        if (yearsLoading) return;
+        setLoading(true);
+        const qs = !isCurrentYearSelected && selectedYear ? `?academicYear=${encodeURIComponent(selectedYear.label)}` : '';
+        api.get(`/student/marksheet${qs}`)
             .then(r => setData(r.data.data))
-            .catch(() => {})
+            .catch(() => setData(null))
             .finally(() => setLoading(false));
-    }, []);
+    }, [selectedYearId, yearsLoading, isCurrentYearSelected, selectedYear]);
 
     if (loading) {
         return (
@@ -144,6 +151,10 @@ export default function ReportCard() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Report Card" showBack />
+            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                <AcademicYearPicker years={years} selectedYearId={selectedYearId} onSelect={setSelectedYearId} loading={yearsLoading} />
+                <HistoricalYearBanner visible={!isCurrentYearSelected} label={selectedYear?.label} />
+            </View>
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never" contentContainerStyle={{ padding: 14, gap: 14 }}>
 
                 {/* ── Name card ── */}
@@ -171,7 +182,7 @@ export default function ReportCard() {
 
                 {/* ── Report Card ── */}
                 <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <ReportCardSheet isDark={isDark} />
+                    <ReportCardSheet isDark={isDark} data={data} />
                 </View>
             </ScrollView>
         </SafeAreaView>

@@ -34,7 +34,9 @@ export function useUnreadNotifications() {
     useEffect(() => {
         mounted.current = true;
         void refresh();
-        const interval = setInterval(() => { void refresh(); }, 30000);
+        // 60s: each poll costs a Redis auth lookup on the backend, and the free
+        // Upstash budget (~11.5 commands/min total) can't absorb 2/min per device.
+        const interval = setInterval(() => { void refresh(); }, 60000);
         return () => { mounted.current = false; clearInterval(interval); };
     }, [refresh]);
 

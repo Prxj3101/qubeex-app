@@ -1,5 +1,8 @@
 import { AttendanceSheet } from '@/components/AttendanceSheet';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { AcademicYearPicker } from '@/components/AcademicYearPicker';
+import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -77,13 +80,17 @@ export default function AttendanceDetail() {
     const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
     const [data, setData] = useState<AttendanceApiData | null>(null);
     const [loading, setLoading] = useState(true);
+    const { years, selectedYearId, setSelectedYearId, selectedYear, isCurrentYearSelected, loading: yearsLoading } = useAcademicYears();
 
     useEffect(() => {
-        api.get('/student/attendance')
+        if (yearsLoading) return;
+        setLoading(true);
+        const qs = !isCurrentYearSelected && selectedYearId ? `?academicYearId=${selectedYearId}` : '';
+        api.get(`/student/attendance${qs}`)
             .then(r => setData(r.data.data))
-            .catch(() => {})
+            .catch(() => setData(null))
             .finally(() => setLoading(false));
-    }, []);
+    }, [selectedYearId, yearsLoading, isCurrentYearSelected]);
 
     const floatAnim = useRef(new Animated.Value(0)).current;
     useEffect(() => {
@@ -131,6 +138,10 @@ export default function AttendanceDetail() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Attendance Details" showBack />
+            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                <AcademicYearPicker years={years} selectedYearId={selectedYearId} onSelect={setSelectedYearId} loading={yearsLoading} />
+                <HistoricalYearBanner visible={!isCurrentYearSelected} label={selectedYear?.label} />
+            </View>
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never" contentContainerStyle={{ paddingBottom: 40 }}>
 
                 {/* Hero banner */}

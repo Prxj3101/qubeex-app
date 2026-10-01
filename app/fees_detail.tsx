@@ -1,4 +1,7 @@
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { AcademicYearPicker } from '@/components/AcademicYearPicker';
+import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -694,14 +697,20 @@ export default function FeesDetail() {
     const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
     const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
     const [qrDownloading, setQrDownloading] = useState(false);
+    const { years, selectedYearId, setSelectedYearId, selectedYear, isCurrentYearSelected, loading: yearsLoading } = useAcademicYears();
 
     // Real fee data — same two endpoints the web student portal uses:
     // /student/me for identity, /student/fees for the division's fee
-    // structure + this student's own payments.
+    // structure + this student's own payments. Payment status itself is
+    // always live regardless of the selected year (StudentFeePayment has no
+    // academicYearId — same scope cut as the web admin/teacher fee screens).
     useEffect(() => {
+        if (yearsLoading) return;
+        setLoading(true);
+        const qs = !isCurrentYearSelected && selectedYearId ? `?academicYearId=${selectedYearId}` : '';
         Promise.all([
             api.get('/student/me').catch(() => ({ data: { data: null } })),
-            api.get('/student/fees').catch(() => ({ data: { data: { structure: null, payments: [] } } })),
+            api.get(`/student/fees${qs}`).catch(() => ({ data: { data: { structure: null, payments: [] } } })),
         ]).then(([meRes, feesRes]) => {
             const me = meRes.data?.data;
             if (me) {
@@ -733,7 +742,7 @@ export default function FeesDetail() {
             setBankDetails(structure?.bankDetails ?? null);
             setQrImageUrl(structure?.qrImageUrl ?? null);
         }).finally(() => setLoading(false));
-    }, []);
+    }, [selectedYearId, yearsLoading, isCurrentYearSelected]);
 
     const downloadQrCode = async () => {
         if (!qrImageUrl) return;
@@ -808,6 +817,10 @@ export default function FeesDetail() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
             <ScreenHeader title="Fee Details" showBack />
+            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                <AcademicYearPicker years={years} selectedYearId={selectedYearId} onSelect={setSelectedYearId} loading={yearsLoading} />
+                <HistoricalYearBanner visible={!isCurrentYearSelected} label={selectedYear?.label} />
+            </View>
 
             <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 40 }}>
 
