@@ -1,4 +1,7 @@
 import { InlineWheel } from '@/components/InlineWheel';
+import { AcademicYearPicker } from '@/components/AcademicYearPicker';
+import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { ClassCalendar } from '@/components/teacher/ClassCalendar';
 import { ClassFeed, ClassFeedHandle } from '@/components/teacher/ClassFeed';
 import { FlagsSheet } from '@/components/FlagsSheet';
@@ -1717,6 +1720,11 @@ export default function TeacherClassDetailScreen() {
         : [{ key: 'view', label: 'View' }, { key: 'students', label: 'Students' }, { key: 'tasks', label: 'Tasks' }, { key: 'marks', label: 'Marksheet' }];
 
     const [activeTab, setActiveTab] = useState<TabKey>('view');
+    // Scoped to this screen's own Attendance/Marksheet/Fees tabs only — not a
+    // global control, matching the web admin/teacher pattern.
+    const academicYearState = useAcademicYears();
+    const { years: ayYears, selectedYearId: aySelectedYearId, setSelectedYearId: setAySelectedYearId, selectedYear: aySelectedYear, isCurrentYearSelected: ayIsCurrent, loading: ayLoading } = academicYearState;
+    const isHistoricalYear = !ayIsCurrent;
 
     // Passed down to ClassFeed so its composer can pin itself above the
     // keyboard by scrolling THIS screen's outer ScrollView — same WhatsApp-
@@ -2642,6 +2650,8 @@ export default function TeacherClassDetailScreen() {
 
     // ── Attendance tab — Daily marking (Phase 1; Sheet/Overall come later) ──
     const attBase = `/teacher/attendance/${divisionId}`;
+    const attYq = !ayIsCurrent && aySelectedYearId ? `academicYearId=${aySelectedYearId}` : '';
+    const attQS = (hasExisting: boolean) => attYq ? `${hasExisting ? '&' : '?'}${attYq}` : '';
     const [attSubTab, setAttSubTab] = useState<'daily' | 'sheet' | 'overall'>('daily');
     const [attStudents, setAttStudents] = useState<AttendanceStudent[]>([]);
     const [attHolidays, setAttHolidays] = useState<Record<string, string>>({});
@@ -2659,7 +2669,7 @@ export default function TeacherClassDetailScreen() {
     const [attLoadingDate, setAttLoadingDate] = useState(false);
     const [attMonthMarkedCounts, setAttMonthMarkedCounts] = useState<Record<string, number>>({});
     const attAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const attFetchedRef = useRef(false);
+    const attFetchedRef = useRef<string | null>(null);
 
     interface AttMonthlyStat { monthKey: string; p: number; a: number; l: number; pct: number | null; cumulativePct: number | null }
     interface AttSummaryStudent { studentId: string; name: string; rollNo: string; avatarUrl?: string | null; overallPct: number | null; currentMonthPct: number | null; monthlyStats: AttMonthlyStat[] }
@@ -2676,7 +2686,7 @@ export default function TeacherClassDetailScreen() {
     // changes the cumulative % for the current and all later months (mirrors
     // web's refreshSummary).
     const refreshAttSummary = useCallback(() => {
-        return api.get(`${attBase}/summary`).then((summaryRes) => {
+        return api.get(`${attBase}/summary${attQS(false)}`).then((summaryRes) => {
             const students = (summaryRes.data.data.students as AttSummaryStudent[]) ?? [];
             const classStats = (summaryRes.data.data.classStats as AttClassStats) ?? null;
             setAttOverallStudents(students);
@@ -2691,14 +2701,17 @@ export default function TeacherClassDetailScreen() {
         }).catch(() => {});
     }, [attBase]);
 
-    // Roster + holidays + summary, once — mirrors web's base-data effect.
+    // Roster + holidays + summary — mirrors web's base-data effect. Re-fetches
+    // when the selected academic year changes (not just once on mount), since
+    // the roster/summary are year-scoped.
     useEffect(() => {
-        if (attFetchedRef.current) return;
-        attFetchedRef.current = true;
+        const key = `${divisionId}:${aySelectedYearId ?? 'current'}`;
+        if (attFetchedRef.current === key) return;
+        attFetchedRef.current = key;
         Promise.all([
-            api.get(`/teacher/classes/${divisionId}/students`),
+            api.get(`/teacher/classes/${divisionId}/students${attQS(false)}`),
             api.get(`${attBase}/holidays`),
-            api.get(`${attBase}/summary`),
+            api.get(`${attBase}/summary${attQS(false)}`),
         ]).then(([studRes, holRes, summaryRes]) => {
             const summaryStudents = (summaryRes.data.data.students as AttSummaryStudent[]) ?? [];
             const classStats = (summaryRes.data.data.classStats as AttClassStats) ?? null;
@@ -2720,7 +2733,7 @@ export default function TeacherClassDetailScreen() {
             setAttHolidays(h);
         }).catch(() => {});
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [divisionId]);
+    }, [divisionId, aySelectedYearId]);
 
     const attStudentIdsKey = attStudents.map((s) => s.id).join(',');
     useEffect(() => {
@@ -2735,7 +2748,7 @@ export default function TeacherClassDetailScreen() {
         setAttLoadingDate(true);
         setAttAttendance(Object.fromEntries(attStudents.map((s) => [s.id, { status: null as AttendanceStatus, remark: '' }])));
         setAttGlobalRemark('');
-        api.get(`${attBase}/daily?date=${attCurrentDk}`)
+        api.get(`${attBase}/daily?date=${attCurrentDk}${attQS(true)}`)
             .then((res) => {
                 const { records, dateNote } = res.data.data;
                 const newAtt = Object.fromEntries(attStudents.map((s) => [s.id, { status: null as AttendanceStatus, remark: '' }]));
@@ -2764,7 +2777,7 @@ export default function TeacherClassDetailScreen() {
     // Fully-marked dots for whichever month the calendar popup is on.
     useEffect(() => {
         const monthStr = `${attCalYear}-${String(attCalMonth + 1).padStart(2, '0')}`;
-        api.get(`${attBase}/monthly?month=${monthStr}`)
+        api.get(`${attBase}/monthly?month=${monthStr}${attQS(true)}`)
             .then((res) => {
                 const perDate: Record<string, Set<string>> = {};
                 (res.data.data.records ?? []).forEach((r: { studentId: string; date: string; status: string | null }) => {
@@ -2777,6 +2790,7 @@ export default function TeacherClassDetailScreen() {
     }, [attCalYear, attCalMonth, divisionId, attBase, attRefreshKey]);
 
     const handleAttHolidayChange = useCallback(async (dk: string, name: string | null) => {
+        if (isHistoricalYear) return;
         setAttHolidays((prev) => {
             const next = { ...prev };
             if (name === null) delete next[dk]; else next[dk] = name;
@@ -2796,13 +2810,16 @@ export default function TeacherClassDetailScreen() {
     }, [attBase]);
 
     const attSetStatus = useCallback((id: string, status: AttendanceStatus) => {
+        if (isHistoricalYear) return;
         setAttAttendance((prev) => ({ ...prev, [id]: { ...prev[id], status: prev[id]?.status === status ? null : status } }));
-    }, []);
+    }, [isHistoricalYear]);
     const attSetRemark = useCallback((id: string, remark: string) => {
+        if (isHistoricalYear) return;
         setAttAttendance((prev) => ({ ...prev, [id]: { ...prev[id], remark } }));
-    }, []);
+    }, [isHistoricalYear]);
 
     const handleAttSave = useCallback(async () => {
+        if (isHistoricalYear) return;
         setAttSaveStatus('saving');
         try {
             const records = attStudents
@@ -2877,7 +2894,7 @@ export default function TeacherClassDetailScreen() {
     const attSheetMonthKey = `${attSheetYear}-${String(attSheetMonth + 1).padStart(2, '0')}`;
 
     useEffect(() => {
-        api.get(`${attBase}/monthly?month=${attSheetMonthKey}`)
+        api.get(`${attBase}/monthly?month=${attSheetMonthKey}${attQS(true)}`)
             .then((res) => {
                 const recs: Record<string, AttendanceStatus> = {};
                 (res.data.data.records ?? []).forEach((r: { studentId: string; date: string; status: string }) => { recs[`${r.studentId}::${r.date}`] = r.status as AttendanceStatus; });
@@ -2895,13 +2912,14 @@ export default function TeacherClassDetailScreen() {
     // for a day that isn't on screen in Daily); the current date's note stays
     // routed through attGlobalRemark so Daily and Sheet never disagree.
     const handleAttRemarkChange = useCallback((dk: string, remark: string) => {
+        if (isHistoricalYear) return;
         setAttDateRemarks((prev) => ({ ...prev, [dk]: remark }));
         if (dk === attCurrentDk) {
             setAttGlobalRemark(remark);
         } else {
             api.post(`${attBase}/daily`, { date: dk, records: [], dateNote: remark }).catch(() => {});
         }
-    }, [attCurrentDk, attBase]);
+    }, [attCurrentDk, attBase, isHistoricalYear]);
 
     const attCumulativePctFor = useCallback((student: AttendanceStudent) => student.cumulativeByMonth?.[attSheetMonthKey] ?? null, [attSheetMonthKey]);
     // Sorted independently of Manage's own roster fetch/sort — the two tabs
@@ -2965,7 +2983,7 @@ export default function TeacherClassDetailScreen() {
         if (!attSelectedOverallStudent) return;
         const forId = attSelectedOverallStudent.studentId;
         setAttLoadingStudentRec(true);
-        api.get(`${attBase}/student-records/${forId}?startDate=${attStartYear}-06-01&endDate=${attStartYear + 1}-05-31`)
+        api.get(`${attBase}/student-records/${forId}?startDate=${attStartYear}-06-01&endDate=${attStartYear + 1}-05-31${attQS(true)}`)
             .then((res) => {
                 const recs: Record<string, AttendanceStatus> = {};
                 (res.data.data.records ?? []).forEach((r: { date: string; status: string }) => { recs[r.date] = r.status as AttendanceStatus; });
@@ -4037,10 +4055,11 @@ export default function TeacherClassDetailScreen() {
     // this screen is read-only for exam marks and structure, with graded
     // grade-entry as the one thing the class teacher can edit here.
     const marksAcademicYear = useMemo(() => {
+        if (aySelectedYear) return aySelectedYear.label;
         const now = new Date();
         const yr = now.getFullYear();
         return now.getMonth() >= 5 ? `${yr}-${String(yr + 1).slice(2)}` : `${yr - 1}-${String(yr).slice(2)}`;
-    }, []);
+    }, [aySelectedYear]);
     const [marksSubTab, setMarksSubTab] = useState<'offline' | 'online' | 'overall'>('offline');
     const [marksLoading, setMarksLoading] = useState(true);
     const [marksInitialized, setMarksInitialized] = useState(true);
@@ -4094,6 +4113,7 @@ export default function TeacherClassDetailScreen() {
     // network call fires after the user pauses typing.
     const marksRemarkTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const handleMarksRemarkChange = useCallback((studentId: string, patch: { conduct?: string | null; remarks?: string | null }) => {
+        if (isHistoricalYear) return;
         setMarksRemarks((prev) => ({ ...prev, [studentId]: { ...(prev[studentId] ?? { conduct: null, remarks: null }), ...patch } }));
         if (!marksheetId) return;
         if (marksRemarkTimers.current[studentId]) clearTimeout(marksRemarkTimers.current[studentId]);
@@ -4104,7 +4124,7 @@ export default function TeacherClassDetailScreen() {
                 return prev;
             });
         }, 600);
-    }, [marksheetId]);
+    }, [marksheetId, isHistoricalYear]);
 
     // Online marksheet — auto-computed server-side from completed tests, so
     // unlike Offline it's always live (no init step, no 404/not-set-up case)
@@ -4139,6 +4159,7 @@ export default function TeacherClassDetailScreen() {
     // before the cell shows the new value.
     const marksSavingGradeRef = useRef<Set<string>>(new Set());
     const handleMarksGradeChange = useCallback((gsId: string, stId: string, term: 't1' | 't2', value: string | null) => {
+        if (isHistoricalYear) return;
         setMarksGradedScores((prev) => {
             const existing = prev[gsId]?.[stId] ?? { term1Grade: null, term2Grade: null };
             const updated: MarksGradedScoreEntry = term === 't1' ? { ...existing, term1Grade: value } : { ...existing, term2Grade: value };
@@ -4156,7 +4177,7 @@ export default function TeacherClassDetailScreen() {
         }).finally(() => {
             marksSavingGradeRef.current.delete(key);
         });
-    }, [marksheetId, marksGradedScores]);
+    }, [marksheetId, marksGradedScores, isHistoricalYear]);
 
     // fetchMarksheet is declared just above, after the shared useFocusEffect
     // higher up in this component — referencing it there would hit the const
@@ -4184,6 +4205,7 @@ export default function TeacherClassDetailScreen() {
     const [marksScoreDraft, setMarksScoreDraft] = useState('');
     const marksSavingScoreRef = useRef<Set<string>>(new Set());
     const handleMarksScoreChange = useCallback((examId: string, stId: string, value: number | null) => {
+        if (isHistoricalYear) return;
         setMarksScores((prev) => ({
             ...prev,
             [examId]: { ...prev[examId], [stId]: { score: value } },
@@ -4198,7 +4220,7 @@ export default function TeacherClassDetailScreen() {
         }).finally(() => {
             marksSavingScoreRef.current.delete(key);
         });
-    }, [marksheetId, subjectId]);
+    }, [marksheetId, subjectId, isHistoricalYear]);
 
     const marksValidGrades = useMemo(() => (
         marksGradeScale.length > 0 ? marksGradeScale.map((g) => g.grade.toUpperCase()) : ['A+', 'A', 'B', 'C', 'D', 'F']
@@ -5566,9 +5588,13 @@ export default function TeacherClassDetailScreen() {
     const fetchFees = useCallback(async () => {
         setFeesLoading(true);
         try {
+            const feeYq = !ayIsCurrent && aySelectedYearId ? `?academicYearId=${aySelectedYearId}` : '';
             const [studentsRes, structureRes, paymentsRes] = await Promise.all([
-                api.get(`/teacher/classes/${divisionId}/students`).catch(() => ({ data: { data: [] } })),
-                api.get(`/teacher/campus/divisions/${divisionId}/fee-structure`).catch(() => ({ data: { data: null } })),
+                api.get(`/teacher/classes/${divisionId}/students${feeYq}`).catch(() => ({ data: { data: [] } })),
+                api.get(`/teacher/campus/divisions/${divisionId}/fee-structure${feeYq}`).catch(() => ({ data: { data: null } })),
+                // StudentFeePayment has no academicYearId — payment status is
+                // always live regardless of the selected year (same scope cut
+                // as the web admin/teacher fee screens).
                 api.get(`/teacher/campus/divisions/${divisionId}/fee-payments`).catch(() => ({ data: { data: [] } })),
             ]);
             const studentsRaw: { id: string; studentId: string; user: { name: string | null }; rollNo: string | null; extraDetailFields: Record<string, string> | null; avatarUrl: string | null }[] = studentsRes.data?.data ?? [];
@@ -5607,7 +5633,10 @@ export default function TeacherClassDetailScreen() {
             setFeesLoading(false);
             setFeesFetched(true);
         }
-    }, [divisionId]);
+    }, [divisionId, ayIsCurrent, aySelectedYearId]);
+    useEffect(() => {
+        setFeesFetched(false);
+    }, [aySelectedYearId, ayIsCurrent]);
     useEffect(() => {
         if (activeTab === 'fees' && !feesFetched) fetchFees();
     }, [activeTab, feesFetched, fetchFees]);
@@ -7103,6 +7132,13 @@ export default function TeacherClassDetailScreen() {
                     </View>
                 </ScrollView>
             </View>
+
+            {(activeTab === 'attendance' || activeTab === 'marks' || activeTab === 'fees') && (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 4 }}>
+                    <AcademicYearPicker years={ayYears} selectedYearId={aySelectedYearId} onSelect={setAySelectedYearId} loading={ayLoading} />
+                    <HistoricalYearBanner visible={isHistoricalYear} label={aySelectedYear?.label} />
+                </View>
+            )}
 
             <ScrollView
                 ref={tabPagerRef}
