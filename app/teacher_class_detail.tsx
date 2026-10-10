@@ -5,6 +5,7 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { ClassCalendar } from '@/components/teacher/ClassCalendar';
 import { ClassFeed, ClassFeedHandle } from '@/components/teacher/ClassFeed';
 import { FlagsSheet } from '@/components/FlagsSheet';
+import { VoiceAttendanceSheet } from '@/components/teacher/VoiceAttendanceSheet';
 import { Flag as FlagRecord } from '@/data/flags';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDisplayName } from '@/lib/displayName';
@@ -17,7 +18,7 @@ import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'exp
 import { usePreventRemove } from 'expo-router/react-navigation';
 import {
     ArrowLeft, BarChart2, BookOpen, Calendar, CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-    Clock, Copy, Download, Eye, EyeOff, ExternalLink, FileText, Flag, FolderOpen, Heart, ImagePlus, MapPin, MessageSquare,
+    Clock, Copy, Download, Eye, EyeOff, ExternalLink, FileText, Flag, FolderOpen, Heart, ImagePlus, MapPin, MessageSquare, Mic,
     Moon, Pencil, Play, Plus, Power, PowerOff, RotateCcw, Save, Shield, ShieldAlert, Square, Sun, Trash2, TrendingDown, Trophy, Upload, User,
     Users, X,
 } from 'lucide-react-native';
@@ -2850,6 +2851,20 @@ export default function TeacherClassDetailScreen() {
             return next;
         });
     }, [attAttendance, attStudents]);
+
+    // Voice attendance: the teacher names the absent / late roll numbers and everyone else is Present.
+    // Remarks already typed for a student are kept; the Daily list's normal 2s auto-save then stores it.
+    const [attVoiceOpen, setAttVoiceOpen] = useState(false);
+    const attApplyVoice = useCallback(({ absentIds, lateIds }: { absentIds: string[]; lateIds: string[] }) => {
+        if (isHistoricalYear) return;
+        const absent = new Set(absentIds);
+        const late = new Set(lateIds);
+        setAttAttendance((prev) => {
+            const next: Record<string, { status: AttendanceStatus; remark: string }> = {};
+            for (const id of Object.keys(prev)) next[id] = { ...prev[id], status: absent.has(id) ? 'A' : late.has(id) ? 'L' : 'P' };
+            return next;
+        });
+    }, [isHistoricalYear]);
 
     // Auto-save — 2s after the last change, same as web.
     useEffect(() => {
@@ -6465,6 +6480,26 @@ export default function TeacherClassDetailScreen() {
                                 <CheckCircle2 size={12} color={isDark ? '#6EE7B7' : '#047857'} />
                                 <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: isDark ? '#6EE7B7' : '#047857' }}>All P</Text>
                             </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setAttVoiceOpen(true)} disabled={attIsHoliday || attIsSunday || attStudents.length === 0 || isHistoricalYear}
+                                style={[styles.attAllPBtn, {
+                                    backgroundColor: isDark ? '#2D1F50' : '#EDE9FE',
+                                    borderColor: theme.purple,
+                                    opacity: (attIsHoliday || attIsSunday || attStudents.length === 0 || isHistoricalYear) ? 0.4 : 1,
+                                }]}>
+                                <Mic size={12} color={theme.purple} />
+                                <Text style={{ fontSize: 10.5, fontFamily: 'Poppins_600SemiBold', color: theme.purple }}>Voice</Text>
+                            </TouchableOpacity>
+                            {/* Zero-size absolute wrapper so the Modal host never counts as a flex/gap child of this row. */}
+                            <View pointerEvents="box-none" style={{ position: 'absolute', width: 0, height: 0 }}>
+                                <VoiceAttendanceSheet
+                                    visible={attVoiceOpen}
+                                    onClose={() => setAttVoiceOpen(false)}
+                                    students={attStudents.map((s) => ({ id: s.id, name: s.name, rollNo: s.rollNo }))}
+                                    theme={theme}
+                                    isDark={isDark}
+                                    onApply={attApplyVoice}
+                                />
+                            </View>
 
                             {/* Class Overall / This Month — mirrors the header stats on
                                 qubeex-web's DivisionClassPageClient (value on top, label
@@ -6768,7 +6803,7 @@ export default function TeacherClassDetailScreen() {
         attShowExportMenu, attShowMonthSelector, attSelectedExportMonths, attExporting, handleAttExportThisMonth, handleAttExportSelectedMonths,
         attOverallStudents, attClassStats, attOverallSelectedId, attOverallRightTab, attShortTab, attStudentRecords, attLoadingStudentRec,
         attSelectedOverallStudent, sortedOverallStudents, ATT_SHEET_MONTHS_ORDER, handleAttGetList, attStartYear, attDetailSlideX,
-        closeAttOverallDetail, attStudentRecordsFor,
+        closeAttOverallDetail, attStudentRecordsFor, attVoiceOpen, attApplyVoice, isHistoricalYear,
     ]);
 
     // The View tab's whole card stack (feed, subject teachers, leaderboard,

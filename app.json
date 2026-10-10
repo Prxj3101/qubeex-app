@@ -78,7 +78,15 @@
           }
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow QubeEx to use the microphone to take attendance by voice.",
+          "speechRecognitionPermission": "Allow QubeEx to recognise your speech to take attendance by voice.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ]
     ],
     "extra": {
       "eas": {
