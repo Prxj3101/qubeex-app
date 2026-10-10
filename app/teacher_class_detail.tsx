@@ -2,6 +2,7 @@ import { InlineWheel } from '@/components/InlineWheel';
 import { AcademicYearPicker } from '@/components/AcademicYearPicker';
 import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
+import { LiveTimetable } from '@/components/LiveTimetable';
 import { ClassCalendar } from '@/components/teacher/ClassCalendar';
 import { ClassFeed, ClassFeedHandle } from '@/components/teacher/ClassFeed';
 import { FlagsSheet } from '@/components/FlagsSheet';
@@ -6981,16 +6982,27 @@ export default function TeacherClassDetailScreen() {
                                 </TouchableOpacity>
                             )}
                         </View>
-                        {timetableImage ? (
-                            <TouchableOpacity onPress={() => setShowTimetable(true)} activeOpacity={0.9} style={{ marginHorizontal: 14, marginVertical: 14 }}>
-                                <Image source={{ uri: timetableImage }} style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 14 }} resizeMode="contain" />
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 28, gap: 6 }}>
-                                <Calendar size={22} color={theme.muted} />
-                                <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.subText }}>No timetable uploaded yet</Text>
-                            </View>
-                        )}
+                        <LiveTimetable
+                            role="teacher"
+                            divisionId={divisionId}
+                            academicYearId={!ayIsCurrent ? aySelectedYearId : null}
+                            theme={theme}
+                            isDark={isDark}
+                            fallback={
+                                <>
+                                {timetableImage ? (
+                                    <TouchableOpacity onPress={() => setShowTimetable(true)} activeOpacity={0.9} style={{ marginHorizontal: 14, marginVertical: 14 }}>
+                                        <Image source={{ uri: timetableImage }} style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 14 }} resizeMode="contain" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 28, gap: 6 }}>
+                                        <Calendar size={22} color={theme.muted} />
+                                        <Text style={{ fontSize: 11.5, fontFamily: 'Poppins_400Regular', color: theme.subText }}>No timetable uploaded yet</Text>
+                                    </View>
+                                )}
+                                </>
+                            }
+                        />
                     </View>
                     </View>
 
