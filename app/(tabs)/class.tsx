@@ -1,4 +1,5 @@
 import { InlineWheel } from '@/components/InlineWheel';
+import { LiveTimetableCard } from '@/components/LiveTimetable';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { TabEntryCover, useTabEntryCover } from '@/components/TabEntryCover';
 import { useTheme } from '@/context/ThemeContext';
@@ -590,7 +591,12 @@ export default function Courses() {
                             {/* ══ BATCH TAB ══ (always mounted — it's the default tab) */}
                             <View style={{ gap: 14, marginTop: -8, display: activeTab === 'batch' ? 'flex' : 'none' }}>
                                     {/* Timetable */}
-                                    <TimetableImageCard theme={theme} isDark={isDark} timetableUrl={division?.timetableUrl ?? null} />
+                                    <LiveTimetableCard
+                                        role="student"
+                                        theme={theme}
+                                        isDark={isDark}
+                                        fallback={<TimetableImageCard theme={theme} isDark={isDark} timetableUrl={division?.timetableUrl ?? null} />}
+                                    />
 
                                     {/* Subject teachers */}
                                     <Card theme={theme}>
