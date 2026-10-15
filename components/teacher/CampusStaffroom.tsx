@@ -768,23 +768,25 @@ export type CampusStaffroomHandle = { scrollToTopAndRefresh: () => void };
 // never worked) and iOS handed it over as soon as the inner one hit its edge
 // (so swiping back from DMs shot straight past Staffroom to the feed). One
 // pager, one gesture owner, no fight.
-export type CampusPage = 'campus' | 'staffroom' | 'dms';
+export type CampusPage = 'campus' | 'staffroom' | 'dms' | 'inventory';
 
 export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     page: CampusPage;
     onPageChange: (page: CampusPage) => void;
     onUnreadChange?: (hasUnread: boolean) => void;
     leadingPage?: ReactNode;
+    trailingPage?: ReactNode;
 }>(function CampusStaffroom({
     page,
     onPageChange,
     onUnreadChange,
     leadingPage,
+    trailingPage,
 }, ref) {
     // Everything below still thinks in terms of "which Staffroom pane is
     // showing", so keep that shape rather than rewriting each usage.
     const innerTab: 'feed' | 'dms' = page === 'dms' ? 'dms' : 'feed';
-    const PAGE_ORDER: CampusPage[] = leadingPage ? ['campus', 'staffroom', 'dms'] : ['staffroom', 'dms'];
+    const PAGE_ORDER: CampusPage[] = [...(leadingPage ? ['campus' as const] : []), 'staffroom', 'dms', ...(trailingPage ? ['inventory' as const] : [])];
     const pageIndex = Math.max(0, PAGE_ORDER.indexOf(page));
     const { isDark, accent } = useTheme();
     const bg = isDark ? '#000000' : '#FAF8FF';
@@ -1078,14 +1080,32 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                     {kind === 'staffroom' ? 'Staffroom' : 'Direct Messages'}
                 </Text>
             </View>
-            {kind === 'dms' && (
-                <TouchableOpacity
-                    onPress={() => { setShowDmSearch((v) => !v); setDmSearch(''); }}
-                    style={{ position: 'absolute', right: 14, top: 0, bottom: 0, width: 28, alignItems: 'center', justifyContent: 'center' }}
-                >
-                    {showDmSearch ? <X size={16} color={subText} /> : <Search size={16} color={subText} />}
-                </TouchableOpacity>
-            )}
+            <View style={{ position: 'absolute', right: 14, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {kind === 'dms' && (
+                    <TouchableOpacity
+                        onPress={() => { setShowDmSearch((v) => !v); setDmSearch(''); }}
+                        style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        {showDmSearch ? <X size={16} color={subText} /> : <Search size={16} color={subText} />}
+                    </TouchableOpacity>
+                )}
+                {/* Staffroom / Direct messages switch */}
+                <View style={{ flexDirection: 'row', borderRadius: 10, padding: 3, gap: 3, backgroundColor: isDark ? '#1A1A1A' : '#EDEFF3' }}>
+                    <TouchableOpacity
+                        onPress={() => onPageChange('staffroom')}
+                        style={[styles.paneSwitchBtn, kind === 'staffroom' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.paneSwitchBtnActive }]}
+                    >
+                        <Users size={12} color={kind === 'staffroom' ? text : subText} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => onPageChange('dms')}
+                        style={[styles.paneSwitchBtn, kind === 'dms' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.paneSwitchBtnActive }]}
+                    >
+                        <User size={12} color={kind === 'dms' ? text : subText} />
+                        {threads.some((t) => t.unread > 0) && <View style={styles.paneSwitchDot} />}
+                    </TouchableOpacity>
+                </View>
+            </View>
         </View>
     );
 
@@ -1289,6 +1309,10 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
                         )}
                     />
                 </View>
+
+                {trailingPage && (
+                    <View style={{ width: pagerWidth, height: '100%' }}>{trailingPage}</View>
+                )}
             </ScrollView>
 
             {/* An open DM chat covers the pager instead of replacing it, so the
@@ -1304,6 +1328,9 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
 });
 
 const styles = StyleSheet.create({
+    paneSwitchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+    paneSwitchBtnActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 2 },
+    paneSwitchDot: { position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
     miniAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     miniAvatarText: { fontSize: 12, fontFamily: 'Poppins_700Bold', color: '#fff' },
     tinyAvatar: { width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

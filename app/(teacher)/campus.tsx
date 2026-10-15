@@ -4,13 +4,15 @@ import { CampusPage, CampusStaffroom, CampusStaffroomHandle } from '@/components
 import { useTheme } from '@/context/ThemeContext';
 import Constants from 'expo-constants';
 import { useNavigation } from 'expo-router';
-import { MessageSquare, Rss, User, Users } from 'lucide-react-native';
+import { CampusInventory } from '@/components/teacher/CampusInventory';
+import { Boxes, MessageSquare, Rss } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const CAMPUS_TABS = [
     { key: 'feed' as const, label: 'Feed', icon: Rss },
     { key: 'staffroom' as const, label: 'Staffroom', icon: MessageSquare },
+    { key: 'inventory' as const, label: 'Inventory', icon: Boxes },
 ];
 
 // Same character as the web's Feed/Staffroom pill (framer-motion's
@@ -35,7 +37,6 @@ const PILL_SPRING = {
 export default function TeacherCampusScreen() {
     const { isDark, accent } = useTheme();
     const bg = isDark ? '#000000' : '#FAF8FF';
-    const text = isDark ? '#F1F5F9' : '#0F172A';
     const subText = isDark ? '#94A3B8' : '#64748B';
     const trackBg = isDark ? '#1A1A1A' : '#EDEFF3';
 
@@ -45,11 +46,10 @@ export default function TeacherCampusScreen() {
     // row in step with it: `page` drives the pill and the Staffroom/DM icons,
     // and a swipe reports its landing page back through `onPageChange`.
     const [page, setPage] = useState<CampusPage>('campus');
-    const [staffroomHasUnread, setStaffroomHasUnread] = useState(false);
 
-    // The pill still only has two positions: the Campus feed sits under "Feed",
-    // and both Staffroom pages sit under "Staffroom".
-    const tab: 'feed' | 'staffroom' = page === 'campus' ? 'feed' : 'staffroom';
+    // The pill has three positions: the Campus feed sits under "Feed", both
+    // Staffroom pages under "Staffroom", and the last page is "Inventory".
+    const tab: 'feed' | 'staffroom' | 'inventory' = page === 'campus' ? 'feed' : page === 'inventory' ? 'inventory' : 'staffroom';
 
     // Sliding pill behind the active tab — measured per-button so it exactly
     // matches each label's width instead of a fixed-size highlight.
@@ -99,13 +99,14 @@ export default function TeacherCampusScreen() {
     // gesture and held the nav up for a beat. A stable element lets React skip
     // the subtree entirely.
     const feedPage = useMemo(() => <CampusFeed ref={campusFeedRef} />, []);
+    const inventoryPage = useMemo(() => <CampusInventory />, []);
 
     const navigation = useNavigation<any>();
     useEffect(() => {
         const unsubscribe = navigation.addListener('tabPress', () => {
             if (!navigation.isFocused()) return;
             if (page === 'campus') campusFeedRef.current?.scrollToTopAndRefresh();
-            else campusStaffroomRef.current?.scrollToTopAndRefresh();
+            else if (page !== 'inventory') campusStaffroomRef.current?.scrollToTopAndRefresh();
         });
         return unsubscribe;
     }, [navigation, page]);
@@ -134,7 +135,7 @@ export default function TeacherCampusScreen() {
         <View style={[styles.container, { backgroundColor: bg, paddingTop: Constants.statusBarHeight }]}>
             <ScreenHeader title="Campus" />
 
-            <View style={[styles.tabRow, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <View style={[styles.tabRow, { flexDirection: 'row', alignItems: 'center' }]}>
                 <View style={[styles.tabTrack, { backgroundColor: trackBg }]}>
                     {pill}
                     {CAMPUS_TABS.map((t) => {
@@ -149,7 +150,7 @@ export default function TeacherCampusScreen() {
                                 // back a page.
                                 onPress={() => {
                                     if (t.key === tab) return;
-                                    setPage(t.key === 'feed' ? 'campus' : 'staffroom');
+                                    setPage(t.key === 'feed' ? 'campus' : t.key === 'inventory' ? 'inventory' : 'staffroom');
                                 }}
                                 onLayout={(e) => handleTabLayout(t.key, e)}
                                 style={styles.tabBtn}
@@ -161,31 +162,14 @@ export default function TeacherCampusScreen() {
                     })}
                 </View>
 
-                {tab === 'staffroom' && (
-                    <View style={[styles.innerSwitchTrack, { backgroundColor: trackBg }]}>
-                        <TouchableOpacity
-                            onPress={() => setPage('staffroom')}
-                            style={[styles.innerSwitchBtn, page === 'staffroom' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
-                        >
-                            <Users size={12} color={page === 'staffroom' ? text : subText} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => setPage('dms')}
-                            style={[styles.innerSwitchBtn, page === 'dms' && { backgroundColor: isDark ? '#000000' : '#FFFFFF', ...styles.innerSwitchBtnActiveShadow }]}
-                        >
-                            <User size={12} color={page === 'dms' ? text : subText} />
-                            {staffroomHasUnread && <View style={styles.dmUnreadDot} />}
-                        </TouchableOpacity>
-                    </View>
-                )}
             </View>
 
             <CampusStaffroom
                 ref={campusStaffroomRef}
                 page={page}
                 onPageChange={setPage}
-                onUnreadChange={setStaffroomHasUnread}
                 leadingPage={feedPage}
+                trailingPage={inventoryPage}
             />
         </View>
     );
@@ -198,8 +182,4 @@ const styles = StyleSheet.create({
     tabPillTrack: { position: 'absolute', top: 3, bottom: 3 },
     tabPillFill: { height: '100%', borderRadius: 99 },
     tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
-    innerSwitchTrack: { flexDirection: 'row', borderRadius: 10, padding: 3, gap: 3 },
-    innerSwitchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
-    innerSwitchBtnActiveShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 2 },
-    dmUnreadDot: { position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444' },
 });
