@@ -88,6 +88,18 @@ const DICT: Dict = {
     actionTaken: { en: '⚡ Action Taken', hinglish: '⚡ Action Taken', hi: '⚡ की गई कार्रवाई', mr: '⚡ केलेली कारवाई' },
     wantToAppeal: { en: 'Want to appeal a flag?', hinglish: 'Flag pe appeal karna hai?', hi: 'किसी फ्लैग पर अपील करनी है?', mr: 'एखाद्या फ्लॅगवर अपील करायची आहे?' },
     contactTeacherPrincipal: { en: 'Contact your class teacher or Principal.', hinglish: 'Apne class teacher ya Principal se contact karein.', hi: 'अपने कक्षा शिक्षक या प्रिंसिपल से संपर्क करें।', mr: 'तुमच्या वर्गशिक्षक किंवा मुख्याध्यापकांशी संपर्क साधा.' },
+    // ── Parent ↔ teacher chat ──
+    parentMessages: { en: 'Messages', hinglish: 'Messages', hi: 'संदेश', mr: 'संदेश' },
+    messageTeachersSub: { en: "Message your child's teachers", hinglish: 'Apne bacche ke teachers ko message karein', hi: 'अपने बच्चे के शिक्षकों को संदेश भेजें', mr: 'तुमच्या मुलाच्या शिक्षकांना संदेश पाठवा' },
+    classTeacherTag: { en: 'Class teacher', hinglish: 'Class teacher', hi: 'कक्षा शिक्षक', mr: 'वर्गशिक्षक' },
+    typeMessage: { en: 'Type a message…', hinglish: 'Message likhein…', hi: 'संदेश लिखें…', mr: 'संदेश लिहा…' },
+    sendMessage: { en: 'Send', hinglish: 'Send', hi: 'भेजें', mr: 'पाठवा' },
+    noChatYet: { en: 'No messages yet. Say hello to start the conversation.', hinglish: 'Abhi koi message nahi hai. Baat shuru karne ke liye hello bolein.', hi: 'अभी कोई संदेश नहीं है। बातचीत शुरू करने के लिए नमस्ते कहें।', mr: 'अजून कोणताही संदेश नाही. संभाषण सुरू करण्यासाठी नमस्कार म्हणा.' },
+    chatAdminNotice: { en: 'School administrators can view these conversations.', hinglish: 'School administrators in conversations ko dekh sakte hain.', hi: 'स्कूल प्रशासक इन बातचीत को देख सकते हैं।', mr: 'शाळेचे प्रशासक हे संभाषण पाहू शकतात.' },
+    chatOutsideHours: { en: "Teachers reply during school hours. They'll see your message when they're back.", hinglish: 'Teachers school hours mein reply karte hain. Wapas aate hi woh aapka message dekhenge.', hi: 'शिक्षक स्कूल के समय में जवाब देते हैं। लौटते ही वे आपका संदेश देखेंगे।', mr: 'शिक्षक शाळेच्या वेळेत उत्तर देतात. परत आल्यावर ते तुमचा संदेश पाहतील.' },
+    messageRemoved: { en: 'This message was removed by the school.', hinglish: 'Yeh message school ne hata diya hai.', hi: 'यह संदेश स्कूल द्वारा हटा दिया गया है।', mr: 'हा संदेश शाळेने काढून टाकला आहे.' },
+    noClassTeachers: { en: 'No teachers are assigned to your class yet.', hinglish: 'Abhi aapki class ke liye koi teacher assign nahi hai.', hi: 'अभी आपकी कक्षा के लिए कोई शिक्षक नियुक्त नहीं है।', mr: 'अजून तुमच्या वर्गासाठी कोणताही शिक्षक नेमलेला नाही.' },
+    chatTurnedOff: { en: 'Chat is turned off by your school.', hinglish: 'Aapke school ne chat band kar rakhi hai.', hi: 'आपके स्कूल ने चैट बंद कर रखी है।', mr: 'तुमच्या शाळेने चॅट बंद केली आहे.' },
 };
 
 // Hindi and Marathi both use Devanagari numerals (०-९) — this converts any

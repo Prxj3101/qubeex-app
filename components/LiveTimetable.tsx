@@ -128,6 +128,7 @@ export function LiveTimetable({ role, divisionId, academicYearId, theme, isDark,
     const [mode, setMode] = useState<'day' | 'week'>('day');
     const [dayPick, setDayPick] = useState<string | null>(null);
 
+    const [error, setError] = useState<string | null>(null);
     const [reloadTick, setReloadTick] = useState(0);
     const missingDivision = role === 'teacher' && !divisionId;
 
@@ -136,8 +137,13 @@ export function LiveTimetable({ role, divisionId, academicYearId, theme, isDark,
         let cancelled = false;
         const url = role === 'student' ? '/student/timetable/me' : `/teacher/timetable/division/${divisionId}`;
         api.get(url, { params: { ...(anchor ? { date: anchor } : {}), ...(academicYearId ? { academicYearId } : {}) } })
-            .then(res => { if (!cancelled) setData(res.data?.data ?? null); })
-            .catch(() => { if (!cancelled) setData(null); })   // no access / offline → fall back to the image or empty state
+            .then(res => { if (!cancelled) { setData(res.data?.data ?? null); setError(null); } })
+            .catch((e: { response?: { data?: { error?: string; message?: string } }; message?: string }) => {
+                // Fall back to the image / empty state, but remember why so the screen can say it.
+                if (cancelled) return;
+                setData(null);
+                setError(e.response?.data?.error ?? e.response?.data?.message ?? (e.message === 'Network Error' ? 'The server could not be reached' : e.message) ?? 'Something went wrong');
+            })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
     }, [role, divisionId, anchor, academicYearId, reloadTick, missingDivision]);
@@ -168,7 +174,21 @@ export function LiveTimetable({ role, divisionId, academicYearId, theme, isDark,
     }
     // Nothing published for this class (and we're on the current week) → the old image / empty state.
     const hasAny = !!data && data.published;
-    if (!hasAny) return <>{fallback}</>;
+    if (!hasAny) {
+        return (
+            <>
+                {error ? (
+                    <View style={[styles.errorBox, { backgroundColor: isDark ? '#2D2010' : '#FEF3C7', borderColor: isDark ? '#5C4310' : '#FCD34D' }]}>
+                        <Text style={[noPad, styles.errorText, { color: isDark ? '#FCD34D' : '#92400E' }]}>Couldn&apos;t load the live timetable: {error}</Text>
+                        <TouchableOpacity onPress={() => setReloadTick(n => n + 1)} hitSlop={8}>
+                            <Text style={[noPad, styles.errorRetry, { color: isDark ? '#FCD34D' : '#92400E' }]}>Retry</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : null}
+                {fallback}
+            </>
+        );
+    }
 
     const weekEnd = addDays(data.weekStart, 6);
     const weekLabel = `${dayNum(data.weekStart)} ${monthShort(data.weekStart)} – ${dayNum(weekEnd)} ${monthShort(weekEnd)}`;
@@ -329,6 +349,9 @@ const styles = StyleSheet.create({
     breakRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
     breakLine: { flex: 1, borderTopWidth: 1, borderStyle: 'dashed' },
     freeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+    errorBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginHorizontal: 14, marginTop: 10, marginBottom: 6 },
+    errorText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: 'Poppins_400Regular' },
+    errorRetry: { fontSize: 12, lineHeight: 16, fontFamily: 'Poppins_700Bold', textDecorationLine: 'underline' },
     gridHeadCell: { width: 64, paddingVertical: 6 },
     gridDayCell: { width: 92, alignItems: 'center', borderRadius: 8 },
     gridSlotCell: { width: 64, justifyContent: 'center', paddingRight: 4, borderTopWidth: 1, height: 54 },

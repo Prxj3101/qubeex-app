@@ -5,6 +5,7 @@ import { TeacherThoughtOfTheDay } from '@/components/teacher/TeacherThoughtOfThe
 import { TeacherNotepad, TeacherNotepadHandle } from '@/components/teacher/TeacherNotepad';
 import { TeacherAiTokenUsage } from '@/components/teacher/TeacherAiTokenUsage';
 import { TeacherAttendanceChart } from '@/components/teacher/TeacherAttendanceChart';
+import { TeacherParentChatEntry } from '@/components/teacher/TeacherParentChat';
 import { TeacherTopBar } from '@/components/teacher/TeacherTopBar';
 import { useTeacher } from '@/context/TeacherContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -126,6 +127,9 @@ export default function TeacherHome() {
                             );
                         })}
                     </ScrollView>
+
+                    {/* Parent messages inbox */}
+                    <TeacherParentChatEntry />
 
                     {/* Thought of the Day */}
                     <TeacherThoughtOfTheDay />
