@@ -3,6 +3,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useParentModeLanguage } from '@/context/ParentModeLanguageContext';
 import api from '@/lib/api';
 import { t } from '@/lib/parentModeI18n';
+import axios from 'axios';
 import { ChevronRight, MessageCircle, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -91,12 +92,17 @@ function ParentChatScreen({ isDark, onClose }: { isDark: boolean; onClose: () =>
     const [data, setData] = useState<ContactsPayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [active, setActive] = useState<Contact | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         try {
             const res = await api.get<{ data: ContactsPayload }>('/student/parent-chat/contacts');
             setData(res.data.data);
-        } catch { /* silent */ }
+            setLoadError(null);
+        } catch (err) {
+            const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+            setLoadError(status ? `Could not load teachers (error ${status})` : 'Could not reach the server');
+        }
         finally { setLoading(false); }
     }, []);
 
@@ -109,6 +115,13 @@ function ParentChatScreen({ isDark, onClose }: { isDark: boolean; onClose: () =>
         removed: t('messageRemoved', lang),
         adminNotice: t('chatAdminNotice', lang),
         outsideHours: t('chatOutsideHours', lang),
+        attachPhoto: t('attachPhoto', lang),
+        attachPdf: t('attachPdf', lang),
+        report: t('reportMessageAction', lang),
+        reportBody: t('reportConfirmBody', lang),
+        reported: t('reportedTag', lang),
+        cancel: t('cancelAction', lang),
+        attachFailed: t('attachFailed', lang),
     };
 
     if (active) {
@@ -120,6 +133,7 @@ function ParentChatScreen({ isDark, onClose }: { isDark: boolean; onClose: () =>
                     title={`${active.prefix ? `${active.prefix} ` : ''}${active.name}`}
                     subtitle={active.isClassTeacher ? t('classTeacherTag', lang) : active.subjects.join(', ')}
                     basePath={`/student/parent-chat/teachers/${active.teacherId}`}
+                    chatRoot="/student/parent-chat"
                     viewerIsTeacher={false}
                     labels={labels}
                     showOutsideHoursNote={data ? !data.settings.withinOfficeHours : false}
@@ -140,6 +154,9 @@ function ParentChatScreen({ isDark, onClose }: { isDark: boolean; onClose: () =>
                 <View style={styles.center}><ActivityIndicator color={accent.purple} /></View>
             ) : (
                 <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
+                    {loadError && (
+                        <Text style={[styles.info, { color: '#DC2626' }]}>{loadError}</Text>
+                    )}
                     {data && !data.settings.enabled && (
                         <Text style={[styles.info, { color: theme.subText }]}>{t('chatTurnedOff', lang)}</Text>
                     )}

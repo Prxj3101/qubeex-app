@@ -1,6 +1,7 @@
 import { ChatThreadView } from '@/components/chat/ChatThreadView';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
+import axios from 'axios';
 import { ChevronRight, MessageCircle, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -31,6 +32,13 @@ const LABELS = {
     removed: 'This message was removed by the school.',
     adminNotice: 'School administrators can view these conversations.',
     outsideHours: '',
+    attachPhoto: 'Photo',
+    attachPdf: 'PDF',
+    report: 'Report message',
+    reportBody: 'The school administrator will be notified and will review this message.',
+    reported: 'Reported',
+    cancel: 'Cancel',
+    attachFailed: 'Could not upload the file',
 };
 
 /** Entry card for the teacher home: parent messages inbox with an unread badge. */
@@ -86,12 +94,17 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
     const [data, setData] = useState<ThreadsPayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [active, setActive] = useState<Thread | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         try {
             const res = await api.get<{ data: ThreadsPayload }>('/teacher/parent-chat/threads');
             setData(res.data.data);
-        } catch { /* silent */ }
+            setLoadError(null);
+        } catch (err) {
+            const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+            setLoadError(status ? `Could not load messages (error ${status})` : 'Could not reach the server');
+        }
         finally { setLoading(false); }
     }, []);
 
@@ -110,6 +123,7 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
                     title={`Parent of ${active.studentName}`}
                     subtitle={[active.className, active.rollNo ? `Roll ${active.rollNo}` : null].filter(Boolean).join(' · ')}
                     basePath={`/teacher/parent-chat/threads/${active.id}`}
+                    chatRoot="/teacher/parent-chat"
                     viewerIsTeacher
                     labels={LABELS}
                     onBack={() => { setActive(null); load(); }}
@@ -129,6 +143,9 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
                 <View style={styles.center}><ActivityIndicator color={accent.purple} /></View>
             ) : (
                 <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
+                    {loadError && (
+                        <Text style={[styles.info, { color: '#DC2626' }]}>{loadError}</Text>
+                    )}
                     {data && !data.settings.enabled && (
                         <Text style={[styles.info, { color: theme.subText }]}>Parent chat is turned off by your school.</Text>
                     )}

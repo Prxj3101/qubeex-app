@@ -100,6 +100,13 @@ const DICT: Dict = {
     messageRemoved: { en: 'This message was removed by the school.', hinglish: 'Yeh message school ne hata diya hai.', hi: 'यह संदेश स्कूल द्वारा हटा दिया गया है।', mr: 'हा संदेश शाळेने काढून टाकला आहे.' },
     noClassTeachers: { en: 'No teachers are assigned to your class yet.', hinglish: 'Abhi aapki class ke liye koi teacher assign nahi hai.', hi: 'अभी आपकी कक्षा के लिए कोई शिक्षक नियुक्त नहीं है।', mr: 'अजून तुमच्या वर्गासाठी कोणताही शिक्षक नेमलेला नाही.' },
     chatTurnedOff: { en: 'Chat is turned off by your school.', hinglish: 'Aapke school ne chat band kar rakhi hai.', hi: 'आपके स्कूल ने चैट बंद कर रखी है।', mr: 'तुमच्या शाळेने चॅट बंद केली आहे.' },
+    attachPhoto: { en: 'Photo', hinglish: 'Photo', hi: 'फ़ोटो', mr: 'फोटो' },
+    attachPdf: { en: 'PDF', hinglish: 'PDF', hi: 'पीडीएफ', mr: 'पीडीएफ' },
+    reportMessageAction: { en: 'Report message', hinglish: 'Message report karein', hi: 'संदेश की रिपोर्ट करें', mr: 'संदेशाची तक्रार करा' },
+    reportConfirmBody: { en: 'The school administrator will be notified and will review this message.', hinglish: 'School administrator ko inform kiya jayega aur woh is message ko review karenge.', hi: 'स्कूल प्रशासक को सूचित किया जाएगा और वे इस संदेश की समीक्षा करेंगे।', mr: 'शाळेच्या प्रशासकांना कळवले जाईल आणि ते या संदेशाचा आढावा घेतील.' },
+    reportedTag: { en: 'Reported', hinglish: 'Reported', hi: 'रिपोर्ट किया गया', mr: 'तक्रार केली' },
+    cancelAction: { en: 'Cancel', hinglish: 'Cancel', hi: 'रद्द करें', mr: 'रद्द करा' },
+    attachFailed: { en: 'Could not upload the file', hinglish: 'File upload nahi ho paayi', hi: 'फ़ाइल अपलोड नहीं हो सकी', mr: 'फाइल अपलोड करता आली नाही' },
 };
 
 // Hindi and Marathi both use Devanagari numerals (०-९) — this converts any
