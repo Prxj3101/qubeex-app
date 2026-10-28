@@ -5,7 +5,9 @@ import { TeacherThoughtOfTheDay } from '@/components/teacher/TeacherThoughtOfThe
 import { TeacherNotepad, TeacherNotepadHandle } from '@/components/teacher/TeacherNotepad';
 import { TeacherAiTokenUsage } from '@/components/teacher/TeacherAiTokenUsage';
 import { TeacherAttendanceChart } from '@/components/teacher/TeacherAttendanceChart';
+import { TeacherFormsEntry } from '@/components/teacher/TeacherForms';
 import { TeacherParentChatEntry } from '@/components/teacher/TeacherParentChat';
+import { TeacherPtmEntry } from '@/components/teacher/TeacherPtm';
 import { TeacherTopBar } from '@/components/teacher/TeacherTopBar';
 import { useTeacher } from '@/context/TeacherContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -130,6 +132,8 @@ export default function TeacherHome() {
 
                     {/* Parent messages inbox */}
                     <TeacherParentChatEntry />
+                    <TeacherFormsEntry />
+                    <TeacherPtmEntry />
 
                     {/* Thought of the Day */}
                     <TeacherThoughtOfTheDay />

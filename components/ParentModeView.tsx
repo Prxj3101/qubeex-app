@@ -3,6 +3,8 @@ import api from '@/lib/api';
 import { AttendanceSheet, type AttendanceApiData } from '@/components/AttendanceSheet';
 import { FlagsSheet } from '@/components/FlagsSheet';
 import { ParentChatEntry } from '@/components/ParentChat';
+import { ParentFormsEntry } from '@/components/ParentForms';
+import { ParentPtmEntry } from '@/components/ParentPtm';
 import { ReportCardSheet, type MarksheetData as ReportCardMarksheetData } from '@/components/ReportCardSheet';
 import { StudentIDCard } from '@/components/StudentIDCard';
 import { ParentModeLanguageContext } from '@/context/ParentModeLanguageContext';
@@ -465,6 +467,8 @@ export function ParentModeView({ isDark }: { isDark: boolean }) {
 
                     {/* Parent ↔ teacher chat */}
                     <ParentChatEntry isDark={isDark} />
+                    <ParentFormsEntry isDark={isDark} />
+                    <ParentPtmEntry isDark={isDark} />
 
                     {/* Rule-based summary */}
                     {summary ? (
