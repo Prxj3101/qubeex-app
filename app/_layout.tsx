@@ -1,3 +1,4 @@
+import { QubeAlertHost } from '@/components/QubeAlertHost';
 import { BrandingProvider, useBranding } from '@/context/BrandingContext';
 import { InstitutionProvider } from '@/context/InstitutionContext';
 import { StudentProvider } from '@/context/StudentContext';
@@ -191,6 +192,7 @@ export default function RootLayout() {
                             <StudentProvider>
                                 <TeacherProvider>
                                     <AuthGate />
+                                    <QubeAlertHost />
                                 </TeacherProvider>
                             </StudentProvider>
                         </InstitutionProvider>

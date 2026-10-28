@@ -2,14 +2,13 @@ import api from '@/lib/api';
 import axios from 'axios';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { ArrowLeft, FileText, Image as ImageIcon, Paperclip, Send, ShieldCheck, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft, FileText, Image as ImageIcon, MessageCircle, Paperclip, Send, ShieldCheck, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-
-const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8' };
-const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
+import { DARK, EmptyState, LIGHT, SkeletonList, useGradient } from '@/components/parentUi';
 
 const POLL_MS = 15_000;
 const MAX_LEN = 1000;
@@ -75,6 +74,7 @@ function formatTime(iso: string): string {
 
 export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chatRoot, viewerIsTeacher, labels, showOutsideHoursNote, onBack, onActivity }: Props) {
     const theme = isDark ? DARK : LIGHT;
+    const gradient = useGradient(isDark);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [text, setText] = useState('');
@@ -214,15 +214,18 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
             style={{ flex: 1, backgroundColor: theme.bg }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder }]}>
+            <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.header}>
                 <TouchableOpacity onPress={onBack} hitSlop={12} style={styles.backBtn}>
-                    <ArrowLeft size={20} color={theme.text} />
+                    <ArrowLeft size={18} color="#fff" />
                 </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
-                    {subtitle ? <Text style={[styles.subtitle, { color: theme.subText }]} numberOfLines={1}>{subtitle}</Text> : null}
+                <View style={styles.headerAvatar}>
+                    <Text style={styles.headerAvatarText}>{title.replace(/^(Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+/i, '')[0]?.toUpperCase() ?? '?'}</Text>
                 </View>
-            </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                    {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
+                </View>
+            </LinearGradient>
 
             <View style={[styles.notice, { backgroundColor: accent + '14' }]}>
                 <ShieldCheck size={13} color={accent} />
@@ -230,7 +233,7 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
             </View>
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator color={accent} /></View>
+                <SkeletonList isDark={isDark} rows={5} height={46} />
             ) : (
                 <ScrollView
                     ref={scrollRef}
@@ -240,7 +243,7 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
                 >
                     {messages.length === 0 ? (
                         <View style={styles.center}>
-                            <Text style={[styles.emptyText, { color: theme.muted }]}>{labels.empty}</Text>
+                            <EmptyState icon={MessageCircle} title={labels.empty} isDark={isDark} />
                         </View>
                     ) : messages.map(m => {
                         const mine = m.fromTeacher === viewerIsTeacher;
@@ -254,7 +257,7 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
                                     style={[
                                         styles.bubble,
                                         mine
-                                            ? { backgroundColor: accent, borderBottomRightRadius: 4 }
+                                            ? { backgroundColor: accent, borderBottomRightRadius: 4, shadowColor: accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 5, elevation: 2 }
                                             : { backgroundColor: theme.card, borderColor: theme.cardBorder, borderWidth: 1, borderBottomLeftRadius: 4 },
                                     ]}
                                 >
@@ -320,7 +323,7 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
                 <TouchableOpacity
                     onPress={send}
                     disabled={sending || uploading || (!text.trim() && !pending)}
-                    style={[styles.sendBtn, { backgroundColor: accent, opacity: sending || uploading || (!text.trim() && !pending) ? 0.5 : 1 }]}
+                    style={[styles.sendBtn, { backgroundColor: accent, shadowColor: accent, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 3, opacity: sending || uploading || (!text.trim() && !pending) ? 0.5 : 1 }]}
                     accessibilityLabel={labels.send}
                 >
                     {sending ? <ActivityIndicator size="small" color="#fff" /> : <Send size={17} color="#fff" />}
@@ -331,15 +334,17 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
 }
 
 const styles = StyleSheet.create({
-    header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
-    backBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-    title: { fontSize: 15, fontFamily: 'Poppins_600SemiBold', lineHeight: 20, includeFontPadding: false },
-    subtitle: { fontSize: 11, fontFamily: 'Poppins_400Regular', lineHeight: 15, includeFontPadding: false },
+    header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+    headerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+    headerAvatarText: { color: '#fff', fontSize: 16, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
+    backBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    title: { color: '#fff', fontSize: 15, fontFamily: 'Poppins_700Bold', lineHeight: 20, includeFontPadding: false },
+    subtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'Poppins_400Regular', lineHeight: 15, includeFontPadding: false },
     notice: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7 },
     noticeText: { flex: 1, fontSize: 10.5, fontFamily: 'Poppins_400Regular', lineHeight: 14, includeFontPadding: false },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     emptyText: { fontSize: 12.5, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingHorizontal: 30 },
-    bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
+    bubble: { maxWidth: '82%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
     bubbleText: { fontSize: 13.5, fontFamily: 'Poppins_400Regular', lineHeight: 19, includeFontPadding: false },
     time: { fontSize: 9.5, fontFamily: 'Poppins_400Regular', marginTop: 2, marginHorizontal: 4, includeFontPadding: false },
     hoursNote: { fontSize: 11, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingHorizontal: 14, paddingBottom: 4, lineHeight: 15, includeFontPadding: false },

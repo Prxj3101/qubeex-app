@@ -2,13 +2,12 @@ import { ChatThreadView } from '@/components/chat/ChatThreadView';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import axios from 'axios';
-import { ChevronRight, MessageCircle, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ChevronRight, MessageCircle } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8' };
-const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
+import { DARK, EmptyState, EntryCard, ErrorState, GradientHeader, LIGHT, SkeletonList, cardShadow, shade } from '@/components/parentUi';
 
 interface Thread {
     id: string;
@@ -43,8 +42,7 @@ const LABELS = {
 
 /** Entry card for the teacher home: parent messages inbox with an unread badge. */
 export function TeacherParentChatEntry() {
-    const { isDark, accent } = useTheme();
-    const theme = isDark ? DARK : LIGHT;
+    const { isDark } = useTheme();
     const [open, setOpen] = useState(false);
     const [unread, setUnread] = useState(0);
 
@@ -63,23 +61,7 @@ export function TeacherParentChatEntry() {
 
     return (
         <>
-            <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => setOpen(true)}
-                style={[styles.entry, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-            >
-                <View style={[styles.entryIcon, { backgroundColor: accent.purple + '1A' }]}>
-                    <MessageCircle size={18} color={accent.purple} />
-                </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.entryTitle, { color: theme.text }]}>Parent messages</Text>
-                    <Text style={[styles.entrySub, { color: theme.subText }]} numberOfLines={1}>Replies from parents of your students</Text>
-                </View>
-                {unread > 0 && (
-                    <View style={styles.badge}><Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text></View>
-                )}
-                <ChevronRight size={16} color={theme.muted} />
-            </TouchableOpacity>
+            <EntryCard icon={MessageCircle} title="Parent messages" subtitle="Replies from parents of your students" badge={unread} isDark={isDark} onPress={() => setOpen(true)} />
 
             <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
                 <InboxScreen onClose={() => { setOpen(false); refreshUnread(); }} />
@@ -134,37 +116,38 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder }]}>
-                <Text style={[styles.headerTitle, { color: theme.text }]}>Parent messages</Text>
-                <TouchableOpacity onPress={onClose} hitSlop={12}><X size={20} color={theme.text} /></TouchableOpacity>
-            </View>
+            <GradientHeader
+                isDark={isDark}
+                icon={MessageCircle}
+                title="Parent messages"
+                subtitle={data?.threads.length ? `${data.threads.length} conversation${data.threads.length === 1 ? '' : 's'}` : 'Replies from parents of your students'}
+                onClose={onClose}
+            />
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator color={accent.purple} /></View>
+                <SkeletonList isDark={isDark} height={70} />
             ) : (
                 <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
-                    {loadError && (
-                        <Text style={[styles.info, { color: '#DC2626' }]}>{loadError}</Text>
-                    )}
+                    {loadError && <ErrorState text={loadError} isDark={isDark} onRetry={load} />}
                     {data && !data.settings.enabled && (
-                        <Text style={[styles.info, { color: theme.subText }]}>Parent chat is turned off by your school.</Text>
+                        <EmptyState icon={MessageCircle} title="Parent chat is turned off" text="Your school has disabled parent messaging." isDark={isDark} />
                     )}
-                    {data && data.threads.length === 0 && (
-                        <Text style={[styles.info, { color: theme.muted }]}>No parent messages yet. Parents can message you from Parent Mode.</Text>
+                    {data && data.settings.enabled && data.threads.length === 0 && (
+                        <EmptyState icon={MessageCircle} title="No parent messages yet" text="Parents can message you from Parent Mode. Their messages will show up here." isDark={isDark} />
                     )}
                     {data?.threads.map(th => (
                         <TouchableOpacity
                             key={th.id}
-                            activeOpacity={0.85}
+                            activeOpacity={0.88}
                             onPress={() => setActive(th)}
-                            style={[styles.row, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+                            style={[styles.row, cardShadow(isDark), { backgroundColor: theme.card, borderColor: th.unread > 0 ? accent.purple + '66' : theme.cardBorder }]}
                         >
-                            <View style={[styles.avatar, { backgroundColor: accent.purple }]}>
-                                <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: '#fff', includeFontPadding: false }}>
+                            <LinearGradient colors={[shade(accent.purple, 0.3), accent.purple]} style={styles.avatar}>
+                                <Text style={{ fontSize: 16, fontFamily: 'Poppins_700Bold', color: '#fff', includeFontPadding: false }}>
                                     {th.studentName[0]?.toUpperCase() ?? '?'}
                                 </Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
+                            </LinearGradient>
+                            <View style={{ flex: 1, gap: 2 }}>
                                 <Text style={[styles.rowName, { color: theme.text }]} numberOfLines={1}>Parent of {th.studentName}</Text>
                                 <Text style={[styles.rowSub, { color: theme.subText }]} numberOfLines={1}>
                                     {[th.className, th.rollNo ? `Roll ${th.rollNo}` : null].filter(Boolean).join(' · ')}
@@ -175,9 +158,9 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
                                     </Text>
                                 ) : null}
                             </View>
-                            {th.unread > 0 && (
+                            {th.unread > 0 ? (
                                 <View style={styles.badge}><Text style={styles.badgeText}>{th.unread}</Text></View>
-                            )}
+                            ) : <ChevronRight size={16} color={theme.muted} />}
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
@@ -187,18 +170,10 @@ function InboxScreen({ onClose }: { onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
-    entry: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
-    entryIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-    entryTitle: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', lineHeight: 19, includeFontPadding: false },
-    entrySub: { fontSize: 11.5, fontFamily: 'Poppins_400Regular', lineHeight: 16, includeFontPadding: false },
-    badge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#DC2626', paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+    badge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#DC2626', paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
     badgeText: { color: '#fff', fontSize: 10.5, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 1 },
-    headerTitle: { fontSize: 16, fontFamily: 'Poppins_600SemiBold', includeFontPadding: false },
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    info: { fontSize: 12.5, fontFamily: 'Poppins_400Regular', textAlign: 'center', paddingVertical: 16 },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, padding: 12 },
-    avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: 1, padding: 13 },
+    avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
     rowName: { fontSize: 13.5, fontFamily: 'Poppins_600SemiBold', lineHeight: 19, includeFontPadding: false },
     rowSub: { fontSize: 11, fontFamily: 'Poppins_400Regular', lineHeight: 15, includeFontPadding: false },
     rowLast: { fontSize: 11, fontFamily: 'Poppins_400Regular', lineHeight: 15, marginTop: 2, includeFontPadding: false },
