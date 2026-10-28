@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import api from '@/lib/api';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Calendar, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -23,7 +23,7 @@ interface Slot { id: string; name: string; order: number; startMinute: number; e
 interface Session {
     date: string; dayOfWeek: number; slotId: string; slotName: string; startMinute: number; endMinute: number;
     divisionId: string; divisionName: string; sessionTypeName: string; sessionKind: string; color: string | null;
-    subjectName: string | null; title: string | null; teacherName: string | null; roomName: string | null;
+    subjectName: string | null; title: string | null; teacherName: string | null; roomName: string | null; roomIsLab?: boolean;
     status: SessionStatus; note: string | null; originalTeacherName: string | null; originalSubjectName: string | null;
 }
 interface WeekData {
@@ -104,6 +104,7 @@ function SessionCard({ s, theme, isDark, now, next }: { s: Session; theme: LiveT
                 <Text style={[noPad, styles.slotTime, { color: theme.muted }]}>{fmtTime(s.startMinute)}</Text>
                 <Text style={[noPad, styles.slotTime, { color: theme.muted }]}>{fmtTime(s.endMinute)}</Text>
                 {now ? <Text style={[noPad, styles.nowTag, { color: accent }]}>NOW</Text> : next ? <Text style={[noPad, styles.nowTag, { color: theme.subText }]}>NEXT</Text> : null}
+                {s.roomIsLab ? <FlaskConical size={14} color={accent} style={{ marginTop: 6 }} /> : null}
             </View>
         </View>
     );
@@ -301,6 +302,7 @@ export function LiveTimetable({ role, divisionId, academicYearId, theme, isDark,
                                                 <View style={[styles.gridChip, { backgroundColor: `${accent}22`, borderLeftColor: accent, opacity: s.status === 'CANCELLED' || s.status === 'REASSIGNED' ? 0.55 : 1 }]}>
                                                     <Text numberOfLines={2} style={[noPad, { fontSize: 10.5, lineHeight: 13, fontFamily: 'Poppins_600SemiBold', color: theme.text, textDecorationLine: s.status === 'CANCELLED' ? 'line-through' : 'none' }]}>{titleOf(s)}</Text>
                                                     {s.status === 'SUBSTITUTED' || s.status === 'CHANGED' ? <Text style={[noPad, { fontSize: 8.5, lineHeight: 11, fontFamily: 'Poppins_600SemiBold', color: '#D97706' }]}>{s.status === 'CHANGED' ? 'Changed' : 'Substitute'}</Text> : null}
+                                                    {s.roomIsLab ? <FlaskConical size={10} color={accent} style={{ position: 'absolute', right: 3, bottom: 3 }} /> : null}
                                                 </View>
                                             ) : null}
                                         </View>
