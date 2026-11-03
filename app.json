@@ -2,7 +2,7 @@
   "expo": {
     "name": "QubeEx",
     "slug": "QubeEx",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon-white.png",
     "scheme": "qubeex",

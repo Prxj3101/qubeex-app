@@ -134,7 +134,26 @@ const DICT: Dict = {
     cancelBookingAction: { en: 'Cancel booking', hinglish: 'Booking cancel karein', hi: 'बुकिंग रद्द करें', mr: 'बुकिंग रद्द करा' },
     cancelBookingBody: { en: 'Free this slot for other parents?', hinglish: 'Kya yeh slot dusre parents ke liye khali karein?', hi: 'क्या यह स्लॉट दूसरे अभिभावकों के लिए खाली करें?', mr: 'ही वेळ इतर पालकांसाठी मोकळी करायची?' },
     cantCancelSoon: { en: 'Within 2 hours of the slot — contact the teacher to change it.', hinglish: 'Slot ke 2 ghante ke andar — badalne ke liye teacher se baat karein.', hi: 'स्लॉट से 2 घंटे के भीतर — बदलने के लिए शिक्षक से संपर्क करें।', mr: 'वेळेच्या २ तासांच्या आत — बदलण्यासाठी शिक्षकांशी संपर्क साधा.' },
-    bookedConfirmed: { en: 'Slot booked', hinglish: 'Slot book ho gaya', hi: 'स्लॉट बुक हो गया', mr: 'वेळ बुक झाली' },
+    bookedConfirmed: { en: 'Slot booked', hinglish: 'Slot book ho gaya', hi: 'स्लॉट बुक हो गया', mr: 'वेळ बुक झाली' },
+    // ── My Bus (live school bus) ──
+    myBus: { en: 'My Bus', hinglish: 'Meri Bus', hi: 'मेरी बस', mr: 'माझी बस' },
+    myBusSub: { en: 'See where the school bus is', hinglish: 'School bus kahan hai dekhein', hi: 'स्कूल बस कहाँ है देखें', mr: 'शाळेची बस कुठे आहे ते पहा' },
+    busLive: { en: 'Live', hinglish: 'Live', hi: 'लाइव', mr: 'लाइव्ह' },
+    busOffline: { en: 'Not live right now', hinglish: 'Abhi live nahi hai', hi: 'अभी लाइव नहीं है', mr: 'सध्या लाइव्ह नाही' },
+    busOfflineHint: { en: 'The bus location shows here while the bus is running.', hinglish: 'Bus chalti hai tab uski location yahan dikhegi.', hi: 'बस चलते समय उसकी लोकेशन यहाँ दिखेगी।', mr: 'बस सुरू असताना तिचे ठिकाण इथे दिसेल.' },
+    busMinAway: { en: '~{n} min from your stop', hinglish: 'Aapke stop se ~{n} min door', hi: 'आपके स्टॉप से ~{n} मिनट दूर', mr: 'तुमच्या थांब्यापासून ~{n} मिनिटे दूर' },
+    busAtStop: { en: 'At your stop now', hinglish: 'Abhi aapke stop pe hai', hi: 'अभी आपके स्टॉप पर है', mr: 'आत्ता तुमच्या थांब्यावर आहे' },
+    busUpdated: { en: 'Updated {t}', hinglish: 'Update: {t}', hi: 'अपडेट: {t}', mr: 'अपडेट: {t}' },
+    yourStop: { en: 'Your stop', hinglish: 'Aapka stop', hi: 'आपका स्टॉप', mr: 'तुमचा थांबा' },
+    noStopYet: { en: 'Stop not set yet. Please ask the school.', hinglish: 'Stop abhi set nahi hai. School se poochein.', hi: 'स्टॉप अभी तय नहीं है। स्कूल से पूछें।', mr: 'थांबा अजून ठरलेला नाही. शाळेला विचारा.' },
+    pickupTime: { en: 'Pickup', hinglish: 'Pickup', hi: 'पिकअप', mr: 'पिकअप' },
+    dropTime: { en: 'Drop', hinglish: 'Drop', hi: 'ड्रॉप', mr: 'ड्रॉप' },
+    plannedTimeHint: { en: 'Planned times. The live location above is exact.', hinglish: 'Ye planned time hai. Upar live location sahi hai.', hi: 'ये अनुमानित समय हैं। ऊपर की लाइव लोकेशन सही है।', mr: 'हे अंदाजे वेळ आहेत. वरचे लाइव्ह ठिकाण अचूक आहे.' },
+    morningShift: { en: 'Morning shift', hinglish: 'Morning shift', hi: 'सुबह की पाली', mr: 'सकाळची पाळी' },
+    afternoonShift: { en: 'Afternoon shift', hinglish: 'Afternoon shift', hi: 'दोपहर की पाली', mr: 'दुपारची पाळी' },
+    busDriver: { en: 'Driver', hinglish: 'Driver', hi: 'ड्राइवर', mr: 'चालक' },
+    callDriver: { en: 'Call', hinglish: 'Call karein', hi: 'कॉल करें', mr: 'कॉल करा' },
+    busLoadError: { en: 'Could not load the bus', hinglish: 'Bus load nahi hui', hi: 'बस लोड नहीं हुई', mr: 'बस लोड झाली नाही' },
 };
 
 // Hindi and Marathi both use Devanagari numerals (०-९) — this converts any

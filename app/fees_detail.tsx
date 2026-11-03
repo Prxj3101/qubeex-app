@@ -3,7 +3,8 @@ import { AcademicYearPicker } from '@/components/AcademicYearPicker';
 import { HistoricalYearBanner } from '@/components/HistoricalYearBanner';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTheme } from '@/context/ThemeContext';
-import api from '@/lib/api';
+import api from '@/lib/api';
+import { busMonthAmount } from '@/lib/busFee';
 import * as FileSystem from 'expo-file-system/legacy';
 // expo-media-library's newer native module isn't present in the Expo Go
 // client (throws "Cannot find native module 'ExpoMediaLibraryNext'" the
@@ -283,20 +284,12 @@ export function FeeFlipCard({
     const getAutoBusFee = (m: FeeMonth): { structure: FeeStructure; amount: number } | null => {
         const busField = studentFields.find(f => f.kind === 'default' && f.defaultKey === 'bus');
         if (!busField) return null;
-        if (getStudentDetailValue(`${busField.id}-enabled`) !== 'true') return null;
-        const rawMonths = getStudentDetailValue(`${busField.id}-months`);
-        let monthIds: string[] = [];
-        if (rawMonths) {
-            try {
-                const parsed = JSON.parse(rawMonths);
-                if (Array.isArray(parsed)) monthIds = parsed.filter((x): x is string => typeof x === 'string');
-            } catch { /* ignore malformed value */ }
-        }
-        if (!monthIds.includes(m.id)) return null;
+        // months locked at an old amount still count after the bus is turned off (lib/busFee)
+        const amount = busMonthAmount(extraDetailFields, busField.id, m.id);
+        if (amount == null) return null;
         const busStructure = feeStructures.find(s => s.type === 'BUS');
         if (!busStructure) return null;
         if (m.assignedStructureIds.includes(busStructure.id)) return null;
-        const amount = Number(getStudentDetailValue(`${busField.id}-fee`)) || 0;
         return { structure: busStructure, amount };
     };
 

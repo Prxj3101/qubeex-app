@@ -13,7 +13,8 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Constants from 'expo-constants';
+import Constants from 'expo-constants';
+import { ParentBusEntry } from '@/components/ParentBus';
 
 // Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
 const LIGHT_BG: Record<string, string> = {
@@ -170,6 +171,8 @@ export default function Home() {
                         pendingTasks={overview?.pendingTasks ?? 0}
                         nextEvent={overview?.nextEvent ?? null}
                     />
+                    {/* School bus: live location (only shows when the child rides one) */}
+                    <ParentBusEntry key={`bus-${focusKey}`} isDark={isDark} />
                     <ThoughtOfTheDay />
 
                     {lb.length > 0 && (

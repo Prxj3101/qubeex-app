@@ -7,7 +7,8 @@ import { useInstitution } from '@/context/InstitutionContext';
 import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Flag as FlagItem } from '@/data/flags';
-import api from '@/lib/api';
+import api from '@/lib/api';
+import { busMonthAmount } from '@/lib/busFee';
 import { unregisterCurrentPushToken } from '@/lib/pushNotifications';
 import { assignSubjectColor } from '@/lib/subjectColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -448,20 +449,12 @@ export default function Profile() {
     const getAutoBusFee = (m: FeeMonth): { structure: FeeStructure; amount: number } | null => {
         const busField = studentFields.find(f => f.kind === 'default' && f.defaultKey === 'bus');
         if (!busField) return null;
-        if (extraDetailFields?.[`${busField.id}-enabled`] !== 'true') return null;
-        const rawMonths = extraDetailFields?.[`${busField.id}-months`];
-        let monthIds: string[] = [];
-        if (rawMonths) {
-            try {
-                const parsed = JSON.parse(rawMonths);
-                if (Array.isArray(parsed)) monthIds = parsed.filter((x): x is string => typeof x === 'string');
-            } catch { /* ignore malformed value */ }
-        }
-        if (!monthIds.includes(m.id)) return null;
+        // months locked at an old amount still count after the bus is turned off (lib/busFee)
+        const amount = busMonthAmount(extraDetailFields, busField.id, m.id);
+        if (amount == null) return null;
         const busStructure = feeStructures.find(s => s.type === 'BUS');
         if (!busStructure) return null;
         if (m.assignedStructureIds.includes(busStructure.id)) return null;
-        const amount = Number(extraDetailFields?.[`${busField.id}-fee`]) || 0;
         return { structure: busStructure, amount };
     };
 
