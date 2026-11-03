@@ -16,7 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
-import { usePreventRemove } from 'expo-router/react-navigation';
+import { usePreventRemove } from 'expo-router';
 import {
     ArrowLeft, BarChart2, BookOpen, Calendar, CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
     Clock, Copy, Download, Eye, EyeOff, ExternalLink, FileText, Flag, FolderOpen, Heart, ImagePlus, MapPin, MessageSquare, Mic,
@@ -69,7 +69,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Compo
 import {
     ActivityIndicator, Alert, Animated, BackHandler, Dimensions, Image, Keyboard, LayoutChangeEvent, Linking, Modal, Platform, Pressable, RefreshControl,
     ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View,
-} from 'react-native';
+} from 'react-native';
+import type { ScrollViewInstance, TextInputInstance, ViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -461,14 +462,14 @@ function ManageEditField({ label, value, onChange, placeholder, theme, keyboardT
     // it's focused, the same way ManageReportForm's fields do — passed the
     // TextInput's own ref (module-level component, so it can't reach the
     // panel's scroll ref/keyboard-height state directly).
-    onFieldFocus?: (ref: TextInput | null) => void;
+    onFieldFocus?: (ref: TextInputInstance | null) => void;
 }) {
     // Purple border only while this specific field is focused - matches
     // web's `focus:border-primary/50` (idle fields just use the normal
     // card border, not every field lighting up purple the moment edit mode
     // is on).
     const [focused, setFocused] = useState(false);
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputInstance | null>(null);
     return (
         <View>
             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 3 }}>{label}</Text>
@@ -477,10 +478,9 @@ function ManageEditField({ label, value, onChange, placeholder, theme, keyboardT
                 value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={theme.muted}
                 keyboardType={keyboardType}
                 textAlignVertical="center"
-                includeFontPadding={false}
                 onFocus={() => { setFocused(true); onFieldFocus?.(inputRef.current); }}
                 onBlur={() => setFocused(false)}
-                style={{ height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: focused ? theme.purple : theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}
+                style={{ includeFontPadding: false, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: focused ? theme.purple : theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}
             />
         </View>
     );
@@ -503,13 +503,13 @@ function parseManagePhone(val: string) {
 }
 function ManagePhoneField({ label, value, onChange, theme, onFieldFocus }: {
     label: string; value: string; onChange: (v: string) => void; theme: Theme;
-    onFieldFocus?: (ref: TextInput | null) => void;
+    onFieldFocus?: (ref: TextInputInstance | null) => void;
 }) {
     const { code, number } = parseManagePhone(value);
     const [open, setOpen] = useState(false);
     const [focused, setFocused] = useState(false);
     const active = MANAGE_COUNTRY_CODES.find((c) => c.code === code) ?? MANAGE_COUNTRY_CODES[0];
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputInstance | null>(null);
     return (
         <View>
             <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 3 }}>{label}</Text>
@@ -526,10 +526,9 @@ function ManagePhoneField({ label, value, onChange, theme, onFieldFocus }: {
                     placeholder="98765 43210" placeholderTextColor={theme.muted}
                     keyboardType="phone-pad"
                     textAlignVertical="center"
-                    includeFontPadding={false}
                     onFocus={() => { setFocused(true); onFieldFocus?.(inputRef.current); }}
                     onBlur={() => setFocused(false)}
-                    style={{ flex: 1, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: focused ? theme.purple : theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}
+                    style={{ includeFontPadding: false, flex: 1, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: focused ? theme.purple : theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }}
                 />
             </View>
             <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -645,18 +644,18 @@ function ManageReportForm({
     // centering it in what's left, so there's no leftover gap underneath it
     // either.
     const { height: windowHeight } = useWindowDimensions();
-    const overlayRef = useRef<View>(null);
+    const overlayRef = useRef<ViewInstance | null>(null);
     const [overlayRect, setOverlayRect] = useState({ y: 0, height: windowHeight });
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const scrollYRef = useRef(0);
     const kbTopRef = useRef(0);
-    const focusedInputRef = useRef<TextInput | null>(null);
+    const focusedInputRef = useRef<TextInputInstance | null>(null);
     const [kbTop, setKbTop] = useState(0);
-    const customCategoryRef = useRef<TextInput>(null);
-    const titleRef = useRef<TextInput>(null);
-    const detailRef = useRef<TextInput>(null);
-    const subjectRef = useRef<TextInput>(null);
-    const actionTakenRef = useRef<TextInput>(null);
+    const customCategoryRef = useRef<TextInputInstance | null>(null);
+    const titleRef = useRef<TextInputInstance | null>(null);
+    const detailRef = useRef<TextInputInstance | null>(null);
+    const subjectRef = useRef<TextInputInstance | null>(null);
+    const actionTakenRef = useRef<TextInputInstance | null>(null);
 
     const measureOverlay = useCallback(() => {
         overlayRef.current?.measureInWindow((_x, y, _w, h) => {
@@ -730,7 +729,7 @@ function ManageReportForm({
         {/* Plain absolutely-positioned Pressable behind the card, not a parent
             of it — the card is a sibling drawn on top, so RN's touch hit-test
             never routes card taps through this backdrop's responder at all. */}
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={submitting ? undefined : onCancel} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={submitting ? undefined : onCancel} />
         {/* width:'100%' is load-bearing: the overlay above centers its
             children (alignItems:'center'), so without it this wrapper isn't
             stretched and its width becomes content-driven/indefinite — which
@@ -805,8 +804,8 @@ function ManageReportForm({
                     {form.category === 'Other' && (
                         <TextInput ref={customCategoryRef} onFocus={() => { focusedInputRef.current = customCategoryRef.current; scrollFieldAboveKeyboard(); }} value={form.customCategory} onChangeText={(v) => setForm((f) => ({ ...f, customCategory: v }))}
                             placeholder="Describe the category" placeholderTextColor={theme.muted}
-                            textAlignVertical="center" includeFontPadding={false}
-                            style={{ height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, marginTop: 8 }} />
+                            textAlignVertical="center"
+                            style={{ includeFontPadding: false, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, marginTop: 8 }} />
                     )}
                 </View>
 
@@ -814,8 +813,8 @@ function ManageReportForm({
                     <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 5 }}>Card Title <Text style={{ color: '#EF4444' }}>*</Text></Text>
                     <TextInput ref={titleRef} onFocus={() => { focusedInputRef.current = titleRef.current; scrollFieldAboveKeyboard(); }} value={form.title} onChangeText={(v) => setForm((f) => ({ ...f, title: v }))}
                         placeholder="Short title" placeholderTextColor={theme.muted}
-                        textAlignVertical="center" includeFontPadding={false}
-                        style={{ height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }} />
+                        textAlignVertical="center"
+                        style={{ includeFontPadding: false, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }} />
                 </View>
 
                 <View>
@@ -858,8 +857,8 @@ function ManageReportForm({
                     <Text style={{ fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: theme.muted, marginBottom: 5 }}>Subject (optional)</Text>
                     <TextInput ref={subjectRef} onFocus={() => { focusedInputRef.current = subjectRef.current; scrollFieldAboveKeyboard(); }} value={form.subject} onChangeText={(v) => setForm((f) => ({ ...f, subject: v }))}
                         placeholder="e.g. Mathematics" placeholderTextColor={theme.muted}
-                        textAlignVertical="center" includeFontPadding={false}
-                        style={{ height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }} />
+                        textAlignVertical="center"
+                        style={{ includeFontPadding: false, height: 32, paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg, fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text }} />
                 </View>
 
                 <View>
@@ -1738,11 +1737,11 @@ export default function TeacherClassDetailScreen() {
     // this panel is a plain screen-level ScrollView, not one inside a Modal,
     // so it doesn't need any of that component's Modal-specific workarounds —
     // just a ref, a tracked scroll offset, and the live keyboard height.
-    const manageDetailScrollRef = useRef<ScrollView>(null);
+    const manageDetailScrollRef = useRef<ScrollViewInstance | null>(null);
     const manageDetailScrollYRef = useRef(0);
     const manageKbHeightRef = useRef(0);
-    const manageFocusedInputRef = useRef<TextInput | null>(null);
-    const manageNameInputRef = useRef<TextInput>(null);
+    const manageFocusedInputRef = useRef<TextInputInstance | null>(null);
+    const manageNameInputRef = useRef<TextInputInstance | null>(null);
     // A field in the LAST card (Parents/Guardian) has no more content below
     // it for scrollTo to reveal — the ScrollView is already at its natural
     // end, so the scroll just clamps there and the field stays behind the
@@ -1782,7 +1781,7 @@ export default function TeacherClassDetailScreen() {
         return () => { show.remove(); hide.remove(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    const scrollManageFieldAboveKeyboard = useCallback((input: TextInput | null) => {
+    const scrollManageFieldAboveKeyboard = useCallback((input: TextInputInstance | null) => {
         if (input) manageFocusedInputRef.current = input;
         const kb = manageKbHeightRef.current;
         if (!kb || !input) return;
@@ -1822,12 +1821,12 @@ export default function TeacherClassDetailScreen() {
     // "scroll the focused field above the keyboard, padding the scroll
     // content by the shortfall if there's no more room to scroll into"
     // pattern as Manage's scrollManageFieldAboveKeyboard above.
-    const marksOverallScrollRef = useRef<ScrollView>(null);
+    const marksOverallScrollRef = useRef<ScrollViewInstance | null>(null);
     const marksOverallScrollYRef = useRef(0);
     const marksKbHeightRef = useRef(0);
-    const marksFocusedInputRef = useRef<TextInput | null>(null);
-    const marksConductInputRef = useRef<TextInput>(null);
-    const marksRemarksInputRef = useRef<TextInput>(null);
+    const marksFocusedInputRef = useRef<TextInputInstance | null>(null);
+    const marksConductInputRef = useRef<TextInputInstance | null>(null);
+    const marksRemarksInputRef = useRef<TextInputInstance | null>(null);
     const marksOverallContentHRef = useRef(0);
     const marksOverallContainerHRef = useRef(0);
     const [marksKbPad, setMarksKbPad] = useState(0);
@@ -1847,7 +1846,7 @@ export default function TeacherClassDetailScreen() {
         return () => { show.remove(); hide.remove(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    const scrollMarksFieldAboveKeyboard = useCallback((input: TextInput | null) => {
+    const scrollMarksFieldAboveKeyboard = useCallback((input: TextInputInstance | null) => {
         if (input) marksFocusedInputRef.current = input;
         const kb = marksKbHeightRef.current;
         if (!kb || !input) return;
@@ -1874,7 +1873,7 @@ export default function TeacherClassDetailScreen() {
         });
     }, []);
 
-    const mainScrollRef = useRef<ScrollView>(null);
+    const mainScrollRef = useRef<ScrollViewInstance | null>(null);
     const mainScrollYRef = useRef(0);
     const mainContentHRef = useRef(0);
     const mainContainerHRef = useRef(0);
@@ -1903,7 +1902,7 @@ export default function TeacherClassDetailScreen() {
     // right edge) shifts the row left to reveal it, and switching back to
     // "View" shifts it right back to the start, instead of leaving the pill
     // selected somewhere the user can't see.
-    const tabBarScrollRef = useRef<ScrollView>(null);
+    const tabBarScrollRef = useRef<ScrollViewInstance | null>(null);
     const animateToTab = (key: TabKey) => {
         const layout = tabLayoutsRef.current[key];
         if (!layout) return;
@@ -1925,7 +1924,7 @@ export default function TeacherClassDetailScreen() {
     // Feed/Staffroom/DMs pager (app/(teacher)/campus.tsx). Swiping and tapping
     // the pill stay in sync the same way: a swipe reports its landing tab up
     // through `setActiveTab`, and a tap scrolls the pager via the effect below.
-    const tabPagerRef = useRef<ScrollView>(null);
+    const tabPagerRef = useRef<ScrollViewInstance | null>(null);
     const [tabPagerWidth, setTabPagerWidth] = useState(SCREEN_W);
     const lastTabPagerWidthRef = useRef(0);
     const currentTabIndexRef = useRef(0);
@@ -3368,8 +3367,7 @@ export default function TeacherClassDetailScreen() {
                                         <TextInput ref={manageNameInputRef} value={manageDName()} onChangeText={(v) => setManageEditDraft((p) => ({ ...p, name: v }))}
                                             onFocus={() => scrollManageFieldAboveKeyboard(manageNameInputRef.current)}
                                             textAlignVertical="center"
-                                            includeFontPadding={false}
-                                            style={{ flex: 1, fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, borderBottomWidth: 1, borderBottomColor: theme.purple, paddingVertical: 2 }} />
+                                            style={{ includeFontPadding: false, flex: 1, fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text, borderBottomWidth: 1, borderBottomColor: theme.purple, paddingVertical: 2 }} />
                                     ) : (
                                         <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: theme.text }}>{manageSelectedStudent.user.name ?? '-'}</Text>
                                     )}
@@ -4224,7 +4222,7 @@ export default function TeacherClassDetailScreen() {
         if (isHistoricalYear) return;
         setMarksScores((prev) => ({
             ...prev,
-            [examId]: { ...prev[examId], [stId]: { score: value } },
+            [examId]: { ...prev[examId], [stId]: { score: value, isAbsent: prev[examId]?.[stId]?.isAbsent ?? false } },
         }));
         if (!marksheetId || !subjectId) return;
         const key = `${examId}:${stId}`;
@@ -6215,7 +6213,7 @@ export default function TeacherClassDetailScreen() {
                                                 style={{ flexShrink: 1, fontSize: 12.5, lineHeight: 15, fontFamily: 'Poppins_700Bold', color: theme.text, includeFontPadding: false, marginTop: Platform.OS === 'ios' ? 3 : 0 }}
                                                 numberOfLines={1}
                                             >
-                                                {division.name} Attendance Sheet
+                                                {division?.name ?? ''} Attendance Sheet
                                             </Text>
                                         </View>
                                         <Text style={{ fontSize: 10, lineHeight: 12, fontFamily: 'Poppins_400Regular', color: theme.muted, marginLeft: 19, marginTop: 2, includeFontPadding: false }}>
@@ -6288,7 +6286,7 @@ export default function TeacherClassDetailScreen() {
                                                             onPress={() => setAttSelectedExportMonths((prev) => prev.includes(m.key) ? prev.filter((k) => k !== m.key) : [...prev, m.key])}
                                                             style={{
                                                                 width: '30%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 10, borderWidth: 1.5,
-                                                                borderColor: checked ? theme.purple : theme.cardBorder, backgroundColor: checked ? theme.purpleLight : 'transparent',
+                                                                borderColor: checked ? theme.purple : theme.cardBorder, backgroundColor: checked ? (theme as { purpleLight?: string }).purpleLight : 'transparent',
                                                             }}>
                                                             <View style={{ width: 14, height: 14, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', borderColor: checked ? theme.purple : theme.subText, backgroundColor: checked ? theme.purple : 'transparent' }}>
                                                                 {checked && <Text style={{ fontSize: 8, fontFamily: 'Poppins_800ExtraBold', color: '#fff' }}>✓</Text>}
@@ -6533,8 +6531,7 @@ export default function TeacherClassDetailScreen() {
                                 onChangeText={(v) => { setAttGlobalRemark(v); setAttDateRemarks((p) => ({ ...p, [attCurrentDk]: v })); }}
                                 placeholder="Remark for this day..." placeholderTextColor={theme.muted}
                                 textAlignVertical="center"
-                                includeFontPadding={false}
-                                style={{ flex: 1, height: '100%', fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, paddingVertical: 0 }}
+                                style={{ includeFontPadding: false, flex: 1, height: '100%', fontSize: 12, fontFamily: 'Poppins_400Regular', color: theme.text, paddingVertical: 0 }}
                             />
                         </View>
 
@@ -6584,8 +6581,7 @@ export default function TeacherClassDetailScreen() {
                                                         <View style={{ paddingHorizontal: 12, paddingBottom: 9 }}>
                                                             <TextInput value={rec.remark} onChangeText={(v) => attSetRemark(student.id, v)}
                                                                 placeholder={`Remark for ${student.name}...`} placeholderTextColor={theme.muted}
-                                                                includeFontPadding={false}
-                                                                style={{
+                                                                style={{ includeFontPadding: false,
                                                                     paddingHorizontal: 10,
                                                                     paddingVertical: Platform.OS === 'android' ? 5 : 7,
                                                                     borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, backgroundColor: theme.bg,

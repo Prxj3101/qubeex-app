@@ -7,7 +7,8 @@ import { ArrowLeft, FileText, Image as ImageIcon, MessageCircle, Paperclip, Send
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
-} from 'react-native';
+} from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { DARK, EmptyState, LIGHT, SkeletonList, useGradient } from '@/components/parentUi';
 
 const POLL_MS = 15_000;
@@ -83,7 +84,7 @@ export function ChatThreadView({ isDark, accent, title, subtitle, basePath, chat
     const [outsideHoursReply, setOutsideHoursReply] = useState(false);
     const [pending, setPending] = useState<ChatAttachment | null>(null);
     const [uploading, setUploading] = useState(false);
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const lastCreatedAt = useRef<string | null>(null);
 
     const markRead = useCallback(async () => {

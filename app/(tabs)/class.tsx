@@ -155,7 +155,7 @@ function FileViewerModal({ file, onClose }: { file: ViewerFile | null; onClose: 
     if (!file) return null;
     return (
         <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            <StatusBar barStyle="light-content" />
             <View style={{ flex: 1, backgroundColor: '#000000' }}>
                 {/* Header */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2A2A2A' }}>

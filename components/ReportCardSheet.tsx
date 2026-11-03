@@ -6,6 +6,7 @@ import { n, t } from '@/lib/parentModeI18n';
 import { colorForSubject } from '@/lib/subjectColors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 
 // Exact copy of the "Report Card" section from app/report_card.tsx, lifted into
 // its own self-contained (self-fetching) component so it can be dropped
@@ -173,7 +174,7 @@ export function ReportCardSheet({ isDark, data: providedData }: ReportCardSheetP
     }, [data]);
 
     // For syncing horizontal scroll between header and body in offline tab
-    const offlineBodyScrollRef = useRef<ScrollView>(null);
+    const offlineBodyScrollRef = useRef<ScrollViewInstance | null>(null);
 
     if (loading) {
         return (

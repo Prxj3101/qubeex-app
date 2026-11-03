@@ -134,7 +134,8 @@ const DICT: Dict = {
     cancelBookingAction: { en: 'Cancel booking', hinglish: 'Booking cancel karein', hi: 'बुकिंग रद्द करें', mr: 'बुकिंग रद्द करा' },
     cancelBookingBody: { en: 'Free this slot for other parents?', hinglish: 'Kya yeh slot dusre parents ke liye khali karein?', hi: 'क्या यह स्लॉट दूसरे अभिभावकों के लिए खाली करें?', mr: 'ही वेळ इतर पालकांसाठी मोकळी करायची?' },
     cantCancelSoon: { en: 'Within 2 hours of the slot — contact the teacher to change it.', hinglish: 'Slot ke 2 ghante ke andar — badalne ke liye teacher se baat karein.', hi: 'स्लॉट से 2 घंटे के भीतर — बदलने के लिए शिक्षक से संपर्क करें।', mr: 'वेळेच्या २ तासांच्या आत — बदलण्यासाठी शिक्षकांशी संपर्क साधा.' },
-    bookedConfirmed: { en: 'Slot booked', hinglish: 'Slot book ho gaya', hi: 'स्लॉट बुक हो गया', mr: 'वेळ बुक झाली' },
+    bookedConfirmed: { en: 'Slot booked', hinglish: 'Slot book ho gaya', hi: 'स्लॉट बुक हो गया', mr: 'वेळ बुक झाली' },
+
     // ── My Bus (live school bus) ──
     myBus: { en: 'My Bus', hinglish: 'Meri Bus', hi: 'मेरी बस', mr: 'माझी बस' },
     myBusSub: { en: 'See where the school bus is', hinglish: 'School bus kahan hai dekhein', hi: 'स्कूल बस कहाँ है देखें', mr: 'शाळेची बस कुठे आहे ते पहा' },

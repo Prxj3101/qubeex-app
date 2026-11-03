@@ -1,14 +1,17 @@
 import { useParentModeLanguage } from '@/context/ParentModeLanguageContext';
+import { useStudent } from '@/context/StudentContext';
 import { useTheme } from '@/context/ThemeContext';
 import api from '@/lib/api';
 import { n, t, type ParentLang } from '@/lib/parentModeI18n';
-import { Bus, Clock, MapPin, Phone } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Bus, Clock, LocateFixed, Phone, Radio, RefreshCw, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { AnimatedRegion, Marker, MarkerAnimated, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated, Easing, Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { AnimatedRegion, Marker, MarkerAnimated, PROVIDER_GOOGLE } from 'react-native-maps';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Ellipse, G, Path, Rect, Circle as SvgCircle } from 'react-native-svg';
-import { DARK, EntryCard, ErrorState, GOOD, GradientHeader, LIGHT, cardShadow } from './parentUi';
+import { DARK, EntryCard, ErrorState, GOOD, LIGHT, cardShadow, useGradient } from './parentUi';
 
 // "My Bus": the child's school bus live on a map, how far it is from their
 // stop, the planned pickup / drop times for their shift and the driver.
@@ -17,7 +20,7 @@ import { DARK, EntryCard, ErrorState, GOOD, GradientHeader, LIGHT, cardShadow } 
 // module, so it needs an app build (app version 1.1.0+), not just an OTA update.
 
 interface BusStop { id: string; name: string; lat: number; lng: number; pickupAt: string | null; dropAt: string | null }
-interface MyBus {
+export interface MyBus {
     bus: {
         name: string; plateNumber: string; driverName: string; driverPhone: string;
         route: { name: string; color: string; stops: BusStop[] } | null;
@@ -33,6 +36,8 @@ interface MyBus {
 }
 
 const POLL_MS = 10_000;
+// MarkerAnimated's types don't list `children` (it renders them fine); type it like Marker.
+const AnimatedMarker = MarkerAnimated as unknown as typeof Marker;
 
 /** "06:41" -> "6:41 am" */
 function clock(hhmm: string | null | undefined): string {
@@ -51,7 +56,7 @@ function ago(iso: string | undefined, lang: ParentLang): string {
     return n(`${m} min`, lang);
 }
 
-function etaLine(d: MyBus, lang: ParentLang): string {
+export function etaLine(d: MyBus, lang: ParentLang): string {
     if (!d.online) return t('busOffline', lang);
     if (d.etaMinutes == null) return t('busLive', lang);
     if (d.etaMinutes <= 1) return t('busAtStop', lang);
@@ -91,7 +96,9 @@ export function ParentBusEntry({ isDark }: { isDark: boolean }) {
     );
 }
 
-function MyBusScreen({ isDark, initial, onClose }: { isDark: boolean; initial: MyBus; onClose: () => void }) {
+/** `inline`: shown inside the home screen below the app's top bar (no safe-area padding needed there). */
+/** `onData`: gets every fresh reading, so the home bus button stays in sync while this is open. */
+export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDark: boolean; initial: MyBus; onClose: () => void; inline?: boolean; onData?: (d: MyBus) => void }) {
     const { lang } = useParentModeLanguage();
     const { accent } = useTheme();
     const theme = isDark ? DARK : LIGHT;
@@ -101,7 +108,7 @@ function MyBusScreen({ isDark, initial, onClose }: { isDark: boolean; initial: M
     const load = useCallback(async () => {
         try {
             const d = (await api.get<{ data: MyBus | null }>('/student/transport')).data.data;
-            if (d) { setData(d); setError(null); }
+            if (d) { setData(d); setError(null); onData?.(d); }
         } catch { setError(t('busLoadError', lang)); }
     }, [lang]);
 
@@ -112,44 +119,37 @@ function MyBusScreen({ isDark, initial, onClose }: { isDark: boolean; initial: M
     }, [load]);
 
     const color = data.bus.route?.color ?? accent.purple;
+    const gradient = useGradient(isDark);
     const statusColor = data.online ? GOOD : theme.muted;
     const shiftLabel = data.shift === 'AFTERNOON' ? `☀️ ${t('afternoonShift', lang)}` : `🌅 ${t('morningShift', lang)}`;
 
-    return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
-            <GradientHeader
-                isDark={isDark}
-                icon={Bus}
-                title={`${t('myBus', lang)} · ${data.bus.name}`}
-                subtitle={[data.bus.plateNumber, data.bus.route?.name].filter(Boolean).join(' · ')}
-                onClose={onClose}
-            />
+    const body = (
+        <>
+            <BusHero data={data} lang={lang} fallback={gradient} onClose={onClose} />
 
-            <ScrollView contentContainerStyle={{ padding: 14, gap: 12 }} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={{ padding: 14, paddingTop: 12, gap: 12 }} showsVerticalScrollIndicator={false}>
                 {error && <ErrorState text={error} isDark={isDark} onRetry={load} />}
 
-                {/* Live status */}
-                <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={[s.dot, { backgroundColor: statusColor }]} />
-                        <Text style={[s.statusTitle, { color: theme.text }]} numberOfLines={2}>{etaLine(data, lang)}</Text>
+                {/* Live map card: status strip on top, map, "updated" line below */}
+                <View style={[s.mapCard, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                    <View style={s.mapTop}>
+                        <StatusDot online={data.online} color={statusColor} />
+                        <Text style={[s.statusTitle, { color: theme.text, flex: 0, flexShrink: 1, textAlign: 'center' }]} numberOfLines={2}>{etaLine(data, lang)}</Text>
                     </View>
-                    <Text style={[s.small, { color: theme.subText, marginTop: 4 }]}>
+                    <View style={s.mapArea}>
+                        <BusMap data={data} onRefresh={load} />
+                    </View>
+                    <Text style={[s.mapBottom, { color: theme.muted }]} numberOfLines={1}>
                         {data.online && data.position
                             ? t('busUpdated', lang).replace('{t}', ago(data.position.receivedAt, lang))
                             : t('busOfflineHint', lang)}
                     </Text>
                 </View>
 
-                {/* Map */}
-                <View style={[s.mapBox, cardShadow(isDark), { borderColor: theme.cardBorder, backgroundColor: theme.card }]}>
-                    <BusMap data={data} isDark={isDark} />
-                </View>
-
                 {/* Child's stop + planned times */}
                 <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={[s.iconTile, { backgroundColor: color + '1F' }]}><MapPin size={16} color={color} /></View>
+                        <Image source={STOP_3D} style={{ width: 56, height: 56, marginVertical: -8 }} />
                         <View style={{ flex: 1 }}>
                             <Text style={[s.label, { color: theme.subText }]}>{t('yourStop', lang)}</Text>
                             <Text style={[s.value, { color: theme.text }]} numberOfLines={2}>{data.stop?.name ?? t('noStopYet', lang)}</Text>
@@ -170,6 +170,7 @@ function MyBusScreen({ isDark, initial, onClose }: { isDark: boolean; initial: M
                 {/* Driver */}
                 {(!!data.bus.driverName || !!data.bus.driverPhone) && (
                     <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+                        <Text style={s.driverEmoji}>🧑‍✈️</Text>
                         <View style={{ flex: 1 }}>
                             <Text style={[s.label, { color: theme.subText }]}>{t('busDriver', lang)}</Text>
                             <Text style={[s.value, { color: theme.text }]} numberOfLines={1}>{data.bus.driverName || data.bus.driverPhone}</Text>
@@ -187,7 +188,126 @@ function MyBusScreen({ isDark, initial, onClose }: { isDark: boolean; initial: M
                     </View>
                 )}
             </ScrollView>
-        </SafeAreaView>
+        </>
+    );
+    if (inline) return <View style={{ flex: 1, backgroundColor: theme.bg }}>{body}</View>;
+    return (
+        // A Modal is its own native window on iOS: it needs its own provider,
+        // otherwise the safe-area insets read as 0 and the header goes under the notch.
+        <SafeAreaProvider>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>{body}</SafeAreaView>
+        </SafeAreaProvider>
+    );
+}
+
+// ── Header: the 3D bus on the left, title + number plate on the right ──
+
+function BusHero({ data, lang, fallback, onClose }: { data: MyBus; lang: ParentLang; fallback: [string, string]; onClose: () => void }) {
+    return (
+        // one row inside the header: [bus] [text] [close]
+        <LinearGradient colors={fallback} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={hero.box}>
+                <Image source={BUS_3D} style={hero.bus} />
+                <View style={hero.text}>
+                    <Text style={hero.kicker} numberOfLines={1}>{t('myBus', lang)}{data.bus.route?.name ? ` · ${data.bus.route.name}` : ''}</Text>
+                    <Text style={hero.title} numberOfLines={1}>{data.bus.name}</Text>
+                    {!!data.bus.plateNumber && <NumberPlate plate={data.bus.plateNumber} />}
+                </View>
+                <TouchableOpacity onPress={onClose} hitSlop={12} style={hero.close}>
+                    <X size={18} color="#fff" />
+                </TouchableOpacity>
+                {/* live tag, bottom-right corner */}
+                <View style={hero.liveSpot}><LiveTag online={data.online} label={data.online ? t('busLive', lang) : 'Offline'} /></View>
+        </LinearGradient>
+    );
+}
+
+/** Status dot: solid centre with a soft halo; while live a ring keeps pulsing out of it. */
+function StatusDot({ online, color }: { online: boolean; color: string }) {
+    const p = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        p.setValue(0);
+        if (!online) return;
+        const a = Animated.loop(Animated.timing(p, { toValue: 1, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+        a.start();
+        return () => a.stop();
+    }, [online, p]);
+    return (
+        <View style={s.sDotBox}>
+            {online && (
+                <Animated.View style={[s.sDotRing, {
+                    backgroundColor: color,
+                    opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
+                    transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
+                }]} />
+            )}
+            <View style={[s.sDotHalo, { backgroundColor: color + '33' }]}>
+                <View style={[s.sDotCore, { backgroundColor: color }]} />
+            </View>
+        </View>
+    );
+}
+
+/** Red pulsing "Live" tag (same radio icon as the admin live map) (grey "Offline" when the bus isn't running). */
+function LiveTag({ online, label }: { online: boolean; label: string }) {
+    const p = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        p.setValue(0);
+        if (!online) return;
+        const a = Animated.loop(Animated.timing(p, { toValue: 1, duration: 1300, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+        a.start();
+        return () => a.stop();
+    }, [online, p]);
+    const dot = online ? '#EF4444' : '#9CA3AF';
+    return (
+        <View style={hero.pill}>
+            <View style={hero.dotBox}>
+                {online && (
+                    <Animated.View style={[hero.dotRing, {
+                        backgroundColor: dot,
+                        opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
+                        transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.9] }) }],
+                    }]} />
+                )}
+                <Radio size={13} color={dot} strokeWidth={2.4} />
+            </View>
+            <Text style={hero.pillText}>{label}</Text>
+        </View>
+    );
+}
+
+/** Indian-style number plate: white plate, black bold letters, blue "IND" strip. */
+function NumberPlate({ plate }: { plate: string }) {
+    return (
+        <View style={hero.plate}>
+            <View style={hero.plateInd}><Text style={hero.plateIndText}>IND</Text></View>
+            <Text style={hero.plateText} numberOfLines={1}>{plate.toUpperCase()}</Text>
+        </View>
+    );
+}
+
+/** Round refresh button: spins while it fetches (at least one full turn, so the tap feels acknowledged). */
+function RefreshButton({ onRefresh, color, bg, size = 32 }: { onRefresh: () => Promise<void>; color: string; bg: string; size?: number }) {
+    const spin = useRef(new Animated.Value(0)).current;
+    const busy = useRef(false);
+    const press = async () => {
+        if (busy.current) return;
+        busy.current = true;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        spin.setValue(0);
+        const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 650, easing: Easing.linear, useNativeDriver: true }));
+        loop.start();
+        await Promise.all([onRefresh(), new Promise(r => setTimeout(r, 650))]);
+        loop.stop();
+        Animated.timing(spin, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+        busy.current = false;
+    };
+    const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+    return (
+        <TouchableOpacity onPress={press} activeOpacity={0.7} hitSlop={8} style={[s.refresh, { backgroundColor: bg, width: size, height: size, borderRadius: size / 2 }]}>
+            <Animated.View style={{ transform: [{ rotate }] }}>
+                <RefreshCw size={size >= 38 ? 18 : 15} color={color} />
+            </Animated.View>
+        </TouchableOpacity>
     );
 }
 
@@ -208,62 +328,103 @@ function TimeBox({ label, value, color, theme }: { label: string; value: string;
 type LatLng = { latitude: number; longitude: number };
 const ll = (p: { lat: number; lng: number }): LatLng => ({ latitude: p.lat, longitude: p.lng });
 
-function BusMap({ data, isDark }: { data: MyBus; isDark: boolean }) {
+const STOP_3D = require('@/assets/images/transport/bus-stop-3d.png');
+const BUS_3D = require('@/assets/images/transport/school-bus-3d.png');
+const SCHOOL_PIN = require('@/assets/images/transport/school-location-3d.png');
+const ZOOM = 0.012; // ~1.3 km across: close enough to see the streets around the bus
+
+function BusMap({ data, onRefresh }: { data: MyBus; onRefresh: () => Promise<void> }) {
     const map = useRef<MapView>(null);
     const fitted = useRef(false);
     const color = data.bus.route?.color ?? '#DA7756';
     const stops = data.bus.route?.stops ?? [];
     const school = data.school;
     const bus = data.position;
-    // whole round trip: school -> stops -> school
-    const line: LatLng[] = [
-        ...(school && stops.length ? [ll(school)] : []),
-        ...stops.map(ll),
-        ...(school && stops.length ? [ll(school)] : []),
-    ];
 
-    // first time: frame the bus and the child's stop (else the route / school)
+    // first time: zoom in close on the bus (else the child's stop, else school).
+    // Only once the map is ready - a move before that is ignored on Android,
+    // which left the map stuck at the far-out starting view.
+    const ready = useRef(false);
     const fit = useCallback(() => {
-        if (fitted.current || !map.current) return;
-        const pts = [bus && ll(bus), data.stop && ll(data.stop)].filter(Boolean) as LatLng[];
-        const all = pts.length > 1 ? pts : line.length ? line : school ? [ll(school)] : [];
-        if (!all.length) return;
+        if (fitted.current || !ready.current || !map.current) return;
+        const focus = bus ? ll(bus) : data.stop ? ll(data.stop) : school ? ll(school) : null;
+        if (!focus) return;
         fitted.current = true;
-        if (all.length === 1) map.current.animateToRegion({ ...all[0], latitudeDelta: 0.01, longitudeDelta: 0.01 }, 0);
-        else map.current.fitToCoordinates(all, { edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: false });
+        map.current.animateToRegion({ ...focus, latitudeDelta: ZOOM, longitudeDelta: ZOOM }, 0);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bus?.lat, bus?.lng, data.stop?.id, line.length, school?.lat]);
+    }, [bus?.lat, bus?.lng, data.stop?.id, school?.lat]);
     useEffect(() => { fit(); }, [fit]);
 
+    // recenter: back to the bus (else the child's stop, else school)
+    const recenter = () => {
+        const focus = bus ? ll(bus) : data.stop ? ll(data.stop) : school ? ll(school) : null;
+        if (focus) map.current?.animateToRegion({ ...focus, latitudeDelta: ZOOM, longitudeDelta: ZOOM }, 450);
+    };
+
     return (
+        <View style={StyleSheet.absoluteFill}>
         <MapView
             ref={map}
             provider={PROVIDER_GOOGLE}
             style={StyleSheet.absoluteFill}
-            customMapStyle={isDark ? DARK_MAP : []}
-            onMapReady={fit}
+            // always the normal light map, even when the app is in dark mode
+            userInterfaceStyle="light"
+            onMapReady={() => { ready.current = true; fit(); }}
             toolbarEnabled={false}
             showsBuildings={false}
-            initialRegion={{ ...(school ? ll(school) : { latitude: 19.076, longitude: 72.8777 }), latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+            initialRegion={{ ...(school ? ll(school) : { latitude: 19.076, longitude: 72.8777 }), latitudeDelta: ZOOM, longitudeDelta: ZOOM }}
         >
-            {line.length > 1 && <Polyline coordinates={line} strokeColor={color + 'AA'} strokeWidth={4} lineDashPattern={[10, 8]} />}
             {stops.map(st => {
                 const mine = st.id === data.stop?.id;
+                if (mine) return <MyStopMarker key={st.id} stop={st} color={color} />;
                 return (
-                    <Marker key={st.id} coordinate={ll(st)} title={st.name} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} zIndex={mine ? 5 : 1}>
-                        {mine
-                            ? <View style={[m.myStop, { backgroundColor: color }]}><Text style={m.emoji}>🏠</Text></View>
-                            : <View style={[m.stop, { backgroundColor: color }]} />}
+                    <Marker key={st.id} coordinate={ll(st)} title={st.name} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} zIndex={1}>
+                        <View style={[m.stop, { backgroundColor: color }]} />
                     </Marker>
                 );
             })}
             {school && (
-                <Marker coordinate={ll(school)} title={school.name} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} zIndex={4}>
-                    <View style={m.school}><Text style={m.emoji}>🏫</Text></View>
-                </Marker>
+                <SchoolMarker school={school} />
             )}
             {bus && <BusMarker lat={bus.lat} lng={bus.lng} course={bus.course} online={data.online} />}
         </MapView>
+            {/* refresh sits under recenter, same white round style */}
+            <View style={m.refreshSpot}><RefreshButton onRefresh={onRefresh} color="#1F2937" bg="#FFFFFF" size={38} /></View>
+            <TouchableOpacity activeOpacity={0.8} onPress={recenter} style={m.recenter} hitSlop={8}>
+                <LocateFixed size={18} color="#1F2937" />
+            </TouchableOpacity>
+        </View>
+    );
+}
+
+/** Same 3D school pin as the admin maps; the pin's tip sits on the school. */
+function SchoolMarker({ school }: { school: { name: string; lat: number; lng: number } }) {
+    // Android snapshots custom markers: keep redrawing until the picture has loaded, then stop
+    const [loaded, setLoaded] = useState(false);
+    return (
+        <Marker coordinate={ll(school)} title={school.name} anchor={{ x: 0.5, y: 0.98 }} tracksViewChanges={!loaded} zIndex={4}>
+            <Image source={SCHOOL_PIN} style={m.schoolPin} onLoad={() => setLoaded(true)} />
+        </Marker>
+    );
+}
+
+/** The child's own stop: a map pin with their photo (🏠 when there's no photo). */
+function MyStopMarker({ stop, color }: { stop: BusStop; color: string }) {
+    const { photo } = useStudent();
+    const [loaded, setLoaded] = useState(!photo);
+    useEffect(() => { setLoaded(!photo); }, [photo]);
+    return (
+        <Marker coordinate={ll(stop)} title={stop.name} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={!loaded} zIndex={5}>
+            <View style={m.pinWrap}>
+                <View style={[m.pinHead, { backgroundColor: color }]}>
+                    {photo
+                        ? <Image source={{ uri: photo }} style={m.pinPhoto} onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} />
+                        : <Text style={m.emoji}>🏠</Text>}
+                </View>
+                <View style={[m.pinTail, { borderTopColor: color }]} />
+                {!!photo && <View style={[m.pinBadge, { backgroundColor: color }]}><Text style={m.badgeEmoji}>🏠</Text></View>}
+            </View>
+        </Marker>
     );
 }
 
@@ -291,7 +452,7 @@ function BusMarker({ lat, lng, course, online }: { lat: number; lng: number; cou
         return () => clearTimeout(id);
     }, [c, online]);
     return (
-        <MarkerAnimated coordinate={pos as never} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={track} zIndex={10}>
+        <AnimatedMarker coordinate={pos as never} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={track} zIndex={10}>
             <View style={{ width: 70, height: 70, alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ transform: [{ rotate }, { scaleX: flip }], opacity: online ? 1 : 0.6 }}>
                     <Svg width={56} height={34} viewBox="0 0 62 38">
@@ -311,41 +472,71 @@ function BusMarker({ lat, lng, course, online }: { lat: number; lng: number; cou
                     </Svg>
                 </View>
             </View>
-        </MarkerAnimated>
+        </AnimatedMarker>
     );
 }
 
-// Google's standard dark map style (muted roads, dark land).
-const DARK_MAP = [
-    { elementType: 'geometry', stylers: [{ color: '#212121' }] },
-    { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#212121' }] },
-    { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#757575' }] },
-    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#181818' }] },
-    { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#2c2c2c' }] },
-    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-    { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#373737' }] },
-    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3c3c3c' }] },
-    { featureType: 'transit', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
-    { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
-];
+const hero = StyleSheet.create({
+    box: {
+        flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, paddingRight: 12, paddingVertical: 10,
+        borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+    },
+    text: { flex: 1, gap: 2 },
+    kicker: { color: 'rgba(255,255,255,0.8)', fontSize: 11.5, lineHeight: 16, fontFamily: 'Poppins_600SemiBold', includeFontPadding: false },
+    title: { color: '#fff', fontSize: 22, lineHeight: 28, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
+    bus: { width: 84, height: 84, marginVertical: -4, marginRight: 10 },
+    close: { alignSelf: 'flex-start', width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    liveSpot: { position: 'absolute', right: 12, bottom: 10 },
+    dotBox: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+    dotRing: { position: 'absolute', width: 14, height: 14, borderRadius: 7 },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.25)' },
+    pillText: { color: '#fff', fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins_600SemiBold', includeFontPadding: false },
+    plate: {
+        flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'stretch', marginTop: 4, borderRadius: 5, borderWidth: 1.5, borderColor: '#111',
+        backgroundColor: '#FFFFFF', overflow: 'hidden',
+    },
+    plateInd: { backgroundColor: '#1D4ED8', paddingHorizontal: 3, justifyContent: 'center' },
+    plateIndText: { color: '#fff', fontSize: 7, lineHeight: 9, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
+    plateText: { color: '#111', fontSize: 13, lineHeight: 17, fontFamily: 'Poppins_700Bold', letterSpacing: 1.2, paddingHorizontal: 7, paddingVertical: 3, includeFontPadding: false },
+});
 
 const m = StyleSheet.create({
     stop: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff' },
-    myStop: { width: 32, height: 32, borderRadius: 16, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-    school: { width: 34, height: 34, borderRadius: 10, borderWidth: 2, borderColor: '#fff', backgroundColor: '#26294A', alignItems: 'center', justifyContent: 'center' },
-    emoji: { fontSize: 15, lineHeight: 18, includeFontPadding: false, textAlignVertical: 'center' },
+    refreshSpot: {
+        position: 'absolute', right: 10, top: 56, borderRadius: 19,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
+    },
+    recenter: {
+        position: 'absolute', right: 10, top: 10, width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFFFFF',
+        alignItems: 'center', justifyContent: 'center',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
+    },
+    schoolPin: { width: 52, height: 52 },
+    pinWrap: { width: 50, height: 58, alignItems: 'center' },
+    pinHead: { width: 46, height: 46, borderRadius: 23, padding: 3, alignItems: 'center', justifyContent: 'center' },
+    pinPhoto: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#fff', backgroundColor: '#E5E7EB' },
+    pinTail: { width: 0, height: 0, marginTop: -2, borderLeftWidth: 7, borderRightWidth: 7, borderTopWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
+    pinBadge: { position: 'absolute', right: 0, top: 28, width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+    badgeEmoji: { fontSize: 9, lineHeight: 11, includeFontPadding: false, textAlignVertical: 'center' },
+    emoji: { fontSize: 18, lineHeight: 22, includeFontPadding: false, textAlignVertical: 'center' },
 });
 
 const s = StyleSheet.create({
     card: { borderRadius: 16, borderWidth: 1, padding: 14 },
+    refresh: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    sDotBox: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
+    sDotRing: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
+    sDotHalo: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    sDotCore: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: '#FFFFFF' },
     dot: { width: 10, height: 10, borderRadius: 5 },
     statusTitle: { flex: 1, fontSize: 16, lineHeight: 22, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
     small: { fontSize: 12, lineHeight: 17, fontFamily: 'Poppins_400Regular', includeFontPadding: false },
-    mapBox: { height: 320, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+    mapCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+    mapTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
+    mapArea: { height: 350 },
+    mapBottom: { paddingHorizontal: 14, paddingVertical: 5, textAlign: 'center', fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins_400Regular', includeFontPadding: false },
+    driverEmoji: { fontSize: 30, lineHeight: 36, includeFontPadding: false, textAlignVertical: 'center' },
+    tileEmoji: { fontSize: 17, lineHeight: 21, includeFontPadding: false, textAlignVertical: 'center' },
     iconTile: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
     label: { fontSize: 11, lineHeight: 15, fontFamily: 'Poppins_600SemiBold', includeFontPadding: false },
     value: { fontSize: 14, lineHeight: 20, fontFamily: 'Poppins_700Bold', includeFontPadding: false },

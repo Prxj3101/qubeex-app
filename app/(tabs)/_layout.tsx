@@ -79,7 +79,6 @@ function TabLayout() {
             fontSize: 10,
           },
         }}
-        initialRouteName="index"
       >
         <Tabs.Screen name="index" options={{
           title: 'Home',
@@ -87,7 +86,7 @@ function TabLayout() {
         }} />
         <Tabs.Screen name="feed" options={{
           title: 'Feed',
-          tabBarIcon: ({ color }) => <FeedTabIcon color={color} />,
+          tabBarIcon: ({ color }) => <FeedTabIcon color={color as string} />,
         }} />
         <Tabs.Screen name="tasks" options={{
           title: 'Tasks',
@@ -99,7 +98,7 @@ function TabLayout() {
         }} />
         <Tabs.Screen name="profile" options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <ProfileTabIcon color={color} size={22} />,
+          tabBarIcon: ({ color }) => <ProfileTabIcon color={color as string} size={22} />,
         }} />
       </Tabs>
     </>

@@ -24,6 +24,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import type { ScrollViewInstance, ViewInstance } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 // Same cell-sizing formula as the student app's MiniCalendar — card padding
@@ -394,9 +395,9 @@ export const CampusFeed = forwardRef<CampusFeedHandle>(function CampusFeed(_prop
     const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const fetchedRef = useRef(false);
 
-    const mainScrollRef = useRef<ScrollView>(null);
+    const mainScrollRef = useRef<ScrollViewInstance | null>(null);
     const mainScrollYRef = useRef(0);
-    const composerRef = useRef<View>(null);
+    const composerRef = useRef<ViewInstance | null>(null);
 
     // WhatsApp-style composer lift.
     //
@@ -477,7 +478,7 @@ export const CampusFeed = forwardRef<CampusFeedHandle>(function CampusFeed(_prop
     // Scroll-to-top button inside the posts area — exact copy of the student
     // app's feed panel behavior.
     const [showScrollTop, setShowScrollTop] = useState(false);
-    const postsScrollRef = useRef<ScrollView>(null);
+    const postsScrollRef = useRef<ScrollViewInstance | null>(null);
     // Tracks where the CURRENT gesture's finger first went down: inside the
     // posts list, or somewhere else on the page. Only finger-down matters —
     // never touch-end and never the scrolls' own events, because when the

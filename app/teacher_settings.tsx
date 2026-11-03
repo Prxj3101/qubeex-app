@@ -792,7 +792,7 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     iconSwatchOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0,0,0,0.25)',
         alignItems: 'center',
         justifyContent: 'center',

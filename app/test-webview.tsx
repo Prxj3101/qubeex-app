@@ -1,13 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDeviceClientId } from '@/lib/deviceClientId';
-import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, Stack, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Alert, BackHandler, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-// Only used for its action-object type; not constructed directly here.
-import type { NavigationAction } from '@react-navigation/native';
 
 // Apex domain (qubeex.in, no www) redirects to www.qubeex.in but drops the
 // path/query in the process (a hosting/DNS-level "forward to www" rule, not
@@ -20,37 +18,22 @@ export default function TestWebViewScreen() {
     const { testId, attemptId } = useLocalSearchParams<{ testId: string; attemptId?: string }>();
     const [token, setToken] = useState<string | null>(null);
     const [deviceClientId, setDeviceClientId] = useState<string | null>(null);
-    const webViewRef = useRef<WebView>(null);
+    const webViewRef = useRef<ComponentRef<typeof WebView>>(null);
     const canGoBackRef = useRef(false);
-    const navigation = useNavigation();
-    // Set right before we re-dispatch the original remove action once the
-    // user has confirmed — lets it through instead of showing the warning
-    // a second time.
-    const allowLeaveRef = useRef(false);
-    const pendingActionRef = useRef<NavigationAction | null>(null);
+    // Set once the user confirms leaving, so the guard below lets the exit through.
+    const [leaving, setLeaving] = useState(false);
 
     useEffect(() => {
         AsyncStorage.getItem('userToken').then(t => setToken(t));
         getDeviceClientId().then(setDeviceClientId);
     }, []);
 
-    // Catches every way this screen can be removed — header back button,
-    // Android hardware back, AND iOS's edge-swipe-back gesture (which never
-    // touched the old BackHandler-only setup below, so swiping out used to
-    // leave without any warning or submit at all). `beforeRemove` fires for
-    // all of them uniformly since they all go through the navigator's own
-    // remove action.
-    useEffect(() => {
-        // Viewing a past result has nothing to lose by leaving — no guard needed.
-        if (attemptId) return;
-        const sub = navigation.addListener('beforeRemove', (e) => {
-            if (allowLeaveRef.current) return;
-            e.preventDefault();
-            pendingActionRef.current = e.data.action;
-            confirmExit();
-        });
-        return sub;
-    }, [navigation, attemptId]);
+    // Catches every way this screen can be removed: header back button and
+    // Android hardware back both go through the navigator's remove action,
+    // which usePreventRemove blocks until the user confirms. (SDK 58 removed
+    // the old `beforeRemove` event; this is its replacement.) Viewing a past
+    // result has nothing to lose by leaving, so no guard there.
+    usePreventRemove(!attemptId && !leaving, ({ repeat }) => confirmExit(repeat));
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -64,16 +47,13 @@ export default function TestWebViewScreen() {
             }
             // Anything else: don't intercept — let the default Android back
             // behavior run, which dispatches a normal goBack() and hits the
-            // `beforeRemove` guard above, same as the header button and the
-            // iOS swipe gesture.
+            // usePreventRemove guard above, same as the header button.
             return false;
         });
         return () => sub.remove();
     }, []);
 
-    function confirmExit() {
-        // Viewing a past result has nothing to lose by leaving — skip the warning.
-        if (attemptId) { router.back(); return; }
+    function confirmExit(repeat: () => void) {
         Alert.alert(
             'Leave test?',
             'Going back will auto-submit your test as it currently stands. Are you sure?',
@@ -92,9 +72,8 @@ export default function TestWebViewScreen() {
                             `(function(){ if (window.__qubeexAppExitSubmit) { window.__qubeexAppExitSubmit(); } })(); true;`
                         );
                         setTimeout(() => {
-                            allowLeaveRef.current = true;
-                            if (pendingActionRef.current) navigation.dispatch(pendingActionRef.current);
-                            else router.back();
+                            setLeaving(true);
+                            repeat(); // carry on with the exit that was blocked
                         }, 300);
                     }
                 },
@@ -103,7 +82,7 @@ export default function TestWebViewScreen() {
     }
 
     // iOS's edge-swipe-back gesture pops the screen natively before JS ever
-    // gets a chance to run the `beforeRemove` guard above — React Navigation
+    // gets a chance to run the usePreventRemove guard above — React Navigation
     // doesn't support intercepting that after the fact on native-stack (the
     // "removed natively but didn't get removed from JS state" warning).
     // Disabling the gesture for the live test means the only way off this
@@ -152,7 +131,7 @@ export default function TestWebViewScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
             <Stack.Screen options={{ gestureEnabled }} />
             <View style={styles.header}>
-                <TouchableOpacity onPress={confirmExit} style={styles.backBtn}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                     <ArrowLeft size={22} color="white" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{attemptId ? 'Result' : 'Test'}</Text>

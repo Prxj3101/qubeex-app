@@ -27,7 +27,8 @@ import {
     User
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 
 import Constants from 'expo-constants';
@@ -381,7 +382,7 @@ export default function Profile() {
     const [extraDetailFields, setExtraDetailFields] = useState<Record<string, string> | null>(null);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const navigation = useNavigation<any>();
 
     // Tapping the active tab's own icon again (standard behavior across
@@ -1181,7 +1182,7 @@ export default function Profile() {
                                             }}>
                                                 <Image source={opt.image} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                                                 {busy && (
-                                                    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <View style={{ ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                                                         <ActivityIndicator size="small" color="#fff" />
                                                     </View>
                                                 )}

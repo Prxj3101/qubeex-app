@@ -51,7 +51,6 @@ function TeacherTabLayout() {
                 },
                 tabBarLabelStyle: { fontFamily: 'Poppins_600SemiBold', fontSize: 10 },
             }}
-            initialRouteName="index"
         >
             <Tabs.Screen name="index" options={{
                 title: 'Home',
@@ -67,7 +66,7 @@ function TeacherTabLayout() {
             }} />
             <Tabs.Screen name="profile" options={{
                 title: 'Profile',
-                tabBarIcon: ({ color }) => <TeacherProfileTabIcon color={color} size={22} />,
+                tabBarIcon: ({ color }) => <TeacherProfileTabIcon color={color as string} size={22} />,
             }} />
         </Tabs>
     );

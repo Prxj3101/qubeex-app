@@ -18,7 +18,7 @@ Alert.alert = (title, message, buttons, options) => {
     const list = buttons && buttons.length ? buttons : [{ text: 'OK' }];
     // Host not mounted yet (very early in startup): fall back to the system box rather than dropping the alert.
     if (!enqueue) return nativeAlert(title, message, buttons, options);
-    enqueue({ title, message, buttons: list, options });
+    enqueue({ title: title ?? '', message: message ?? undefined, buttons: list, options });
 };
 
 const ERROR_WORDS = /could not|couldn't|can't|cannot|failed|error|unable|invalid|denied|wrong|not allowed|required/i;

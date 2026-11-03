@@ -25,7 +25,8 @@ import {
     Text,
     TouchableOpacity,
     View
-} from 'react-native';
+} from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import Constants from 'expo-constants';
 
 // Per-theme light-mode page background — purple keeps its original #FAF8FF,
@@ -501,8 +502,8 @@ export default function Feed() {
     const [inScreenHasNew, setInScreenHasNew] = useState(false);
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const feedScrollRef = useRef<ScrollView>(null);
-    const outerScrollRef = useRef<ScrollView>(null);
+    const feedScrollRef = useRef<ScrollViewInstance | null>(null);
+    const outerScrollRef = useRef<ScrollViewInstance | null>(null);
     const navigation = useNavigation<any>();
     const spinAnim = useRef(new Animated.Value(0)).current;
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -37,7 +37,8 @@ import {
     Text,
     TouchableOpacity,
     View
-} from 'react-native';
+} from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import Constants from 'expo-constants';
 
 // Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
@@ -902,7 +903,7 @@ export default function Tasks() {
     const [loadingSubmissions, setLoadingSubmissions] = useState(false);
     const [submissionsLoaded, setSubmissionsLoaded] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const navigation = useNavigation<any>();
 
     // Tapping the active tab's own icon again (standard behavior across

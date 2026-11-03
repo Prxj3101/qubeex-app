@@ -13,8 +13,11 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import { Trophy } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Constants from 'expo-constants';
-import { ParentBusEntry } from '@/components/ParentBus';
+
+import type { ScrollViewInstance } from 'react-native';
+import Constants from 'expo-constants';
+
+import { FloatingBusButton } from '@/components/FloatingBusButton';
 
 // Per-theme light-mode page background — mirrors app/(tabs)/feed.tsx's LIGHT_BG.
 const LIGHT_BG: Record<string, string> = {
@@ -70,6 +73,8 @@ function Avatar({ name, avatarUrl, color, bg, size }: { name: string; avatarUrl?
 
 export default function Home() {
     const [isParentView, setIsParentView] = useState(false);
+    // My Bus screen open → parent-mode switch is locked until it's closed
+    const [busOpen, setBusOpen] = useState(false);
 
     // Fire-and-forget: logs one event whenever Parent Mode is switched ON, so
     // admin insights can flag families who haven't checked in recently. Never
@@ -84,7 +89,7 @@ export default function Home() {
             return next;
         });
     }, []);
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const navigation = useNavigation<any>();
     const { isDark, accent, themeColor } = useTheme();
     const theme = { ...(isDark ? DARK : LIGHT), bg: isDark ? DARK.bg : (LIGHT_BG[themeColor] ?? LIGHT_BG.purple), purple: accent.purple, purpleLight: accent.purpleLight };
@@ -142,15 +147,19 @@ export default function Home() {
     if (isParentView) {
         return (
             <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
-                <TopBar isParentView={isParentView} onToggle={toggleParentView} />
-                <ParentModeView isDark={isDark} />
+                <TopBar isParentView={isParentView} onToggle={toggleParentView} toggleLocked={busOpen} />
+                <View style={{ flex: 1 }}>
+                    <ParentModeView isDark={isDark} />
+                    {/* School bus: draggable live bus button (only when the child rides one) */}
+                    <FloatingBusButton isDark={isDark} onOpenChange={setBusOpen} />
+                </View>
             </View>
         );
     }
 
     return (
         <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: Constants.statusBarHeight }]}>
-            <TopBar isParentView={isParentView} onToggle={toggleParentView} />
+            <TopBar isParentView={isParentView} onToggle={toggleParentView} toggleLocked={busOpen} />
             <View style={{ flex: 1, position: 'relative' }}>
             <ScrollView
                 ref={scrollRef}
@@ -171,8 +180,6 @@ export default function Home() {
                         pendingTasks={overview?.pendingTasks ?? 0}
                         nextEvent={overview?.nextEvent ?? null}
                     />
-                    {/* School bus: live location (only shows when the child rides one) */}
-                    <ParentBusEntry key={`bus-${focusKey}`} isDark={isDark} />
                     <ThoughtOfTheDay />
 
                     {lb.length > 0 && (
@@ -254,6 +261,8 @@ export default function Home() {
 
                 </View>
             </ScrollView>
+            {/* School bus: draggable live bus button (only when the child rides one) */}
+            <FloatingBusButton isDark={isDark} onOpenChange={setBusOpen} />
             <TabEntryCover visible={showEntryCover} />
             </View>
         </View>

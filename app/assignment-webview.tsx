@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Platform, BackHandler, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -18,7 +18,7 @@ const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://www.qubeex.in';
 export default function AssignmentWebViewScreen() {
     const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
     const [token, setToken] = useState<string | null>(null);
-    const webViewRef = useRef<WebView>(null);
+    const webViewRef = useRef<ComponentRef<typeof WebView>>(null);
     const canGoBackRef = useRef(false);
 
     useEffect(() => {

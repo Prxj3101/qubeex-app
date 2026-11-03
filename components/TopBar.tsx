@@ -10,9 +10,11 @@ import { Animated, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View
 interface TopBarProps {
     isParentView: boolean;
     onToggle: () => void;
+    /** true while a screen like My Bus is open on top: the mode switch can't be flipped */
+    toggleLocked?: boolean;
 }
 
-export function TopBar({ isParentView, onToggle }: TopBarProps) {
+export function TopBar({ isParentView, onToggle, toggleLocked }: TopBarProps) {
     const translateX = useRef(new Animated.Value(isParentView ? 31 : 0)).current;
     const shadowAnim = useRef(new Animated.Value(isParentView ? 1 : 0)).current;
     const { isDark, toggleTheme, accent } = useTheme();
@@ -89,6 +91,7 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
     });
 
     const handleToggle = () => {
+        if (toggleLocked) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Animated.parallel([
             Animated.spring(translateX, {
@@ -225,7 +228,7 @@ export function TopBar({ isParentView, onToggle }: TopBarProps) {
                     </Pressable>
 
                     {/* Toggle Switch */}
-                    <TouchableOpacity onPress={handleToggle} activeOpacity={1}>
+                    <TouchableOpacity onPress={handleToggle} activeOpacity={1} disabled={toggleLocked} style={toggleLocked ? { opacity: 0.45 } : undefined}>
                         <Animated.View style={[styles.switch, { backgroundColor: switchBg }]}>
                             <View style={styles.trackInner} />
                             <Animated.View style={[

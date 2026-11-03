@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import React from 'react';
 import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 
 export const WHEEL_ITEM_H = 22;
 
@@ -18,7 +19,7 @@ export function InlineWheel({ options, value, onChange, isDark, theme }: {
     isDark: boolean;
     theme: { purple: string; purpleLight?: string };
 }) {
-    const scrollRef = React.useRef<ScrollView>(null);
+    const scrollRef = React.useRef<ScrollViewInstance | null>(null);
     const n = options.length;
     const REPEAT = 9;
     const middleSet = Math.floor(REPEAT / 2);

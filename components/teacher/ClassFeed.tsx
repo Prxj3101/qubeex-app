@@ -22,6 +22,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import type { ScrollViewInstance, ViewInstance } from 'react-native';
 import type { MutableRefObject, RefObject } from 'react';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -201,7 +202,7 @@ type ClassFeedProps = {
     // style "lift composer above keyboard" trick has to scroll THAT view
     // instead of one this component owns itself, unlike CampusFeed.tsx where
     // the feed IS the whole page's scroll.
-    mainScrollRef: RefObject<ScrollView | null>;
+    mainScrollRef: RefObject<ScrollViewInstance | null>;
     mainScrollYRef: MutableRefObject<number>;
     mainContentHRef: MutableRefObject<number>;
     mainContainerHRef: MutableRefObject<number>;
@@ -247,7 +248,7 @@ export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function Cl
     const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const fetchedRef = useRef(false);
 
-    const composerRef = useRef<View>(null);
+    const composerRef = useRef<ViewInstance | null>(null);
     const kbHeightRef = useRef(0);
     const pendingScrollRef = useRef<number | null>(null);
 
@@ -301,7 +302,7 @@ export const ClassFeed = forwardRef<ClassFeedHandle, ClassFeedProps>(function Cl
     }, [pinComposer, setKbPad]);
 
     const [showScrollTop, setShowScrollTop] = useState(false);
-    const postsScrollRef = useRef<ScrollView>(null);
+    const postsScrollRef = useRef<ScrollViewInstance | null>(null);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const spinAnim = useRef(new Animated.Value(0)).current;

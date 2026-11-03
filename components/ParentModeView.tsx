@@ -31,7 +31,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { ParentBusEntry } from './ParentBus';
 
 const PARENT_LANG_STORAGE_KEY = 'parentModeLang';
 
@@ -429,7 +428,7 @@ export function ParentModeView({ isDark }: { isDark: boolean }) {
             {langMenuOpen && (
                 <>
                     <TouchableOpacity
-                        style={StyleSheet.absoluteFillObject}
+                        style={StyleSheet.absoluteFill}
                         activeOpacity={1}
                         onPress={() => setLangMenuOpen(false)}
                     />
@@ -470,8 +469,6 @@ export function ParentModeView({ isDark }: { isDark: boolean }) {
                     <ParentChatEntry isDark={isDark} />
                     <ParentFormsEntry isDark={isDark} />
                     <ParentPtmEntry isDark={isDark} />
-                    {/* School bus (only shows when the child rides one) */}
-                    <ParentBusEntry isDark={isDark} />
 
                     {/* Rule-based summary */}
                     {summary ? (

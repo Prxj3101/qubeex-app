@@ -16,7 +16,8 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import Constants from 'expo-constants';
 import { AlertTriangle, BookOpen, ClipboardList, LayoutGrid, TrendingUp } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 
 const LIGHT = { bg: '#FAF8FF', card: '#FFFFFF', cardBorder: '#EDE9FE', text: '#0F172A', subText: '#64748B', muted: '#94A3B8' };
 const DARK = { bg: '#000000', card: '#141414', cardBorder: '#2A2A2A', text: '#F1F5F9', subText: '#94A3B8', muted: '#64748B' };
@@ -48,7 +49,7 @@ export default function TeacherHome() {
     const [overview, setOverview] = useState<OverviewData | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const notepadRef = useRef<TeacherNotepadHandle>(null);
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance | null>(null);
     const navigation = useNavigation<any>();
 
     const fetchOverview = useCallback(async () => {

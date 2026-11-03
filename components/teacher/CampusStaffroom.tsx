@@ -43,6 +43,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import type { ScrollViewInstance, ViewInstance } from 'react-native';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface PostAuthor { id: string; name: string; role: 'ADMIN' | 'TEACHER'; avatarUrl?: string | null; prefix?: string | null; title?: string | null; }
@@ -343,7 +344,7 @@ const DmChat = forwardRef<DmChatHandle, { thread: DmThread; isOnline: boolean; o
     // Messages heading, above the bottom tab bar), we need the container's
     // own on-screen top offset and height to convert a window-relative touch
     // point into a position relative to this container.
-    const rootRef = useRef<View>(null);
+    const rootRef = useRef<ViewInstance | null>(null);
     const [rootLayout, setRootLayout] = useState({ y: 0, height: 0 });
 
     // Fires on the CAPTURE phase (parent-to-child, before any child's own
@@ -602,7 +603,7 @@ const DmChat = forwardRef<DmChatHandle, { thread: DmThread; isOnline: boolean; o
                     <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                         <Text style={{ fontSize: 12, fontFamily: 'Poppins_400Regular', color: subText }}>No messages yet — say hello!</Text>
                     </View>
-                ) : null}
+                ) : undefined}
                 renderItem={({ item: msg }) => (
                     <View style={{ flexDirection: msg.isMe ? 'row-reverse' : 'row' }}>
                         <View style={{ maxWidth: '78%', alignItems: msg.isMe ? 'flex-end' : 'flex-start' }}>
@@ -625,7 +626,7 @@ const DmChat = forwardRef<DmChatHandle, { thread: DmThread; isOnline: boolean; o
                                 )}
                                 {msg.attachments?.length > 0 && (
                                     <View style={{ marginTop: msg.text ? 6 : 0, gap: 5 }}>
-                                        {msg.attachments.map((att, i) => (
+                                        {msg.attachments.map((att: { url: string; type: string; name: string }, i: number) => (
                                             <AttachmentPreview key={i} url={att.url} name={att.name} type={att.type} />
                                         ))}
                                     </View>
@@ -853,7 +854,7 @@ export const CampusStaffroom = forwardRef<CampusStaffroomHandle, {
     // effect below can tell "the user tapped the nav" (needs a scroll)
     // from "the user just swiped" (already there — scrolling again would fight
     // the gesture).
-    const pagerRef = useRef<ScrollView>(null);
+    const pagerRef = useRef<ScrollViewInstance | null>(null);
     const [pagerWidth, setPagerWidth] = useState(Dimensions.get('window').width);
     const lastPagerWidthRef = useRef(0);
     const currentPageRef = useRef<CampusPage>(page);
