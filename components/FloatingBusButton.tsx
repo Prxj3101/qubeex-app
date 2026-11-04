@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, AppState, BackHandler, Easing, PanResponder, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, G, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
-import { MyBusScreen, type MyBus } from './ParentBus';
+import { MyBusScreen, isAtStop, shownEta, type MyBus } from './ParentBus';
 
 // Floating school-bus button on the Home screen (only when the child rides a
 // school bus). Drag it anywhere, it snaps to the nearest side (like the
@@ -72,9 +72,9 @@ export function FloatingBusButton({ isDark, onOpenChange }: { isDark: boolean; o
     }, [open, closeScreen]);
 
     const state = stateOf(data);
-    const eta = state !== 'offline' ? data?.etaMinutes ?? null : null;
-    const arriving = eta != null && eta <= 2; // "Beep beep" bubble from 2 min
-    const here = eta != null && eta <= 1;     // the beat (pulse) only at "now"
+    const eta = state !== 'offline' && data ? shownEta(data) : null; // minutes only once the stop before ours is done
+    const here = state !== 'offline' && !!data && isAtStop(data); // at the child's stop (route-aware, from the server)
+    const arriving = here || (eta != null && eta <= 2);           // "Beep beep" bubble from 2 min
 
     // poll faster while the bus is live
     const refresh = useCallback(async () => {
@@ -115,7 +115,7 @@ export function FloatingBusButton({ isDark, onOpenChange }: { isDark: boolean; o
 
     // ── ETA ring: a simple fixed scale, so it always means the same thing ──
     // 15 min or more away → empty, 10 min → 1/3, 5 min → 2/3, "now" → full.
-    const progress = eta == null ? 0 : eta <= 1 ? 1 : Math.min(1, Math.max(0, (RING_MIN - eta) / (RING_MIN - 1)));
+    const progress = here ? 1 : eta == null ? 0 : eta <= 1 ? 1 : Math.min(1, Math.max(0, (RING_MIN - eta) / (RING_MIN - 1)));
 
     // ── arriving: one buzz when it starts ──
     const wasArriving = useRef(false);
@@ -225,10 +225,10 @@ export function FloatingBusButton({ isDark, onOpenChange }: { isDark: boolean; o
     if (!data) return null;
     const color = ACCENT[state];
     const facesLeft = (data.position?.course ?? 90) >= 180; // heading anywhere west → bus faces left
-    const etaText = eta == null ? null : eta <= 1 ? 'Now' : `${eta}m`;
+    const etaText = here ? 'Now' : eta == null ? null : `${Math.max(1, eta)}m`;
     const towardsCentre = side === 'left' ? 1 : -1; // pill and bubble open towards the middle of the screen
     const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] });
-    const pillLine1 = `${data.bus.name}${eta != null ? ` · ${eta <= 1 ? 'arriving now' : `${eta} min away`}` : state === 'offline' ? ' · not running' : ' · stopped'}`;
+    const pillLine1 = `${data.bus.name}${data.reachedSchool ? ' · reached school' : here ? ' · at your stop' : data.passedStop ? ' · passed your stop' : (data.stopsBefore ?? 0) > 0 ? ` · ${data.stopsBefore} ${data.stopsBefore === 1 ? 'stop' : 'stops'} before yours` : eta != null ? ` · ${Math.max(1, eta)} min away` : state === 'offline' ? ' · not running' : ' · stopped'}`;
     const place = data.stop?.name ?? (data.bus.route?.name ?? '');
     // live speed first (so a long stop name gets cut, not the speed)
     const speed = shownSpeed != null ? `⚡ ${shownSpeed} km/h` : '';
@@ -427,7 +427,7 @@ function Scene({ state, facesLeft, towards, epoch }: { state: BusState; facesLef
 
             {/* the bus */}
             {/* tyres sit on the road: bottom of the wheels a little below where the ground starts */}
-            <View style={{ position: 'absolute', left: (INNER - BUS_W) / 2, top: GROUND_Y + 3 - (WHEEL_Y + 9.5) * k, width: BUS_W, height: BUS_H + 4, transform: [{ scaleX: facesLeft ? -1 : 1 }], opacity: live ? 1 : 0.85 }}>
+            <View style={{ position: 'absolute', left: (INNER - BUS_W) / 2 + (facesLeft ? BEAM_ROOM : -BEAM_ROOM), top: GROUND_Y + 3 - (WHEEL_Y + 9.5) * k, width: BUS_W, height: BUS_H + 4, transform: [{ scaleX: facesLeft ? -1 : 1 }], opacity: live ? 1 : 0.85 }}>
                 {live && puffs.map((p, i) => (
                     <Animated.View
                         key={i}
@@ -445,8 +445,8 @@ function Scene({ state, facesLeft, towards, epoch }: { state: BusState; facesLef
 
                 <Animated.View style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateY: lift }] }}>
                     <BusBody />
-                    {/* headlight beam shining forward (blinks while waiting) */}
-                    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 118 * k - 0.5, top: 48.5 * k - 7, width: BEAM_W, height: 14, opacity: state === 'idle' ? blink : state === 'moving' ? 0.9 : 0 }}>
+                    {/* headlight: always on (day, evening, night); pulses gently while waiting, dimmer when not running */}
+                    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 118 * k - 1.5, top: 48.5 * k - BEAM_H / 2, width: BEAM_W, height: BEAM_H, opacity: state === 'idle' ? blink.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) : state === 'moving' ? 1 : 0.45 }}>
                         <HeadlightBeam />
                     </Animated.View>
                 </Animated.View>
@@ -530,23 +530,34 @@ function BusBody() {
     );
 }
 
-const BEAM_W = 18;
+// The circle cuts off anything near its edge, so the bus sits a little towards its back
+// (BEAM_ROOM) to leave room in front for the beam to show.
+const BEAM_ROOM = 3;
+const BEAM_W = 14;
+const BEAM_H = 12;
 
-/** Light cone from the headlight, fading out ahead of the bus (BEAM_W x 14). */
+/**
+ * Light cone from the headlight, fading out ahead of the bus. Warm, saturated
+ * yellow/orange so it still shows against the bright day and evening sky, with a
+ * glowing lamp spot at the start.
+ */
 function HeadlightBeam() {
+    const mid = BEAM_H / 2;
     return (
-        <Svg width={BEAM_W} height={14} viewBox={`0 0 ${BEAM_W} 14`}>
+        <Svg width={BEAM_W} height={BEAM_H} viewBox={`0 0 ${BEAM_W} ${BEAM_H}`}>
             <Defs>
                 <LinearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
-                    <Stop offset="0" stopColor="#FFF3B0" stopOpacity="0.95" />
-                    <Stop offset="0.5" stopColor="#FFE680" stopOpacity="0.45" />
-                    <Stop offset="1" stopColor="#FFE680" stopOpacity="0" />
+                    <Stop offset="0" stopColor="#FFE14D" stopOpacity="1" />
+                    <Stop offset="0.45" stopColor="#FFC21A" stopOpacity="0.7" />
+                    <Stop offset="1" stopColor="#FFB300" stopOpacity="0" />
                 </LinearGradient>
             </Defs>
-            <Path d={`M0 5.6 L${BEAM_W} 2 L${BEAM_W} 14 L0 8.4 Z`} fill="url(#beam)" />
-            {[3.5, 8, 12.5].map(y => (
-                <Line key={y} x1="0" y1="7" x2={BEAM_W} y2={y} stroke="url(#beam)" strokeWidth="0.8" strokeLinecap="round" />
+            <Path d={`M1 ${mid - 1.6} L${BEAM_W} 0.5 L${BEAM_W} ${BEAM_H - 0.5} L1 ${mid + 1.6} Z`} fill="url(#beam)" />
+            {[2, mid, BEAM_H - 2].map(y => (
+                <Line key={y} x1="1" y1={mid} x2={BEAM_W} y2={y} stroke="#FFF7CC" strokeOpacity={0.9} strokeWidth="0.7" strokeLinecap="round" />
             ))}
+            {/* the lamp itself, glowing */}
+            <Circle cx="1.6" cy={mid} r="2.2" fill="#FFF6C2" />
         </Svg>
     );
 }

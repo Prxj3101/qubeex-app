@@ -32,6 +32,14 @@ export interface MyBus {
     position: { lat: number; lng: number; speedKmh: number; course: number; receivedAt: string } | null;
     online: boolean;
     etaMinutes: number | null;
+    /** route-aware (server follows the trip stop by stop); missing on older servers */
+    atStop?: boolean;
+    passedStop?: boolean;
+    stopsBefore?: number | null;
+    /** name of the stop the bus is standing at right now (any stop) */
+    standingAt?: string | null;
+    /** pickup trip done, bus parked at school */
+    reachedSchool?: boolean;
     serverTime: string;
 }
 
@@ -56,10 +64,36 @@ function ago(iso: string | undefined, lang: ParentLang): string {
     return n(`${m} min`, lang);
 }
 
+/** At the child's stop right now (server flag; older servers: ETA of a minute or less). */
+export const isAtStop = (d: MyBus) => !!d.online && (d.atStop ?? (d.etaMinutes != null && d.etaMinutes <= 1));
+
+/**
+ * Minutes to show, or null. Only once the stop just before the child's is done:
+ * before that, the stop count is clearer than a long, shaky time.
+ */
+export const shownEta = (d: MyBus): number | null =>
+    !d.online || d.etaMinutes == null || (d.stopsBefore ?? 0) > 0 ? null : d.etaMinutes;
+
+const stopsCount = (before: number, lang: ParentLang) =>
+    before === 1 ? t('busOneStopBefore', lang) : t('busStopsBefore', lang).replace('{n}', n(before, lang));
+
+/** Small second line under the status: the stop count while the bus stands at another stop. */
+export function etaSub(d: MyBus, lang: ParentLang): string | null {
+    if (!d.online || isAtStop(d) || d.passedStop || !d.standingAt) return null;
+    const before = d.stopsBefore ?? 0;
+    return before > 0 ? stopsCount(before, lang) : null;
+}
+
 export function etaLine(d: MyBus, lang: ParentLang): string {
     if (!d.online) return t('busOffline', lang);
+    if (d.reachedSchool) return `🏫 ${t('busReachedSchool', lang)}`;
+    if (isAtStop(d)) return t('busAtStop', lang);
+    if (d.passedStop) return t('busPassedStop', lang);
+    const before = d.stopsBefore ?? 0;
+    // standing at some other stop: "At Patankar Park" (the stop count goes underneath, see etaSub)
+    if (d.standingAt) return t('busAtNamed', lang).replace('{s}', d.standingAt);
+    if (before > 0) return stopsCount(before, lang);
     if (d.etaMinutes == null) return t('busLive', lang);
-    if (d.etaMinutes <= 1) return t('busAtStop', lang);
     return t('busMinAway', lang).replace('{n}', n(d.etaMinutes, lang));
 }
 
@@ -132,9 +166,12 @@ export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDa
 
                 {/* Live map card: status strip on top, map, "updated" line below */}
                 <View style={[s.mapCard, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                    <View style={s.mapTop}>
-                        <StatusDot online={data.online} color={statusColor} />
-                        <Text style={[s.statusTitle, { color: theme.text, flex: 0, flexShrink: 1, textAlign: 'center' }]} numberOfLines={2}>{etaLine(data, lang)}</Text>
+                    <View style={s.mapTopWrap}>
+                        <View style={s.mapTop}>
+                            <StatusDot online={data.online} color={statusColor} />
+                            <Text style={[s.statusTitle, { color: theme.text, flex: 0, flexShrink: 1, textAlign: 'center' }]} numberOfLines={2}>{etaLine(data, lang)}</Text>
+                        </View>
+                        {!!etaSub(data, lang) && <Text style={[s.mapTopSub, { color: theme.subText }]} numberOfLines={1}>{etaSub(data, lang)}</Text>}
                     </View>
                     <View style={s.mapArea}>
                         <BusMap data={data} onRefresh={load} />
@@ -453,11 +490,19 @@ function BusMarker({ lat, lng, course, online }: { lat: number; lng: number; cou
     }, [c, online]);
     return (
         <AnimatedMarker coordinate={pos as never} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={track} zIndex={10}>
-            <View style={{ width: 70, height: 70, alignItems: 'center', justifyContent: 'center' }}>
-                <View style={{ transform: [{ rotate }, { scaleX: flip }], opacity: online ? 1 : 0.6 }}>
+            <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+                {/* blue direction arrow just ahead of the bus, pointing where it's going (same as the admin map) */}
+                {online && (
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', transform: [{ rotate: `${c}deg` }] }]}>
+                        <Svg width={16} height={14} viewBox="0 0 16 14" style={{ marginTop: 8 }}>
+                            <Path d="M8 1L15 13L8 9.6L1 13Z" fill="#2563EB" stroke="#fff" strokeWidth={1.4} strokeLinejoin="round" />
+                        </Svg>
+                    </View>
+                )}
+                <View style={{ transform: [{ rotate }, { scaleX: flip }] }}>
                     <Svg width={56} height={34} viewBox="0 0 62 38">
                         <Ellipse cx={31} cy={35} rx={26} ry={2.6} fill="rgba(0,0,0,0.22)" />
-                        <Path d="M6 7.5Q6 4 9.5 4H47Q51 4 52.3 7.5L55 15Q59 16 59 20V28H6Z" fill={online ? '#F6B500' : '#B9B9B9'} stroke="#2a2a2e" strokeWidth={1.2} />
+                        <Path d="M6 7.5Q6 4 9.5 4H47Q51 4 52.3 7.5L55 15Q59 16 59 20V28H6Z" fill="#F6B500" stroke="#2a2a2e" strokeWidth={1.2} />
                         <Path d="M6 18.5H59" stroke="#2a2a2e" strokeWidth={1.6} />
                         {[9, 16, 23, 30, 37].map(x => <Rect key={x} x={x} y={7} width={5.6} height={7.5} rx={1.2} fill="#BFE3FF" stroke="#2a2a2e" strokeWidth={0.9} />)}
                         <Rect x={44} y={7} width={5} height={17} rx={1} fill="#BFE3FF" stroke="#2a2a2e" strokeWidth={0.9} />
@@ -532,7 +577,9 @@ const s = StyleSheet.create({
     statusTitle: { flex: 1, fontSize: 16, lineHeight: 22, fontFamily: 'Poppins_700Bold', includeFontPadding: false },
     small: { fontSize: 12, lineHeight: 17, fontFamily: 'Poppins_400Regular', includeFontPadding: false },
     mapCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-    mapTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
+    mapTopWrap: { paddingHorizontal: 14, paddingVertical: 12, gap: 2 },
+    mapTopSub: { fontSize: 12, lineHeight: 16, fontFamily: 'Poppins_400Regular', includeFontPadding: false, textAlign: 'center' },
+    mapTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     mapArea: { height: 350 },
     mapBottom: { paddingHorizontal: 14, paddingVertical: 5, textAlign: 'center', fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins_400Regular', includeFontPadding: false },
     driverEmoji: { fontSize: 30, lineHeight: 36, includeFontPadding: false, textAlignVertical: 'center' },
