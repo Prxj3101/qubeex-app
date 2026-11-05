@@ -191,23 +191,6 @@ export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDa
                     </Text>
                 </View>
 
-                {/* Bus alerts on / off */}
-                {data.alertsOn !== undefined && (
-                    <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
-                        <Text style={s.alertEmoji}>🔔</Text>
-                        <View style={{ flex: 1 }}>
-                            <Text style={[s.value, { color: theme.text }]}>{t('busAlerts', lang)}</Text>
-                            <Text style={[s.small, { color: theme.subText, marginTop: 2 }]}>{t('busAlertsSub', lang)}</Text>
-                        </View>
-                        <Switch
-                            value={data.alertsOn}
-                            onValueChange={setAlerts}
-                            trackColor={{ false: isDark ? '#3A3A3C' : '#D1D5DB', true: GOOD }}
-                            thumbColor="#FFFFFF"
-                        />
-                    </View>
-                )}
-
                 {/* Child's stop + planned times */}
                 <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -247,6 +230,22 @@ export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDa
                                 <Text style={s.callText}>{t('callDriver', lang)}</Text>
                             </TouchableOpacity>
                         )}
+                    </View>
+                )}
+                {/* Bus alerts on / off */}
+                {data.alertsOn !== undefined && (
+                    <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                        <Text style={s.alertEmoji}>🔔</Text>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[s.value, { color: theme.text }]}>{t('busAlerts', lang)}</Text>
+                            <Text style={[s.small, { color: theme.subText, marginTop: 2 }]}>{t('busAlertsSub', lang)}</Text>
+                        </View>
+                        <Switch
+                            value={data.alertsOn}
+                            onValueChange={setAlerts}
+                            trackColor={{ false: isDark ? '#3A3A3C' : '#D1D5DB', true: GOOD }}
+                            thumbColor="#FFFFFF"
+                        />
                     </View>
                 )}
             </ScrollView>
