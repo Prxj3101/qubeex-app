@@ -147,6 +147,8 @@ const DICT: Dict = {
     busStopsBefore: { en: '{n} stops before yours', hinglish: 'Aapke stop se pehle {n} stop', hi: 'आपके स्टॉप से पहले {n} स्टॉप', mr: 'तुमच्या थांब्याआधी {n} थांबे' },
     busOneStopBefore: { en: '1 stop before yours', hinglish: 'Aapke stop se pehle 1 stop', hi: 'आपके स्टॉप से पहले 1 स्टॉप', mr: 'तुमच्या थांब्याआधी 1 थांबा' },
     busReachedSchool: { en: 'Reached school', hinglish: 'School pahunch gayi', hi: 'स्कूल पहुँच गई', mr: 'शाळेत पोहोचली' },
+    busAlerts: { en: 'Bus alerts', hinglish: 'Bus alerts', hi: 'बस अलर्ट', mr: 'बस अलर्ट' },
+    busAlertsSub: { en: 'A notification when the bus is about to reach your stop, and when it reaches school', hinglish: 'Bus stop pe aane wali ho aur school pahunche, tab notification', hi: 'बस स्टॉप पर आने वाली हो और स्कूल पहुँचे, तब सूचना', mr: 'बस थांब्यावर येणार असेल आणि शाळेत पोहोचेल तेव्हा सूचना' },
     busPassedStop: { en: 'Bus has passed your stop', hinglish: 'Bus aapka stop nikal chuki hai', hi: 'बस आपका स्टॉप निकल चुकी है', mr: 'बस तुमचा थांबा ओलांडून गेली' },
     busAtStop: { en: 'At your stop now', hinglish: 'Abhi aapke stop pe hai', hi: 'अभी आपके स्टॉप पर है', mr: 'आत्ता तुमच्या थांब्यावर आहे' },
     busUpdated: { en: 'Updated {t}', hinglish: 'Update: {t}', hi: 'अपडेट: {t}', mr: 'अपडेट: {t}' },

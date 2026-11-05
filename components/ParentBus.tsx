@@ -6,7 +6,7 @@ import { n, t, type ParentLang } from '@/lib/parentModeI18n';
 import * as Haptics from 'expo-haptics';
 import { Bus, Clock, LocateFixed, Phone, Radio, RefreshCw, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, Image, Linking, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { AnimatedRegion, Marker, MarkerAnimated, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,6 +40,8 @@ export interface MyBus {
     standingAt?: string | null;
     /** pickup trip done, bus parked at school */
     reachedSchool?: boolean;
+    /** phone alerts for this child (missing on older servers) */
+    alertsOn?: boolean;
     serverTime: string;
 }
 
@@ -137,6 +139,12 @@ export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDa
     const { accent } = useTheme();
     const theme = isDark ? DARK : LIGHT;
     const [data, setData] = useState<MyBus>(initial);
+    // bus alerts on / off: flip at once, undo if the server says no
+    const setAlerts = async (on: boolean) => {
+        setData(d => ({ ...d, alertsOn: on }));
+        try { await api.put('/student/transport/alerts', { on }); }
+        catch { setData(d => ({ ...d, alertsOn: !on })); setError(t('busLoadError', lang)); }
+    };
     const [error, setError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
@@ -182,6 +190,23 @@ export function MyBusScreen({ isDark, initial, onClose, inline, onData }: { isDa
                             : t('busOfflineHint', lang)}
                     </Text>
                 </View>
+
+                {/* Bus alerts on / off */}
+                {data.alertsOn !== undefined && (
+                    <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                        <Text style={s.alertEmoji}>🔔</Text>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[s.value, { color: theme.text }]}>{t('busAlerts', lang)}</Text>
+                            <Text style={[s.small, { color: theme.subText, marginTop: 2 }]}>{t('busAlertsSub', lang)}</Text>
+                        </View>
+                        <Switch
+                            value={data.alertsOn}
+                            onValueChange={setAlerts}
+                            trackColor={{ false: isDark ? '#3A3A3C' : '#D1D5DB', true: GOOD }}
+                            thumbColor="#FFFFFF"
+                        />
+                    </View>
+                )}
 
                 {/* Child's stop + planned times */}
                 <View style={[s.card, cardShadow(isDark), { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -583,6 +608,7 @@ const s = StyleSheet.create({
     mapArea: { height: 350 },
     mapBottom: { paddingHorizontal: 14, paddingVertical: 5, textAlign: 'center', fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins_400Regular', includeFontPadding: false },
     driverEmoji: { fontSize: 30, lineHeight: 36, includeFontPadding: false, textAlignVertical: 'center' },
+    alertEmoji: { fontSize: 24, lineHeight: 30, includeFontPadding: false, textAlignVertical: 'center' },
     tileEmoji: { fontSize: 17, lineHeight: 21, includeFontPadding: false, textAlignVertical: 'center' },
     iconTile: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
     label: { fontSize: 11, lineHeight: 15, fontFamily: 'Poppins_600SemiBold', includeFontPadding: false },
